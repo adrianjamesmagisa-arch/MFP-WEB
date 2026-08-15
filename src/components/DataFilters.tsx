@@ -5,6 +5,7 @@ import { useCallback, useState, useRef, useEffect } from 'react'
 import { Search, Filter, ChevronDown, ChevronRight, X } from 'lucide-react'
 
 type FilterOptions = {
+  year?: string[]
   funded_by: string[]
   center: string[]
   region: string[]
@@ -214,7 +215,7 @@ export function DataFilters({ filterOptions }: { filterOptions?: FilterOptions }
                         {group.options.length === 0 ? (
                           <div style={{ fontSize: '0.75rem', color: '#94a3b8', padding: '0.25rem 0' }}>No options available</div>
                         ) : (
-                          group.options.map(opt => {
+                          group.options.map((opt: string) => {
                             const isSelected = activeValue === opt
                             return (
                               <label key={opt} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', padding: '0.25rem 0', cursor: 'pointer', fontSize: '0.875rem', color: isSelected ? 'var(--navy)' : '#475569', fontWeight: isSelected ? 500 : 400 }}>

@@ -13,8 +13,11 @@ export function formatCurrency(value: number): string {
   }).format(value)
 }
 
-export function formatNumber(value: number): string {
-  return new Intl.NumberFormat('en-PH').format(value)
+export function formatNumber(value: number, fractionDigits?: number): string {
+  return new Intl.NumberFormat('en-PH', fractionDigits !== undefined ? {
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits
+  } : undefined).format(value)
 }
 
 export function formatDate(dateStr: string | null): string {
