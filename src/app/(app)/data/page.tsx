@@ -140,15 +140,15 @@ export default async function DataPage({
                 <th className="col-div" style={{ whiteSpace: 'nowrap' }}>F — Division</th>
                 <th style={{ whiteSpace: 'nowrap' }}>G — Municipality</th>
                 <th style={{ whiteSpace: 'nowrap' }}>H — Elementary School</th>
-                {/* H-M auto-calc */}
-                <th style={{ whiteSpace: 'nowrap' }}>I — Milk Packs</th>
-                <th style={{ whiteSpace: 'nowrap' }}>J — Total Vol. Req (L)</th>
-                <th style={{ whiteSpace: 'nowrap' }}>K — Raw Milk (L)</th>
-                <th style={{ whiteSpace: 'nowrap' }}>L — Whole Milk (kg)</th>
-                <th style={{ whiteSpace: 'nowrap' }}>M — Skimmed Milk (kg)</th>
-                <th style={{ whiteSpace: 'nowrap' }}>N — Sugar (kg)</th>
+                {/* I-N auto-calc */}
+                <th style={{ width: 90, minWidth: 90, whiteSpace: 'normal', lineHeight: 1.2 }}>I — Milk Packs</th>
+                <th style={{ width: 90, minWidth: 90, whiteSpace: 'normal', lineHeight: 1.2 }}>J — Total Vol. Req (L)</th>
+                <th style={{ width: 90, minWidth: 90, whiteSpace: 'normal', lineHeight: 1.2 }}>K — Raw Milk (L)</th>
+                <th style={{ width: 90, minWidth: 90, whiteSpace: 'normal', lineHeight: 1.2 }}>L — Whole Milk (kg)</th>
+                <th style={{ width: 90, minWidth: 90, whiteSpace: 'normal', lineHeight: 1.2 }}>M — Skimmed Milk (kg)</th>
+                <th style={{ width: 90, minWidth: 90, whiteSpace: 'normal', lineHeight: 1.2 }}>N — Sugar (kg)</th>
                 {/* N-S user inputs */}
-                <th style={{ whiteSpace: 'nowrap' }}>O — Feeding Days</th>
+                <th style={{ width: 90, minWidth: 90, whiteSpace: 'normal', lineHeight: 1.2 }}>O — Feeding Days</th>
                 <th style={{ whiteSpace: 'nowrap' }}>P — Batch</th>
                 <th style={{ whiteSpace: 'nowrap' }}>Q — Beneficiaries</th>
                 <th style={{ whiteSpace: 'nowrap' }}>R — Milk Type</th>
