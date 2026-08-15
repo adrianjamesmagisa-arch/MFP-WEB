@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { useRouter, useParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { PCC_CENTERS, REGIONS, MODES_OF_PROCUREMENT, type Cooperative } from '@/lib/types'
 import { Save, X, AlertCircle, CheckCircle2, RotateCcw, PenLine } from 'lucide-react'
 
@@ -27,6 +27,14 @@ const CALC_DEFS: Record<string, CalcDef> = {
   sugar:                     { letter: 'L', label: 'Sugar (kg)',         formulaKey: 'sugar_factor',       formulaStr: '= H × [FACTOR]' },
   milk_cost:                 { letter: 'S', label: 'Milk Cost',          formulaStr: '= G × Q', currency: true },
   total_funds_transferred:   { letter: 'U', label: 'Total Funds',       formulaStr: '= S + T', currency: true },
+},
+  total_volume_requirements: { letter: 'J', label: 'Total Vol. Req',    formulaKey: 'total_volume_factor', formulaStr: '= Milk Packs × [FACTOR]' },
+  raw_milk_liters:           { letter: 'K', label: 'Raw Milk (L)',      formulaKey: 'raw_milk_factor',     formulaStr: '= Total Vol. Req × [FACTOR]' },
+  whole_milk_kg:             { letter: 'L', label: 'Whole Milk (kg)',   formulaKey: 'whole_milk_factor',   formulaStr: '= Raw Milk × [FACTOR]' },
+  skimmed_milk_kg:           { letter: 'M', label: 'Skimmed Milk (kg)', formulaKey: 'skim_milk_factor',    formulaStr: '= Raw Milk × [FACTOR]' },
+  sugar:                     { letter: 'N', label: 'Sugar (kg)',         formulaKey: 'sugar_factor',       formulaStr: '= Total Vol. Req × [FACTOR]' },
+  milk_cost:                 { letter: 'U', label: 'Milk Cost',          formulaStr: '= Milk Packs × Price', currency: true },
+  total_funds_transferred:   { letter: 'W', label: 'Total Funds',       formulaStr: '= Milk Cost + Service Fee', currency: true },
 }
 
 const USER_INPUT_FIELDS = [
@@ -39,7 +47,6 @@ const USER_INPUT_FIELDS = [
 // ─── Types ──────────────────────────────────────────────────────────────────────
 interface UserProfile { role: string; center: string; id: string }
 interface FormState {
-  id?: string;
   year: string; funded_by: string; region: string; center: string
   province: string; division: string; municipality: string; elementary_school: string
   feeding_days: string; batch: string; beneficiaries: string
@@ -151,17 +158,16 @@ function isRowValid(r: FormState): boolean {
   return true
 }
 
-function isDuplicate(r: FormState, existing: any[], currentId: string): boolean {
+function isDuplicate(r: FormState, existing: any[]): boolean {
   if (!r.beneficiaries || !r.feeding_days || !r.milk_cost) return false;
   return existing.some(ex => 
-    String(ex.id) !== String(currentId) &&
     String(ex.beneficiaries) === String(r.beneficiaries) &&
     String(ex.feeding_days) === String(r.feeding_days) &&
     parseFloat(ex.milk_cost || '0').toFixed(2) === parseFloat(r.milk_cost || '0').toFixed(2) &&
     parseFloat(ex.total_funds_transferred || '0').toFixed(2) === parseFloat(r.total_funds_transferred || '0').toFixed(2) &&
-    (ex.moa_signing || '') === (r.moa_signing || '') &&
-    (ex.fund_transfer || '') === (r.fund_transfer || '') &&
-    (ex.liquidation || '') === (r.liquidation || '')
+    (ex.moa_signing_date || '') === (r.moa_signing || '') &&
+    (ex.fund_transfer_date || '') === (r.fund_transfer || '') &&
+    (ex.liquidation_date || '') === (r.liquidation || '')
   )
 }
 
@@ -191,7 +197,7 @@ const cTh: React.CSSProperties = { ...lTh, background: '#fef3c7', color: '#92400
 const nTd: React.CSSProperties = {
   background: '#f8fafc', color: '#1e293b', fontWeight: 600, fontSize: '0.73rem',
   padding: '4px 8px', border: '1px solid #e2e8f0', height: 36,
-  verticalAlign: 'middle', whiteSpace: 'normal', boxSizing: 'border-box',
+  verticalAlign: 'middle', whiteSpace: 'nowrap', boxSizing: 'border-box',
 }
 const cnTd: React.CSSProperties = { ...nTd, background: '#fffbeb', color: '#92400e' }
 const rnTd: React.CSSProperties = {
@@ -201,7 +207,7 @@ const rnTd: React.CSSProperties = {
 }
 // Input cells
 const iCell: React.CSSProperties = {
-  border: '1px solid #e2e8f0', padding: '0.2rem', background: 'white',
+  border: '1px solid #e2e8f0', padding: 0, background: 'white',
   verticalAlign: 'middle', height: ROW_H, overflow: 'hidden', boxSizing: 'border-box',
 }
 const kCell: React.CSSProperties = { ...iCell, background: '#f0f9ff' }
@@ -211,32 +217,26 @@ const cInput: React.CSSProperties = {
   border: 'none', outline: 'none',
   padding: '0 8px', fontSize: '0.82rem', fontFamily: 'Inter, sans-serif',
   background: 'transparent', color: '#1e293b', boxSizing: 'border-box' as const,
-  verticalAlign: 'middle', whiteSpace: 'normal', textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis'
+  verticalAlign: 'middle', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
 }
 const cSelect: React.CSSProperties = { ...cInput, cursor: 'pointer' }
 // Sticky cols
 const sRn: React.CSSProperties = { position: 'sticky', left: 0,   zIndex: 6, width: 36,  minWidth: 36,  maxWidth: 36 }
-const sA:  React.CSSProperties = { display: 'none' }
-const sB:  React.CSSProperties = { position: 'sticky', left: 96,  zIndex: 6, width: 80,  minWidth: 80,  maxWidth: 80 }
-const sC:  React.CSSProperties = { position: 'sticky', left: 176, zIndex: 6, width: 70,  minWidth: 70,  maxWidth: 70 }
-const sD:  React.CSSProperties = { display: 'none' }
-const sE:  React.CSSProperties = { position: 'sticky', left: 316, zIndex: 6, width: 100, minWidth: 100, maxWidth: 100 }
-const sF:  React.CSSProperties = { position: 'sticky', left: 416, zIndex: 6, width: 100, minWidth: 100, maxWidth: 100 }
-const sG:  React.CSSProperties = { position: 'sticky', left: 516, zIndex: 6, width: 120, minWidth: 120, maxWidth: 120 }
-const sH:  React.CSSProperties = { position: 'sticky', left: 636, zIndex: 6, width: 160, minWidth: 160, maxWidth: 160, boxShadow: '3px 0 6px -2px rgba(0,0,0,0.18)' }
+const sA:  React.CSSProperties = { position: 'sticky', left: 36,  zIndex: 6, width: 135, minWidth: 135, maxWidth: 135 }
+const sB:  React.CSSProperties = { position: 'sticky', left: 171, zIndex: 6, width: 110, minWidth: 110, maxWidth: 110 }
+const sC:  React.CSSProperties = { position: 'sticky', left: 281, zIndex: 6, width: 160, minWidth: 160, maxWidth: 160, boxShadow: '3px 0 6px -2px rgba(0,0,0,0.18)' }
 const dividerBorder = '2px solid #94a3b8'
 
 // Prevent Enter from submitting the form inside any text/number input
 const noEnter = (e: React.KeyboardEvent) => { if (e.key === 'Enter') e.preventDefault() }
 
 // ─── Component ──────────────────────────────────────────────────────────────────
+const INITIAL_ROWS = 5
 
-
-export default function BulkEditPage() {
-  
-  const [rows, setRows]           = useState<FormState[]>([emptyForm()])
+export default function NewRecordPage() {
+  const [rows, setRows]           = useState<FormState[]>(() => Array.from({ length: INITIAL_ROWS }, () => emptyForm()))
   // colOverrides: column fields where formula is DISABLED for all rows
-  const [colOverrides, setColOverrides] = useState<Set<string>>(new Set(Object.keys(CALC_DEFS)))
+  const [colOverrides, setColOverrides] = useState<Set<string>>(new Set())
   const [cooperatives, setCoop]   = useState<Cooperative[]>([])
   const [profile, setProfile]     = useState<UserProfile | null>(null)
   const [formulas, setFormulas]   = useState({ ...DEFAULT_FORMULAS })
@@ -254,46 +254,8 @@ export default function BulkEditPage() {
 
   // ── Load data ────────────────────────────────────────────────────────────────
   useEffect(() => {
-    const idsStr = sessionStorage.getItem('bulkEditIds')
-    if (!idsStr) {
-      router.push('/data')
-      return
-    }
-    const ids = JSON.parse(idsStr)
-    console.log("ids from session storage:", ids)
-    Promise.all([
-      supabase.from('mfp_data').select('*').in('id', ids),
-      supabase.from('cooperatives').select('id, name, short_name, region, is_active, created_at').order('name')
-    ]).then(([mfpRes, coopRes]) => {
-      console.log("supabase returned:", mfpRes.data, mfpRes.error)
-      const coops = coopRes.data ?? [];
-      setCoop(coops);
-      if (mfpRes.data && mfpRes.data.length > 0) {
-        setRows(mfpRes.data.map(d => {
-          const supplierName = coops.find(c => c.id === d.supplier_id)?.name || d.supplier_id || '';
-          return {
-            id: d.id,
-            year: String(d.year || ''), funded_by: d.funded_by || '',
-            region: d.region || '', center: d.center || '',
-            province: d.province || '', division: d.division || '',
-            municipality: d.municipality || '', elementary_school: d.elementary_school || '',
-            feeding_days: String(d.feeding_days || ''), batch: d.batch || '',
-            beneficiaries: String(d.beneficiaries || ''), milk_type: d.milk_type || '',
-            price: d.price ? String(d.price) : '', supplier_id: supplierName,
-            milk_packs: String(d.milk_packs || ''), total_volume_requirements: String(d.total_volume_requirements || ''),
-            raw_milk_liters: String(d.raw_milk_liters || ''), whole_milk_kg: String(d.whole_milk_kg || ''),
-            skimmed_milk_kg: String(d.skimmed_milk_kg || ''), sugar: String(d.sugar || ''),
-            milk_cost: d.milk_cost ? String(d.milk_cost) : '',
-            service_fee: d.service_fee !== null ? String(d.service_fee) : '0',
-            total_funds_transferred: d.total_funds_transferred ? String(d.total_funds_transferred) : '',
-            mode_of_procurement: d.mode_of_procurement || '',
-            moa_signing: d.moa_signing || '', fund_transfer: d.fund_transfer || '',
-            date_started: d.date_started || '', date_completed: d.date_completed || '',
-            liquidation: d.liquidation || ''
-          };
-        }))
-      }
-    })
+    supabase.from('cooperatives').select('id, name, short_name, region, is_active, created_at').order('name')
+      .then(({ data }) => setCoop(data ?? []))
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return
       supabase.from('profiles').select('role, center, id, formula_config').eq('id', user.id).single()
@@ -309,7 +271,7 @@ export default function BulkEditPage() {
           }
 
           // Fetch existing records for duplicate checking
-          let q = supabase.from('mfp_data').select('milk_cost, total_funds_transferred, feeding_days, beneficiaries, moa_signing, fund_transfer, liquidation')
+          let q = supabase.from('mfp_data').select('milk_cost, total_funds_transferred, feeding_days, beneficiaries, moa_signing_date, fund_transfer_date, liquidation_date')
           if (center && data.role !== 'super_admin') q = q.eq('center', center)
           q.then(({ data: records }) => {
             if (records) setExistingRecords(records)
@@ -325,7 +287,10 @@ export default function BulkEditPage() {
       if (i !== rowIdx) return r
       return recalculateRow({ ...r, [field]: value }, colOverrides, formulas)
     })
-    // Auto-add disabled for Edit
+    // Auto-add row when last row gets 1+ filled cells
+    if (rowIdx === newRows.length - 1 && countUserFilled(newRows[rowIdx]) >= 1) {
+      newRows.push(emptyForm(profile?.center ?? ''))
+    }
     setRows(newRows)
   }
 
@@ -361,8 +326,7 @@ export default function BulkEditPage() {
 
   function isModified(key: FormulaKey) { return Math.abs(formulas[key] - DEFAULT_FORMULAS[key]) > 0.00001 }
 
-  const fmtNum = (v: string | undefined, currency = false) => {
-    if (v === undefined) return '—'
+  const fmtNum = (v: string, currency = false) => {
     const n = parseFloat(v)
     if (isNaN(n) || v === '') return '—'
     return (currency ? '₱' : '') + n.toLocaleString('en-PH', { maximumFractionDigits: 2 })
@@ -371,83 +335,40 @@ export default function BulkEditPage() {
   // ── Submit ────────────────────────────────────────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true)
-    setError('')
     const validRows = rows.filter(isRowValid)
     if (validRows.length === 0) {
-      setError('No valid complete records found to save.')
-      setLoading(false)
+      setError('Please fill at least one row — Beneficiaries (Q) and Price (S) are required per row')
       return
     }
-    for (const row of validRows) {
-      if (isDuplicateInForm(row, validRows.indexOf(row), validRows)) {
-        setError('Duplicate entries found within the form. Please resolve them.')
-        setLoading(false)
-        return
-      }
-    }
+    setLoading(true); setError('')
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setError('Not authenticated'); setLoading(false); return }
-    
-    const payload = validRows.map(row => ({
-      id: row.id,
-      year: parseInt(row.year),
-      funded_by: row.funded_by,
-      region: row.region,
-      center: row.center,
-      province: row.province,
-      division: row.division || null,
-      municipality: row.municipality || null,
-      elementary_school: row.elementary_school || null,
-      feeding_days: parseInt(row.feeding_days),
-      batch: row.batch || null,
-      beneficiaries: parseInt(row.beneficiaries),
-      milk_type: row.milk_type || null,
-      price: parseFloat(row.price),
-      supplier_id: row.supplier_id || null,
-      milk_packs: parseInt(row.milk_packs),
-      total_volume_requirements: parseFloat(row.total_volume_requirements),
-      raw_milk_liters: parseFloat(row.raw_milk_liters),
-      whole_milk_kg: parseFloat(row.whole_milk_kg) || null,
-      skimmed_milk_kg: parseFloat(row.skimmed_milk_kg) || null,
-      sugar: parseFloat(row.sugar) || null,
-      milk_cost: parseFloat(row.milk_cost),
-      service_fee: parseFloat(row.service_fee),
-      total_funds_transferred: parseFloat(row.total_funds_transferred),
-      mode_of_procurement: row.mode_of_procurement || null,
-      moa_signing: row.moa_signing || null,
-      fund_transfer: row.fund_transfer || null,
-      date_started: row.date_started || null,
-      date_completed: row.date_completed || null,
-      liquidation: row.liquidation || null
-    }))
-    let hasError = false
-    let errorMessage = ''
-
-    // Use multiple .update() calls to avoid INSERT RLS policies triggered by .upsert()
-    const updatePromises = payload.map(record => {
-      const { id, ...updateData } = record
-      return supabase.from('mfp_data').update(updateData).eq('id', id)
-    })
-
-    const results = await Promise.all(updatePromises)
-    for (const res of results) {
-      if (res.error) {
-        hasError = true
-        errorMessage = res.error.message
-        break
-      }
-    }
-
-    if (hasError) {
-      setError(errorMessage)
-      setLoading(false)
-    } else {
-      setSavedCount(validRows.length)
-      setSuccess(true)
-      sessionStorage.removeItem('bulkEditIds')
-      setTimeout(() => router.push('/data'), 2500)
-    }
+    const { error: err } = await supabase.from('mfp_data').insert(
+      validRows.map(f => ({
+        year: parseInt(f.year), funded_by: f.funded_by,
+        region: f.region || null, center: f.center || null,
+        province: f.province || null, division: f.division || null,
+        municipality: f.municipality || null, elementary_school: f.elementary_school || null,
+        milk_packs: parseFloat(f.milk_packs) || 0,
+        total_volume_requirements: parseFloat(f.total_volume_requirements) || 0,
+        raw_milk_liters: parseFloat(f.raw_milk_liters) || 0,
+        whole_milk_kg: parseFloat(f.whole_milk_kg) || 0,
+        skimmed_milk_kg: parseFloat(f.skimmed_milk_kg) || 0,
+        sugar: parseFloat(f.sugar) || 0,
+        feeding_days: parseInt(f.feeding_days) || 0, batch: f.batch || null,
+        beneficiaries: parseInt(f.beneficiaries) || 0,
+        milk_type: f.milk_type || null, price: parseFloat(f.price) || 0,
+        supplier_id: f.supplier_id || null,
+        milk_cost: parseFloat(f.milk_cost) || 0, service_fee: parseFloat(f.service_fee) || 0,
+        total_funds_transferred: parseFloat(f.total_funds_transferred) || 0,
+        mode_of_procurement: f.mode_of_procurement || null,
+        moa_signing: f.moa_signing || null, fund_transfer: f.fund_transfer || null,
+        date_started: f.date_started || null, date_completed: f.date_completed || null,
+        liquidation: f.liquidation || null, created_by: user.id,
+      }))
+    )
+    if (err) { setError(err.message); setLoading(false) }
+    else { setSavedCount(validRows.length); setSuccess(true); setTimeout(() => router.push('/data'), 2500) }
   }
 
   // ── Derived ───────────────────────────────────────────────────────────────────
@@ -543,7 +464,7 @@ export default function BulkEditPage() {
     const filled  = countUserFilled(row)
     const opacity = filled === 0 && rowIdx >= 2 ? 0.5 : 1
     const isDeped = row.funded_by === 'DepEd'
-    const isDup   = isDuplicate(row, existingRecords, row.id || "") || isDuplicateInForm(row, rowIdx, rows)
+    const isDup   = isDuplicate(row, existingRecords) || isDuplicateInForm(row, rowIdx, rows)
 
     const hc = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       updateRow(rowIdx, e.target.name as keyof FormState, e.target.value)
@@ -591,7 +512,7 @@ export default function BulkEditPage() {
         </td>
 
         {/* E: Province */}
-        <td style={{ ...iCell, ...sE, ...activeBorder(rowIdx, 'E') }}>
+        <td style={{ ...iCell, width: 180, ...activeBorder(rowIdx, 'E') }}>
           {prov.length > 0 ? (
             <select name="province" style={cSelect} value={row.province} onChange={hc} onFocus={fc('E', 'province')} title={row.province}>
               <option value="">— Select —</option>
@@ -603,17 +524,17 @@ export default function BulkEditPage() {
         </td>
 
         {/* F: Division */}
-        <td style={{ ...iCell, ...sF, ...activeBorder(rowIdx, 'F') }}>
+        <td style={{ ...iCell, width: 180, ...activeBorder(rowIdx, 'F') }}>
           <input name="division" style={cInput} placeholder={isDeped ? "SDO Name *" : "SDO Name (Optional)"} value={row.division} onChange={hc} onFocus={fc('F', 'division')} onKeyDown={noEnter} title={row.division} />
         </td>
 
         {/* G: Municipality */}
-        <td style={{ ...iCell, ...sG, ...activeBorder(rowIdx, 'G') }}>
+        <td style={{ ...iCell, width: 180, ...activeBorder(rowIdx, 'G') }}>
           <input name="municipality" style={cInput} placeholder="Municipality" value={row.municipality} onChange={hc} onFocus={fc('G', 'municipality')} onKeyDown={noEnter} title={row.municipality} />
         </td>
 
         {/* H: School */}
-        <td style={{ ...iCell, ...sH, borderRight: dividerBorder, ...activeBorder(rowIdx, 'H') }}>
+        <td style={{ ...iCell, width: 240, ...activeBorder(rowIdx, 'H') }}>
           <input name="elementary_school" style={cInput} placeholder={isDeped ? "School name *" : "School name (Optional)"} value={row.elementary_school} onChange={hc} onFocus={fc('H', 'elementary_school')} onKeyDown={noEnter} title={row.elementary_school} />
         </td>
 
@@ -621,7 +542,7 @@ export default function BulkEditPage() {
         {(['milk_packs','total_volume_requirements','raw_milk_liters','whole_milk_kg','skimmed_milk_kg','sugar'] as const).map(f => renderCalcCell(rowIdx, f))}
 
         {/* O: Feeding Days */}
-        <td style={{ ...kCell, width: 90, ...activeBorder(rowIdx, 'O') }}>
+        <td style={{ ...kCell, width: 118, ...activeBorder(rowIdx, 'O') }}>
           <select name="feeding_days" style={{ ...cSelect, fontWeight: 700, color: 'var(--navy)' }} value={row.feeding_days} onChange={hc} onFocus={fc('O', 'feeding_days')}>
             <option value="">— Select —</option>
             {FEEDING_DAYS_OPTIONS.map(d => <option key={d} value={d}>{d} days</option>)}
@@ -629,7 +550,7 @@ export default function BulkEditPage() {
         </td>
 
         {/* P: Batch */}
-        <td style={{ ...iCell, width: 80, ...activeBorder(rowIdx, 'P') }}>
+        <td style={{ ...iCell, width: 100, ...activeBorder(rowIdx, 'P') }}>
           <select name="batch" style={cSelect} value={row.batch} onChange={hc} onFocus={fc('P', 'batch')}>
             <option value="">— Select —</option>
             {BATCH_OPTIONS.map(b => <option key={b} value={b}>{b}</option>)}
@@ -637,12 +558,12 @@ export default function BulkEditPage() {
         </td>
 
         {/* Q: Beneficiaries */}
-        <td style={{ ...kCell, width: 90, ...activeBorder(rowIdx, 'Q') }}>
+        <td style={{ ...kCell, width: 120, ...activeBorder(rowIdx, 'Q') }}>
           <input type="number" name="beneficiaries" style={{ ...cInput, fontWeight: 700, color: 'var(--navy)', textAlign: 'right' }} placeholder="e.g. 42" min="1" value={row.beneficiaries} onChange={hc} onFocus={fc('Q', 'beneficiaries')} onKeyDown={noEnter} />
         </td>
 
         {/* R: Milk Type */}
-        <td style={{ ...iCell, width: 90, ...activeBorder(rowIdx, 'R') }}>
+        <td style={{ ...iCell, width: 150, ...activeBorder(rowIdx, 'R') }}>
           <select name="milk_type" style={cSelect} value={row.milk_type} onChange={hc} onFocus={fc('R', 'milk_type')} title={row.milk_type}>
             <option value="PM">PM – Pasteurized</option>
             <option value="SM">SM – Sterilized</option>
@@ -652,23 +573,23 @@ export default function BulkEditPage() {
         </td>
 
         {/* S: Price */}
-        <td style={{ ...kCell, width: 90, ...activeBorder(rowIdx, 'S') }}>
+        <td style={{ ...kCell, width: 112, ...activeBorder(rowIdx, 'S') }}>
           <input type="number" name="price" style={{ ...cInput, fontWeight: 700, color: 'var(--navy)', textAlign: 'right' }} placeholder="0.00" step="0.01" min="0" value={row.price} onChange={hc} onFocus={fc('S', 'price')} onKeyDown={noEnter} />
         </td>
 
         {/* T: Supplier */}
-        <td style={{ ...iCell, width: 160, ...activeBorder(rowIdx, 'T') }}>
-          <input list={"suppliers-" + rowIdx} name="supplier_id" style={cInput} placeholder="Type to search..." value={row.supplier_id || ''} onChange={hc} onFocus={fc('T', 'supplier_id')} title={row.supplier_id || ''} onKeyDown={noEnter} />
-          <datalist id={"suppliers-" + rowIdx}>
-            {cooperatives.map(c => <option key={c.id} value={c.name} />)}
-          </datalist>
+        <td style={{ ...iCell, width: 600, ...activeBorder(rowIdx, 'T') }}>
+          <select name="supplier_id" style={cSelect} value={row.supplier_id} onChange={hc} onFocus={fc('T', 'supplier_id')} title={row.supplier_id}>
+            <option value="">— Select —</option>
+            {cooperatives.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
         </td>
 
         {/* U: Milk Cost (calc) */}
         {renderCalcCell(rowIdx, 'milk_cost')}
 
         {/* V: Service Fee */}
-        <td style={{ ...iCell, width: 90, ...activeBorder(rowIdx, 'V') }}>
+        <td style={{ ...iCell, width: 128, ...activeBorder(rowIdx, 'V') }}>
           <input type="number" name="service_fee" style={{ ...cInput, textAlign: 'right' }} placeholder="0.00" step="0.01" min="0" value={row.service_fee} onChange={hc} onFocus={fc('V', 'service_fee')} onKeyDown={noEnter} />
         </td>
 
@@ -676,7 +597,7 @@ export default function BulkEditPage() {
         {renderCalcCell(rowIdx, 'total_funds_transferred')}
 
         {/* X: Procurement */}
-        <td style={{ ...iCell, width: 120, ...activeBorder(rowIdx, 'X') }}>
+        <td style={{ ...iCell, width: 200, ...activeBorder(rowIdx, 'X') }}>
           <select name="mode_of_procurement" style={cSelect} value={row.mode_of_procurement} onChange={hc} onFocus={fc('X', 'mode_of_procurement')} title={row.mode_of_procurement}>
             <option value="">— Select —</option>
             {MODES_OF_PROCUREMENT.map(m => <option key={m} value={m}>{m}</option>)}
@@ -687,7 +608,7 @@ export default function BulkEditPage() {
         {(['moa_signing','fund_transfer','date_started','date_completed','liquidation'] as const).map((field, idx) => {
           const ltr = ['Y','Z','AA','AB','AC'][idx]
           return (
-            <td key={field} style={{ ...iCell, width: 100, ...activeBorder(rowIdx, ltr) }}>
+            <td key={field} style={{ ...iCell, width: 138, ...activeBorder(rowIdx, ltr) }}>
               <input type="date" name={field} style={{ ...cInput, cursor: 'pointer', fontSize: '0.79rem' }} value={row[field]} onChange={hc} onFocus={fc(ltr, field)} onKeyDown={noEnter} />
             </td>
           )
@@ -702,7 +623,7 @@ export default function BulkEditPage() {
       {/* Header */}
       <div className="page-header" style={{ marginBottom: '0.75rem' }}>
         <div>
-          <h1 className="page-title">Edit Record</h1>
+          <h1 className="page-title">Add New Records</h1>
           <p className="page-subtitle">
             Fill all columns per row simultaneously ·
             <span style={{ color: '#d97706' }}> Yellow</span> = auto-calculated (click to edit formula) ·
@@ -732,40 +653,40 @@ export default function BulkEditPage() {
       <form id="xls-form" onSubmit={handleSubmit}>
         <div style={{ background: 'white', borderRadius: 12, border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ borderCollapse: 'collapse', tableLayout: 'fixed', whiteSpace: 'normal', fontSize: '0.78rem' }}>
+            <table style={{ borderCollapse: 'collapse', tableLayout: 'fixed', whiteSpace: 'nowrap' }}>
               <thead>
                 {/* Column letters */}
                 <tr>
                   <th style={{ ...lTh, ...sRn, zIndex: 14 }} />
-                  <th style={{ ...lTh, ...sA,  zIndex: 14 }}>X</th>
-                  <th style={{ ...lTh, ...sB,  zIndex: 14 }}>A</th>
-                  <th style={{ ...lTh, ...sC,  zIndex: 14 }}>B</th>
-                  <th style={{ ...lTh, ...sD,  zIndex: 14 }}>X</th>
-                  <th style={{ ...lTh, ...sE, zIndex: 14 }}>C</th>
-                  <th style={{ ...lTh, ...sF, zIndex: 14 }}>D</th>
-                  <th style={{ ...lTh, ...sG, zIndex: 14 }}>E</th>
-                  <th style={{ ...lTh, ...sH, zIndex: 14, borderRight: dividerBorder }}>F</th>
-                  <th style={{ ...cTh, width: 90, minWidth: 90 }}>G</th>
-                  <th style={{ ...cTh, width: 90, minWidth: 90 }}>H</th>
-                  <th style={{ ...cTh, width: 90, minWidth: 90 }}>I</th>
-                  <th style={{ ...cTh, width: 90, minWidth: 90 }}>J</th>
-                  <th style={{ ...cTh, width: 90, minWidth: 90 }}>K</th>
-                  <th style={{ ...cTh, width: 90, minWidth: 90 }}>L</th>
-                  <th style={{ ...lTh, width: 90, minWidth: 90 }}>M</th>
-                  <th style={{ ...lTh, width: 80, minWidth: 80 }}>N</th>
-                  <th style={{ ...lTh, width: 90, minWidth: 90 }}>O</th>
-                  <th style={{ ...lTh, width: 90, minWidth: 90 }}>P</th>
-                  <th style={{ ...lTh, width: 90, minWidth: 90 }}>Q</th>
-                  <th style={{ ...lTh, width: 160, minWidth: 160 }}>R</th>
-                  <th style={{ ...cTh, width: 90, minWidth: 90 }}>S</th>
-                  <th style={{ ...lTh, width: 90, minWidth: 90 }}>T</th>
-                  <th style={{ ...cTh, width: 100, minWidth: 100 }}>U</th>
-                  <th style={{ ...lTh, width: 120, minWidth: 120 }}>V</th>
-                  <th style={{ ...lTh, width: 100, minWidth: 100 }}>W</th>
-                  <th style={{ ...lTh, width: 100, minWidth: 100 }}>X</th>
-                  <th style={{ ...lTh, width: 135, minWidth: 135 }}>Y</th>
-                  <th style={{ ...lTh, width: 140, minWidth: 140 }}>Z</th>
+                  <th style={{ ...lTh, ...sA,  zIndex: 14 }}>A</th>
+                  <th style={{ ...lTh, ...sB,  zIndex: 14 }}>B</th>
+                  <th style={{ ...lTh, ...sC,  zIndex: 14 }}>C</th>
+                  <th style={{ ...lTh, ...sD,  zIndex: 14, borderRight: dividerBorder }}>D</th>
+                  <th style={{ ...lTh, width: 180, minWidth: 180 }}>E</th>
+                  <th style={{ ...lTh, width: 180, minWidth: 180 }}>F</th>
+                  <th style={{ ...lTh, width: 180, minWidth: 180 }}>G</th>
+                  <th style={{ ...lTh, width: 240, minWidth: 240 }}>H</th>
+                  <th style={{ ...cTh, width: 115, minWidth: 115 }}>I</th>
+                  <th style={{ ...cTh, width: 130, minWidth: 130 }}>J</th>
+                  <th style={{ ...cTh, width: 125, minWidth: 125 }}>K</th>
+                  <th style={{ ...cTh, width: 128, minWidth: 128 }}>L</th>
+                  <th style={{ ...cTh, width: 128, minWidth: 128 }}>M</th>
+                  <th style={{ ...cTh, width: 115, minWidth: 115 }}>N</th>
+                  <th style={{ ...lTh, width: 118, minWidth: 118 }}>O</th>
+                  <th style={{ ...lTh, width: 100, minWidth: 100 }}>P</th>
+                  <th style={{ ...lTh, width: 120, minWidth: 120 }}>Q</th>
+                  <th style={{ ...lTh, width: 150, minWidth: 150 }}>R</th>
+                  <th style={{ ...lTh, width: 112, minWidth: 112 }}>S</th>
+                  <th style={{ ...lTh, width: 600, minWidth: 600 }}>T</th>
+                  <th style={{ ...cTh, width: 132, minWidth: 132 }}>U</th>
+                  <th style={{ ...lTh, width: 128, minWidth: 128 }}>V</th>
+                  <th style={{ ...cTh, width: 140, minWidth: 140 }}>W</th>
+                  <th style={{ ...lTh, width: 200, minWidth: 200 }}>X</th>
+                  <th style={{ ...lTh, width: 138, minWidth: 138 }}>Y</th>
+                  <th style={{ ...lTh, width: 138, minWidth: 138 }}>Z</th>
                   <th style={{ ...lTh, width: 135, minWidth: 135 }}>AA</th>
+                  <th style={{ ...lTh, width: 140, minWidth: 140 }}>AB</th>
+                  <th style={{ ...lTh, width: 135, minWidth: 135 }}>AC</th>
                 </tr>
                 {/* Column names */}
                 <tr>
@@ -773,11 +694,11 @@ export default function BulkEditPage() {
                   <td style={{ ...nTd, ...sA, zIndex: 14 }}>Year</td>
                   <td style={{ ...nTd, ...sB, zIndex: 14 }}>Funded By</td>
                   <td style={{ ...nTd, ...sC, zIndex: 14 }}>Region</td>
-                  <td style={{ ...nTd, ...sD, zIndex: 14 }}>Center</td>
-                  <td style={{ ...nTd, ...sE, zIndex: 14 }}>Province</td>
-                  <td style={{ ...nTd, ...sF, zIndex: 14 }}>Division / SDO</td>
-                  <td style={{ ...nTd, ...sG, zIndex: 14 }}>Municipality</td>
-                  <td style={{ ...nTd, ...sH, zIndex: 14, borderRight: dividerBorder }}>Elementary School</td>
+                  <td style={{ ...nTd, ...sD, zIndex: 14, borderRight: dividerBorder }}>Center</td>
+                  <td style={nTd}>Province</td>
+                  <td style={nTd}>Division / SDO</td>
+                  <td style={nTd}>Municipality</td>
+                  <td style={nTd}>Elementary School</td>
                   {renderFormulaHeader('Milk Packs', 'milk_packs', '= O × M')}
                   {renderFormulaHeader('Total Vol. Req (L)', 'total_volume_requirements', '= G ×', 'total_volume_factor')}
                   {renderFormulaHeader('Raw Milk (L)', 'raw_milk_liters', '= H ×', 'raw_milk_factor')}

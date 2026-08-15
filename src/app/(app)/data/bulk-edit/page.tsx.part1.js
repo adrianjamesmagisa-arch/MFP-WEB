@@ -27,6 +27,14 @@ const CALC_DEFS: Record<string, CalcDef> = {
   sugar:                     { letter: 'L', label: 'Sugar (kg)',         formulaKey: 'sugar_factor',       formulaStr: '= H × [FACTOR]' },
   milk_cost:                 { letter: 'S', label: 'Milk Cost',          formulaStr: '= G × Q', currency: true },
   total_funds_transferred:   { letter: 'U', label: 'Total Funds',       formulaStr: '= S + T', currency: true },
+},
+  total_volume_requirements: { letter: 'J', label: 'Total Vol. Req',    formulaKey: 'total_volume_factor', formulaStr: '= Milk Packs × [FACTOR]' },
+  raw_milk_liters:           { letter: 'K', label: 'Raw Milk (L)',      formulaKey: 'raw_milk_factor',     formulaStr: '= Total Vol. Req × [FACTOR]' },
+  whole_milk_kg:             { letter: 'L', label: 'Whole Milk (kg)',   formulaKey: 'whole_milk_factor',   formulaStr: '= Raw Milk × [FACTOR]' },
+  skimmed_milk_kg:           { letter: 'M', label: 'Skimmed Milk (kg)', formulaKey: 'skim_milk_factor',    formulaStr: '= Raw Milk × [FACTOR]' },
+  sugar:                     { letter: 'N', label: 'Sugar (kg)',         formulaKey: 'sugar_factor',       formulaStr: '= Total Vol. Req × [FACTOR]' },
+  milk_cost:                 { letter: 'U', label: 'Milk Cost',          formulaStr: '= Milk Packs × Price', currency: true },
+  total_funds_transferred:   { letter: 'W', label: 'Total Funds',       formulaStr: '= Milk Cost + Service Fee', currency: true },
 }
 
 const USER_INPUT_FIELDS = [
@@ -211,19 +219,14 @@ const cInput: React.CSSProperties = {
   border: 'none', outline: 'none',
   padding: '0 8px', fontSize: '0.82rem', fontFamily: 'Inter, sans-serif',
   background: 'transparent', color: '#1e293b', boxSizing: 'border-box' as const,
-  verticalAlign: 'middle', whiteSpace: 'normal', textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis'
+  verticalAlign: 'middle', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
 }
 const cSelect: React.CSSProperties = { ...cInput, cursor: 'pointer' }
 // Sticky cols
 const sRn: React.CSSProperties = { position: 'sticky', left: 0,   zIndex: 6, width: 36,  minWidth: 36,  maxWidth: 36 }
-const sA:  React.CSSProperties = { display: 'none' }
-const sB:  React.CSSProperties = { position: 'sticky', left: 96,  zIndex: 6, width: 80,  minWidth: 80,  maxWidth: 80 }
-const sC:  React.CSSProperties = { position: 'sticky', left: 176, zIndex: 6, width: 70,  minWidth: 70,  maxWidth: 70 }
-const sD:  React.CSSProperties = { display: 'none' }
-const sE:  React.CSSProperties = { position: 'sticky', left: 316, zIndex: 6, width: 100, minWidth: 100, maxWidth: 100 }
-const sF:  React.CSSProperties = { position: 'sticky', left: 416, zIndex: 6, width: 100, minWidth: 100, maxWidth: 100 }
-const sG:  React.CSSProperties = { position: 'sticky', left: 516, zIndex: 6, width: 120, minWidth: 120, maxWidth: 120 }
-const sH:  React.CSSProperties = { position: 'sticky', left: 636, zIndex: 6, width: 160, minWidth: 160, maxWidth: 160, boxShadow: '3px 0 6px -2px rgba(0,0,0,0.18)' }
+const sA:  React.CSSProperties = { position: 'sticky', left: 36,  zIndex: 6, width: 135, minWidth: 135, maxWidth: 135 }
+const sB:  React.CSSProperties = { position: 'sticky', left: 171, zIndex: 6, width: 110, minWidth: 110, maxWidth: 110 }
+const sC:  React.CSSProperties = { position: 'sticky', left: 281, zIndex: 6, width: 160, minWidth: 160, maxWidth: 160, boxShadow: '3px 0 6px -2px rgba(0,0,0,0.18)' }
 const dividerBorder = '2px solid #94a3b8'
 
 // Prevent Enter from submitting the form inside any text/number input
@@ -261,39 +264,33 @@ export default function BulkEditPage() {
     }
     const ids = JSON.parse(idsStr)
     console.log("ids from session storage:", ids)
-    Promise.all([
-      supabase.from('mfp_data').select('*').in('id', ids),
-      supabase.from('cooperatives').select('id, name, short_name, region, is_active, created_at').order('name')
-    ]).then(([mfpRes, coopRes]) => {
-      console.log("supabase returned:", mfpRes.data, mfpRes.error)
-      const coops = coopRes.data ?? [];
-      setCoop(coops);
-      if (mfpRes.data && mfpRes.data.length > 0) {
-        setRows(mfpRes.data.map(d => {
-          const supplierName = coops.find(c => c.id === d.supplier_id)?.name || d.supplier_id || '';
-          return {
-            id: d.id,
-            year: String(d.year || ''), funded_by: d.funded_by || '',
-            region: d.region || '', center: d.center || '',
-            province: d.province || '', division: d.division || '',
-            municipality: d.municipality || '', elementary_school: d.elementary_school || '',
-            feeding_days: String(d.feeding_days || ''), batch: d.batch || '',
-            beneficiaries: String(d.beneficiaries || ''), milk_type: d.milk_type || '',
-            price: d.price ? String(d.price) : '', supplier_id: supplierName,
-            milk_packs: String(d.milk_packs || ''), total_volume_requirements: String(d.total_volume_requirements || ''),
-            raw_milk_liters: String(d.raw_milk_liters || ''), whole_milk_kg: String(d.whole_milk_kg || ''),
-            skimmed_milk_kg: String(d.skimmed_milk_kg || ''), sugar: String(d.sugar || ''),
-            milk_cost: d.milk_cost ? String(d.milk_cost) : '',
-            service_fee: d.service_fee !== null ? String(d.service_fee) : '0',
-            total_funds_transferred: d.total_funds_transferred ? String(d.total_funds_transferred) : '',
-            mode_of_procurement: d.mode_of_procurement || '',
-            moa_signing: d.moa_signing || '', fund_transfer: d.fund_transfer || '',
-            date_started: d.date_started || '', date_completed: d.date_completed || '',
-            liquidation: d.liquidation || ''
-          };
-        }))
+    supabase.from('mfp_data').select('*').in('id', ids).then(({ data, error }) => {
+      console.log("supabase returned:", data, error)
+      if (data && data.length > 0) {
+        setRows(data.map(d => ({
+          id: d.id,
+          year: String(d.year || ''), funded_by: d.funded_by || '',
+          region: d.region || '', center: d.center || '',
+          province: d.province || '', division: d.division || '',
+          municipality: d.municipality || '', elementary_school: d.elementary_school || '',
+          feeding_days: String(d.feeding_days || ''), batch: d.batch || '',
+          beneficiaries: String(d.beneficiaries || ''), milk_type: d.milk_type || '',
+          price: d.price ? String(d.price) : '', supplier_id: d.supplier_id || '',
+          milk_packs: String(d.milk_packs || ''), total_volume_requirements: String(d.total_volume_requirements || ''),
+          raw_milk_liters: String(d.raw_milk_liters || ''), whole_milk_kg: String(d.whole_milk_kg || ''),
+          skimmed_milk_kg: String(d.skimmed_milk_kg || ''), sugar: String(d.sugar || ''),
+          milk_cost: d.milk_cost ? String(d.milk_cost) : '',
+          service_fee: d.service_fee !== null ? String(d.service_fee) : '0',
+          total_funds_transferred: d.total_funds_transferred ? String(d.total_funds_transferred) : '',
+          mode_of_procurement: d.mode_of_procurement || '',
+          moa_signing: d.moa_signing || '', fund_transfer: d.fund_transfer || '',
+          date_started: d.date_started || '', date_completed: d.date_completed || '',
+          liquidation: d.liquidation || ''
+        })))
       }
     })
+    supabase.from('cooperatives').select('id, name, short_name, region, is_active, created_at').order('name')
+      .then(({ data }) => setCoop(data ?? []))
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return
       supabase.from('profiles').select('role, center, id, formula_config').eq('id', user.id).single()
@@ -424,17 +421,23 @@ export default function BulkEditPage() {
     let hasError = false
     let errorMessage = ''
 
-    // Use multiple .update() calls to avoid INSERT RLS policies triggered by .upsert()
     const updatePromises = payload.map(record => {
       const { id, ...updateData } = record
-      return supabase.from('mfp_data').update(updateData).eq('id', id)
+      console.log('UPDATING RECORD ID:', id, 'DATA:', updateData)
+      return supabase.from('mfp_data').update(updateData).eq('id', id).select()
     })
 
     const results = await Promise.all(updatePromises)
+    console.log('UPDATE RESULTS:', results)
     for (const res of results) {
       if (res.error) {
         hasError = true
         errorMessage = res.error.message
+        break
+      }
+      if (!res.data || res.data.length === 0) {
+        hasError = true
+        errorMessage = 'Some records could not be updated (possibly due to permissions or invalid ID).'
         break
       }
     }
@@ -658,10 +661,10 @@ export default function BulkEditPage() {
 
         {/* T: Supplier */}
         <td style={{ ...iCell, width: 160, ...activeBorder(rowIdx, 'T') }}>
-          <input list={"suppliers-" + rowIdx} name="supplier_id" style={cInput} placeholder="Type to search..." value={row.supplier_id || ''} onChange={hc} onFocus={fc('T', 'supplier_id')} title={row.supplier_id || ''} onKeyDown={noEnter} />
-          <datalist id={"suppliers-" + rowIdx}>
-            {cooperatives.map(c => <option key={c.id} value={c.name} />)}
-          </datalist>
+          <select name="supplier_id" style={cSelect} value={row.supplier_id} onChange={hc} onFocus={fc('T', 'supplier_id')} title={row.supplier_id}>
+            <option value="">— Select —</option>
+            {cooperatives.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
         </td>
 
         {/* U: Milk Cost (calc) */}
@@ -737,35 +740,35 @@ export default function BulkEditPage() {
                 {/* Column letters */}
                 <tr>
                   <th style={{ ...lTh, ...sRn, zIndex: 14 }} />
-                  <th style={{ ...lTh, ...sA,  zIndex: 14 }}>X</th>
-                  <th style={{ ...lTh, ...sB,  zIndex: 14 }}>A</th>
-                  <th style={{ ...lTh, ...sC,  zIndex: 14 }}>B</th>
-                  <th style={{ ...lTh, ...sD,  zIndex: 14 }}>X</th>
-                  <th style={{ ...lTh, ...sE, zIndex: 14 }}>C</th>
-                  <th style={{ ...lTh, ...sF, zIndex: 14 }}>D</th>
-                  <th style={{ ...lTh, ...sG, zIndex: 14 }}>E</th>
-                  <th style={{ ...lTh, ...sH, zIndex: 14, borderRight: dividerBorder }}>F</th>
-                  <th style={{ ...cTh, width: 90, minWidth: 90 }}>G</th>
-                  <th style={{ ...cTh, width: 90, minWidth: 90 }}>H</th>
+                  <th style={{ ...lTh, ...sA,  zIndex: 14 }}>A</th>
+                  <th style={{ ...lTh, ...sB,  zIndex: 14 }}>B</th>
+                  <th style={{ ...lTh, ...sC,  zIndex: 14 }}>C</th>
+                  <th style={{ ...lTh, ...sD,  zIndex: 14 }}>D</th>
+                  <th style={{ ...lTh, ...sE, zIndex: 14 }}>E</th>
+                  <th style={{ ...lTh, ...sF, zIndex: 14 }}>F</th>
+                  <th style={{ ...lTh, ...sG, zIndex: 14 }}>G</th>
+                  <th style={{ ...lTh, ...sH, zIndex: 14, borderRight: dividerBorder }}>H</th>
                   <th style={{ ...cTh, width: 90, minWidth: 90 }}>I</th>
                   <th style={{ ...cTh, width: 90, minWidth: 90 }}>J</th>
                   <th style={{ ...cTh, width: 90, minWidth: 90 }}>K</th>
                   <th style={{ ...cTh, width: 90, minWidth: 90 }}>L</th>
-                  <th style={{ ...lTh, width: 90, minWidth: 90 }}>M</th>
-                  <th style={{ ...lTh, width: 80, minWidth: 80 }}>N</th>
+                  <th style={{ ...cTh, width: 90, minWidth: 90 }}>M</th>
+                  <th style={{ ...cTh, width: 90, minWidth: 90 }}>N</th>
                   <th style={{ ...lTh, width: 90, minWidth: 90 }}>O</th>
-                  <th style={{ ...lTh, width: 90, minWidth: 90 }}>P</th>
+                  <th style={{ ...lTh, width: 80, minWidth: 80 }}>P</th>
                   <th style={{ ...lTh, width: 90, minWidth: 90 }}>Q</th>
-                  <th style={{ ...lTh, width: 160, minWidth: 160 }}>R</th>
-                  <th style={{ ...cTh, width: 90, minWidth: 90 }}>S</th>
-                  <th style={{ ...lTh, width: 90, minWidth: 90 }}>T</th>
-                  <th style={{ ...cTh, width: 100, minWidth: 100 }}>U</th>
-                  <th style={{ ...lTh, width: 120, minWidth: 120 }}>V</th>
-                  <th style={{ ...lTh, width: 100, minWidth: 100 }}>W</th>
-                  <th style={{ ...lTh, width: 100, minWidth: 100 }}>X</th>
-                  <th style={{ ...lTh, width: 135, minWidth: 135 }}>Y</th>
-                  <th style={{ ...lTh, width: 140, minWidth: 140 }}>Z</th>
+                  <th style={{ ...lTh, width: 90, minWidth: 90 }}>R</th>
+                  <th style={{ ...lTh, width: 90, minWidth: 90 }}>S</th>
+                  <th style={{ ...lTh, width: 160, minWidth: 160 }}>T</th>
+                  <th style={{ ...cTh, width: 90, minWidth: 90 }}>U</th>
+                  <th style={{ ...lTh, width: 90, minWidth: 90 }}>V</th>
+                  <th style={{ ...cTh, width: 100, minWidth: 100 }}>W</th>
+                  <th style={{ ...lTh, width: 120, minWidth: 120 }}>X</th>
+                  <th style={{ ...lTh, width: 100, minWidth: 100 }}>Y</th>
+                  <th style={{ ...lTh, width: 100, minWidth: 100 }}>Z</th>
                   <th style={{ ...lTh, width: 135, minWidth: 135 }}>AA</th>
+                  <th style={{ ...lTh, width: 140, minWidth: 140 }}>AB</th>
+                  <th style={{ ...lTh, width: 135, minWidth: 135 }}>AC</th>
                 </tr>
                 {/* Column names */}
                 <tr>

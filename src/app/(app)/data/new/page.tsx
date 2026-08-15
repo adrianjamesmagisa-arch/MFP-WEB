@@ -19,14 +19,14 @@ type FormulaKey = keyof typeof DEFAULT_FORMULAS
 // ─── Calc column definitions ────────────────────────────────────────────────────
 type CalcDef = { letter: string; label: string; formulaKey?: FormulaKey; formulaStr: string; currency?: boolean }
 const CALC_DEFS: Record<string, CalcDef> = {
-  milk_packs:                { letter: 'I', label: 'Milk Packs',        formulaStr: '= Beneficiaries × Feeding Days' },
-  total_volume_requirements: { letter: 'J', label: 'Total Vol. Req',    formulaKey: 'total_volume_factor', formulaStr: '= Milk Packs × [FACTOR]' },
-  raw_milk_liters:           { letter: 'K', label: 'Raw Milk (L)',      formulaKey: 'raw_milk_factor',     formulaStr: '= Total Vol. Req × [FACTOR]' },
-  whole_milk_kg:             { letter: 'L', label: 'Whole Milk (kg)',   formulaKey: 'whole_milk_factor',   formulaStr: '= Raw Milk × [FACTOR]' },
-  skimmed_milk_kg:           { letter: 'M', label: 'Skimmed Milk (kg)', formulaKey: 'skim_milk_factor',    formulaStr: '= Raw Milk × [FACTOR]' },
-  sugar:                     { letter: 'N', label: 'Sugar (kg)',         formulaKey: 'sugar_factor',       formulaStr: '= Total Vol. Req × [FACTOR]' },
-  milk_cost:                 { letter: 'U', label: 'Milk Cost',          formulaStr: '= Milk Packs × Price', currency: true },
-  total_funds_transferred:   { letter: 'W', label: 'Total Funds',       formulaStr: '= Milk Cost + Service Fee', currency: true },
+  milk_packs:                { letter: 'G', label: 'Milk Packs',        formulaStr: '= O × M' },
+  total_volume_requirements: { letter: 'H', label: 'Total Vol. Req',    formulaKey: 'total_volume_factor', formulaStr: '= G × [FACTOR]' },
+  raw_milk_liters:           { letter: 'I', label: 'Raw Milk (L)',      formulaKey: 'raw_milk_factor',     formulaStr: '= H × [FACTOR]' },
+  whole_milk_kg:             { letter: 'J', label: 'Whole Milk (kg)',   formulaKey: 'whole_milk_factor',   formulaStr: '= I × [FACTOR]' },
+  skimmed_milk_kg:           { letter: 'K', label: 'Skimmed Milk (kg)', formulaKey: 'skim_milk_factor',    formulaStr: '= I × [FACTOR]' },
+  sugar:                     { letter: 'L', label: 'Sugar (kg)',         formulaKey: 'sugar_factor',       formulaStr: '= H × [FACTOR]' },
+  milk_cost:                 { letter: 'S', label: 'Milk Cost',          formulaStr: '= G × Q', currency: true },
+  total_funds_transferred:   { letter: 'U', label: 'Total Funds',       formulaStr: '= S + T', currency: true },
 }
 
 const USER_INPUT_FIELDS = [
@@ -189,7 +189,7 @@ const cTh: React.CSSProperties = { ...lTh, background: '#fef3c7', color: '#92400
 const nTd: React.CSSProperties = {
   background: '#f8fafc', color: '#1e293b', fontWeight: 600, fontSize: '0.73rem',
   padding: '4px 8px', border: '1px solid #e2e8f0', height: 36,
-  verticalAlign: 'middle', whiteSpace: 'nowrap', boxSizing: 'border-box',
+  verticalAlign: 'middle', whiteSpace: 'normal', textAlign: 'center', boxSizing: 'border-box',
 }
 const cnTd: React.CSSProperties = { ...nTd, background: '#fffbeb', color: '#92400e' }
 const rnTd: React.CSSProperties = {
@@ -209,15 +209,19 @@ const cInput: React.CSSProperties = {
   border: 'none', outline: 'none',
   padding: '0 8px', fontSize: '0.82rem', fontFamily: 'Inter, sans-serif',
   background: 'transparent', color: '#1e293b', boxSizing: 'border-box' as const,
-  verticalAlign: 'middle', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+  verticalAlign: 'middle', whiteSpace: 'normal', textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis'
 }
 const cSelect: React.CSSProperties = { ...cInput, cursor: 'pointer' }
 // Sticky cols
 const sRn: React.CSSProperties = { position: 'sticky', left: 0,   zIndex: 6, width: 36,  minWidth: 36,  maxWidth: 36 }
-const sA:  React.CSSProperties = { position: 'sticky', left: 36,  zIndex: 6, width: 85,  minWidth: 85,  maxWidth: 85 }
-const sB:  React.CSSProperties = { position: 'sticky', left: 121, zIndex: 6, width: 135, minWidth: 135, maxWidth: 135 }
-const sC:  React.CSSProperties = { position: 'sticky', left: 256, zIndex: 6, width: 110, minWidth: 110, maxWidth: 110 }
-const sD:  React.CSSProperties = { position: 'sticky', left: 366, zIndex: 6, width: 160, minWidth: 160, maxWidth: 160, boxShadow: '3px 0 6px -2px rgba(0,0,0,0.18)' }
+const sA:  React.CSSProperties = { display: 'none' }
+const sB:  React.CSSProperties = { position: 'sticky', left: 36, zIndex: 6, width: 135, minWidth: 135, maxWidth: 135 }
+const sC:  React.CSSProperties = { position: 'sticky', left: 171, zIndex: 6, width: 110, minWidth: 110, maxWidth: 110 }
+const sD:  React.CSSProperties = { display: 'none' }
+const sE:  React.CSSProperties = { position: 'sticky', left: 281, zIndex: 6, width: 180, minWidth: 180, maxWidth: 180 }
+const sF:  React.CSSProperties = { position: 'sticky', left: 461, zIndex: 6, width: 180, minWidth: 180, maxWidth: 180 }
+const sG:  React.CSSProperties = { position: 'sticky', left: 641, zIndex: 6, width: 180, minWidth: 180, maxWidth: 180 }
+const sH:  React.CSSProperties = { position: 'sticky', left: 821, zIndex: 6, width: 240, minWidth: 240, maxWidth: 240, boxShadow: '3px 0 6px -2px rgba(0,0,0,0.18)' }
 const dividerBorder = '2px solid #94a3b8'
 
 // Prevent Enter from submitting the form inside any text/number input
@@ -351,7 +355,7 @@ export default function NewRecordPage() {
         feeding_days: parseInt(f.feeding_days) || 0, batch: f.batch || null,
         beneficiaries: parseInt(f.beneficiaries) || 0,
         milk_type: f.milk_type || null, price: parseFloat(f.price) || 0,
-        supplier_id: f.supplier_id || null,
+        supplier_id: cooperatives.find(c => c.name === f.supplier_id)?.id || null,
         milk_cost: parseFloat(f.milk_cost) || 0, service_fee: parseFloat(f.service_fee) || 0,
         total_funds_transferred: parseFloat(f.total_funds_transferred) || 0,
         mode_of_procurement: f.mode_of_procurement || null,
@@ -497,7 +501,7 @@ export default function NewRecordPage() {
         </td>
 
         {/* D: Center */}
-        <td style={{ ...iCell, ...sD, borderRight: dividerBorder, background: (!isSuperAdmin && !!profile?.center) ? '#f1f5f9' : 'white', ...activeBorder(rowIdx, 'D') }}>
+        <td style={{ ...iCell, ...sD, background: (!isSuperAdmin && !!profile?.center) ? '#f1f5f9' : 'white', ...activeBorder(rowIdx, 'D') }}>
           <select name="center" style={cSelect} value={row.center} onChange={hc} onFocus={fc('D', 'center')} disabled={!isSuperAdmin && !!profile?.center}>
             <option value="">— Select —</option>
             {PCC_CENTERS.map(c => <option key={c} value={c}>{c}</option>)}
@@ -505,7 +509,7 @@ export default function NewRecordPage() {
         </td>
 
         {/* E: Province */}
-        <td style={{ ...iCell, width: 180, ...activeBorder(rowIdx, 'E') }}>
+        <td style={{ ...iCell, ...sE, ...activeBorder(rowIdx, 'E') }}>
           {prov.length > 0 ? (
             <select name="province" style={cSelect} value={row.province} onChange={hc} onFocus={fc('E', 'province')} title={row.province}>
               <option value="">— Select —</option>
@@ -517,17 +521,17 @@ export default function NewRecordPage() {
         </td>
 
         {/* F: Division */}
-        <td style={{ ...iCell, width: 180, ...activeBorder(rowIdx, 'F') }}>
+        <td style={{ ...iCell, ...sF, ...activeBorder(rowIdx, 'F') }}>
           <input name="division" style={cInput} placeholder={isDeped ? "SDO Name *" : "SDO Name (Optional)"} value={row.division} onChange={hc} onFocus={fc('F', 'division')} onKeyDown={noEnter} title={row.division} />
         </td>
 
         {/* G: Municipality */}
-        <td style={{ ...iCell, width: 180, ...activeBorder(rowIdx, 'G') }}>
+        <td style={{ ...iCell, ...sG, ...activeBorder(rowIdx, 'G') }}>
           <input name="municipality" style={cInput} placeholder="Municipality" value={row.municipality} onChange={hc} onFocus={fc('G', 'municipality')} onKeyDown={noEnter} title={row.municipality} />
         </td>
 
         {/* H: School */}
-        <td style={{ ...iCell, width: 240, ...activeBorder(rowIdx, 'H') }}>
+        <td style={{ ...iCell, ...sH, borderRight: dividerBorder, ...activeBorder(rowIdx, 'H') }}>
           <input name="elementary_school" style={cInput} placeholder={isDeped ? "School name *" : "School name (Optional)"} value={row.elementary_school} onChange={hc} onFocus={fc('H', 'elementary_school')} onKeyDown={noEnter} title={row.elementary_school} />
         </td>
 
@@ -572,10 +576,10 @@ export default function NewRecordPage() {
 
         {/* T: Supplier */}
         <td style={{ ...iCell, width: 600, ...activeBorder(rowIdx, 'T') }}>
-          <select name="supplier_id" style={cSelect} value={row.supplier_id} onChange={hc} onFocus={fc('T', 'supplier_id')} title={row.supplier_id}>
-            <option value="">— Select —</option>
-            {cooperatives.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          <input list={"suppliers-" + rowIdx} name="supplier_id" style={cInput} placeholder="Type to search..." value={row.supplier_id} onChange={hc} onFocus={fc('T', 'supplier_id')} title={row.supplier_id} onKeyDown={noEnter} />
+          <datalist id={"suppliers-" + rowIdx}>
+            {cooperatives.map(c => <option key={c.id} value={c.name} />)}
+          </datalist>
         </td>
 
         {/* U: Milk Cost (calc) */}
@@ -646,40 +650,40 @@ export default function NewRecordPage() {
       <form id="xls-form" onSubmit={handleSubmit}>
         <div style={{ background: 'white', borderRadius: 12, border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ borderCollapse: 'collapse', tableLayout: 'fixed', whiteSpace: 'nowrap' }}>
+            <table style={{ borderCollapse: 'collapse', tableLayout: 'fixed', whiteSpace: 'normal', textAlign: 'center' }}>
               <thead>
                 {/* Column letters */}
                 <tr>
                   <th style={{ ...lTh, ...sRn, zIndex: 14 }} />
-                  <th style={{ ...lTh, ...sA,  zIndex: 14 }}>A</th>
-                  <th style={{ ...lTh, ...sB,  zIndex: 14 }}>B</th>
-                  <th style={{ ...lTh, ...sC,  zIndex: 14 }}>C</th>
-                  <th style={{ ...lTh, ...sD,  zIndex: 14, borderRight: dividerBorder }}>D</th>
-                  <th style={{ ...lTh, width: 180, minWidth: 180 }}>E</th>
-                  <th style={{ ...lTh, width: 180, minWidth: 180 }}>F</th>
-                  <th style={{ ...lTh, width: 180, minWidth: 180 }}>G</th>
-                  <th style={{ ...lTh, width: 240, minWidth: 240 }}>H</th>
-                  <th style={{ ...cTh, width: 115, minWidth: 115 }}>I</th>
-                  <th style={{ ...cTh, width: 130, minWidth: 130 }}>J</th>
-                  <th style={{ ...cTh, width: 125, minWidth: 125 }}>K</th>
-                  <th style={{ ...cTh, width: 128, minWidth: 128 }}>L</th>
-                  <th style={{ ...cTh, width: 128, minWidth: 128 }}>M</th>
-                  <th style={{ ...cTh, width: 115, minWidth: 115 }}>N</th>
-                  <th style={{ ...lTh, width: 118, minWidth: 118 }}>O</th>
-                  <th style={{ ...lTh, width: 100, minWidth: 100 }}>P</th>
-                  <th style={{ ...lTh, width: 120, minWidth: 120 }}>Q</th>
-                  <th style={{ ...lTh, width: 150, minWidth: 150 }}>R</th>
-                  <th style={{ ...lTh, width: 112, minWidth: 112 }}>S</th>
-                  <th style={{ ...lTh, width: 600, minWidth: 600 }}>T</th>
-                  <th style={{ ...cTh, width: 132, minWidth: 132 }}>U</th>
-                  <th style={{ ...lTh, width: 128, minWidth: 128 }}>V</th>
-                  <th style={{ ...cTh, width: 140, minWidth: 140 }}>W</th>
-                  <th style={{ ...lTh, width: 200, minWidth: 200 }}>X</th>
-                  <th style={{ ...lTh, width: 138, minWidth: 138 }}>Y</th>
-                  <th style={{ ...lTh, width: 138, minWidth: 138 }}>Z</th>
+                  <th style={{ ...lTh, ...sA,  zIndex: 14 }}>X</th>
+                  <th style={{ ...lTh, ...sB,  zIndex: 14 }}>A</th>
+                  <th style={{ ...lTh, ...sC,  zIndex: 14 }}>B</th>
+                  <th style={{ ...lTh, ...sD,  zIndex: 14 }}>X</th>
+                  <th style={{ ...lTh, ...sE, zIndex: 14 }}>C</th>
+                  <th style={{ ...lTh, ...sF, zIndex: 14 }}>D</th>
+                  <th style={{ ...lTh, ...sG, zIndex: 14 }}>E</th>
+                  <th style={{ ...lTh, ...sH, zIndex: 14, borderRight: dividerBorder }}>F</th>
+                  <th style={{ ...cTh, width: 115, minWidth: 115 }}>G</th>
+                  <th style={{ ...cTh, width: 130, minWidth: 130 }}>H</th>
+                  <th style={{ ...cTh, width: 125, minWidth: 125 }}>I</th>
+                  <th style={{ ...cTh, width: 128, minWidth: 128 }}>J</th>
+                  <th style={{ ...cTh, width: 128, minWidth: 128 }}>K</th>
+                  <th style={{ ...cTh, width: 115, minWidth: 115 }}>L</th>
+                  <th style={{ ...lTh, width: 118, minWidth: 118 }}>M</th>
+                  <th style={{ ...lTh, width: 100, minWidth: 100 }}>N</th>
+                  <th style={{ ...lTh, width: 120, minWidth: 120 }}>O</th>
+                  <th style={{ ...lTh, width: 150, minWidth: 150 }}>P</th>
+                  <th style={{ ...lTh, width: 112, minWidth: 112 }}>Q</th>
+                  <th style={{ ...lTh, width: 600, minWidth: 600 }}>R</th>
+                  <th style={{ ...cTh, width: 132, minWidth: 132 }}>S</th>
+                  <th style={{ ...lTh, width: 128, minWidth: 128 }}>T</th>
+                  <th style={{ ...cTh, width: 140, minWidth: 140 }}>U</th>
+                  <th style={{ ...lTh, width: 200, minWidth: 200 }}>V</th>
+                  <th style={{ ...lTh, width: 138, minWidth: 138 }}>W</th>
+                  <th style={{ ...lTh, width: 138, minWidth: 138 }}>X</th>
+                  <th style={{ ...lTh, width: 135, minWidth: 135 }}>Y</th>
+                  <th style={{ ...lTh, width: 140, minWidth: 140 }}>Z</th>
                   <th style={{ ...lTh, width: 135, minWidth: 135 }}>AA</th>
-                  <th style={{ ...lTh, width: 140, minWidth: 140 }}>AB</th>
-                  <th style={{ ...lTh, width: 135, minWidth: 135 }}>AC</th>
                 </tr>
                 {/* Column names */}
                 <tr>
@@ -687,26 +691,26 @@ export default function NewRecordPage() {
                   <td style={{ ...nTd, ...sA, zIndex: 14 }}>Year</td>
                   <td style={{ ...nTd, ...sB, zIndex: 14 }}>Funded By</td>
                   <td style={{ ...nTd, ...sC, zIndex: 14 }}>Region</td>
-                  <td style={{ ...nTd, ...sD, zIndex: 14, borderRight: dividerBorder }}>Center</td>
-                  <td style={nTd}>Province</td>
-                  <td style={nTd}>Division / SDO</td>
-                  <td style={nTd}>Municipality</td>
-                  <td style={nTd}>Elementary School</td>
-                  {renderFormulaHeader('Milk Packs', 'milk_packs', '= Q × O')}
-                  {renderFormulaHeader('Total Vol. Req (L)', 'total_volume_requirements', '= I ×', 'total_volume_factor')}
-                  {renderFormulaHeader('Raw Milk (L)', 'raw_milk_liters', '= J ×', 'raw_milk_factor')}
-                  {renderFormulaHeader('Whole Milk (kg)', 'whole_milk_kg', '= K ×', 'whole_milk_factor')}
-                  {renderFormulaHeader('Skimmed Milk (kg)', 'skimmed_milk_kg', '= K ×', 'skim_milk_factor')}
-                  {renderFormulaHeader('Sugar (kg)', 'sugar', '= J ×', 'sugar_factor')}
+                  <td style={{ ...nTd, ...sD, zIndex: 14 }}>Center</td>
+                  <td style={{ ...nTd, ...sE, zIndex: 14 }}>Province</td>
+                  <td style={{ ...nTd, ...sF, zIndex: 14 }}>Division / SDO</td>
+                  <td style={{ ...nTd, ...sG, zIndex: 14 }}>Municipality</td>
+                  <td style={{ ...nTd, ...sH, zIndex: 14, borderRight: dividerBorder }}>Elementary School</td>
+                  {renderFormulaHeader('Milk Packs', 'milk_packs', '= O × M')}
+                  {renderFormulaHeader('Total Vol. Req (L)', 'total_volume_requirements', '= G ×', 'total_volume_factor')}
+                  {renderFormulaHeader('Raw Milk (L)', 'raw_milk_liters', '= H ×', 'raw_milk_factor')}
+                  {renderFormulaHeader('Whole Milk (kg)', 'whole_milk_kg', '= I ×', 'whole_milk_factor')}
+                  {renderFormulaHeader('Skimmed Milk (kg)', 'skimmed_milk_kg', '= I ×', 'skim_milk_factor')}
+                  {renderFormulaHeader('Sugar (kg)', 'sugar', '= H ×', 'sugar_factor')}
                   <td style={{ ...nTd, fontWeight: 700 }}>Feeding Days *</td>
                   <td style={nTd}>Batch</td>
                   <td style={{ ...nTd, fontWeight: 700 }}>Beneficiaries *</td>
                   <td style={nTd}>Milk Type</td>
                   <td style={{ ...nTd, fontWeight: 700 }}>Price ₱ *</td>
                   <td style={nTd}>Supplier / Cooperative</td>
-                  {renderFormulaHeader('Milk Cost ₱', 'milk_cost', '= I × S')}
+                  {renderFormulaHeader('Milk Cost ₱', 'milk_cost', '= G × Q')}
                   <td style={nTd}>Service Fee ₱</td>
-                  {renderFormulaHeader('Total Funds ₱', 'total_funds_transferred', '= U + V')}
+                  {renderFormulaHeader('Total Funds ₱', 'total_funds_transferred', '= S + T')}
                   <td style={nTd}>Procurement Mode</td>
                   <td style={nTd}>MOA Signing</td>
                   <td style={nTd}>Fund Transfer</td>
