@@ -150,6 +150,33 @@ function isRowValid(r: FormState): boolean {
   return true
 }
 
+function isDuplicate(r: FormState, existing: any[]): boolean {
+  if (!r.beneficiaries || !r.feeding_days || !r.milk_cost) return false;
+  return existing.some(ex => 
+    String(ex.beneficiaries) === String(r.beneficiaries) &&
+    String(ex.feeding_days) === String(r.feeding_days) &&
+    parseFloat(ex.milk_cost || '0').toFixed(2) === parseFloat(r.milk_cost || '0').toFixed(2) &&
+    parseFloat(ex.total_funds_transferred || '0').toFixed(2) === parseFloat(r.total_funds_transferred || '0').toFixed(2) &&
+    (ex.moa_signing_date || '') === (r.moa_signing || '') &&
+    (ex.fund_transfer_date || '') === (r.fund_transfer || '') &&
+    (ex.liquidation_date || '') === (r.liquidation || '')
+  )
+}
+
+function isDuplicateInForm(r: FormState, rowIdx: number, rows: FormState[]): boolean {
+  if (!r.beneficiaries || !r.feeding_days || !r.milk_cost) return false;
+  return rows.some((other, idx) => 
+    idx !== rowIdx &&
+    other.beneficiaries === r.beneficiaries &&
+    other.feeding_days === r.feeding_days &&
+    other.milk_cost === r.milk_cost &&
+    other.total_funds_transferred === r.total_funds_transferred &&
+    other.moa_signing === r.moa_signing &&
+    other.fund_transfer === r.fund_transfer &&
+    other.liquidation === r.liquidation
+  )
+}
+
 // ─── Styles ─────────────────────────────────────────────────────────────────────
 const ROW_H = 46
 
@@ -212,6 +239,7 @@ export default function NewRecordPage() {
   const [savedCount, setSavedCount] = useState(0)
   const [error, setError]         = useState('')
   const [success, setSuccess]     = useState(false)
+  const [existingRecords, setExistingRecords] = useState<any[]>([])
   const saveTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null)
   const factorInputRef = useRef<HTMLInputElement>(null)
   const supabase = createClient()
@@ -234,6 +262,13 @@ export default function NewRecordPage() {
             const merged = { ...DEFAULT_FORMULAS, ...Object.fromEntries(Object.entries(saved).filter(([k, v]) => k in DEFAULT_FORMULAS && typeof v === 'number' && v > 0)) }
             setFormulas(merged)
           }
+
+          // Fetch existing records for duplicate checking
+          let q = supabase.from('mfp_data').select('milk_cost, total_funds_transferred, feeding_days, beneficiaries, moa_signing_date, fund_transfer_date, liquidation_date')
+          if (center && data.role !== 'super_admin') q = q.eq('center', center)
+          q.then(({ data: records }) => {
+            if (records) setExistingRecords(records)
+          })
         })
     })
   }, [])
@@ -422,6 +457,7 @@ export default function NewRecordPage() {
     const filled  = countUserFilled(row)
     const opacity = filled === 0 && rowIdx >= 2 ? 0.5 : 1
     const isDeped = row.funded_by === 'DepEd'
+    const isDup   = isDuplicate(row, existingRecords) || isDuplicateInForm(row, rowIdx, rows)
 
     const hc = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       updateRow(rowIdx, e.target.name as keyof FormState, e.target.value)
@@ -431,8 +467,8 @@ export default function NewRecordPage() {
     return (
       <tr key={rowIdx} style={{ opacity }}>
         {/* Row # */}
-        <td style={{ ...rnTd, ...sRn, background: isValid ? '#f0fdf4' : '#f1f5f9', color: isValid ? '#16a34a' : '#94a3b8', fontWeight: isValid ? 800 : 600 }}>
-          {isValid ? '✓' : rowIdx + 1}
+        <td title={isDup ? "Warning: Duplicate row detected" : ""} style={{ ...rnTd, ...sRn, background: isDup ? '#fef2f2' : (isValid ? '#f0fdf4' : '#f1f5f9'), color: isDup ? '#ef4444' : (isValid ? '#16a34a' : '#94a3b8'), fontWeight: isValid || isDup ? 800 : 600 }}>
+          {isDup ? <AlertCircle size={14} style={{ display: 'inline-block', verticalAlign: 'middle' }} /> : (isValid ? '✓' : rowIdx + 1)}
         </td>
 
         {/* A: Year */}
