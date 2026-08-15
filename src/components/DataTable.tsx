@@ -1,14 +1,148 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { formatCurrency, formatNumber, formatDate } from '@/lib/utils'
 import { Edit2, Trash2 } from 'lucide-react'
 
+function EditableCell({ id, field, value, type = 'text', className, style, format, render, onSave }: { id: string, field: string, value: any, type?: string, className?: string, style?: any, format?: (v: any) => any, render?: (v: any) => any, onSave?: (id: string, field: string, oldVal: any, newVal: any) => void }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [val, setVal] = useState(value);
+  const [isSaving, setIsSaving] = useState(false);
+  const inputRef = useRef<HTMLInputElement | HTMLSelectElement>(null);
+  const supabase = createClient();
+
+  useEffect(() => {
+    setVal(value);
+  }, [value]);
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [isEditing]);
+
+  const save = async () => {
+    if (val === value) {
+      setIsEditing(false);
+      return;
+    }
+    setIsSaving(true);
+    let saveVal = val;
+    if (type === 'number') {
+      saveVal = val === '' ? null : Number(val);
+    }
+    try {
+      const { error } = await supabase.from('mfp_data').update({ [field]: saveVal }).eq('id', id);
+      if (error) throw error;
+      setIsEditing(false);
+      if (onSave) onSave(id, field, value, saveVal);
+    } catch (e) {
+      console.error('Error saving:', e);
+      setVal(value); // revert
+      setIsEditing(false);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      save();
+    }
+    if (e.key === 'Escape') {
+      setVal(value);
+      setIsEditing(false);
+    }
+  }
+
+  if (isEditing) {
+    return (
+      <td className={className} style={{ ...style, padding: '2px', background: '#fff' }}>
+        <input
+          ref={inputRef as any}
+          type={type}
+          value={val ?? ''}
+          onChange={e => setVal(e.target.value)}
+          onBlur={save}
+          onKeyDown={handleKeyDown}
+          disabled={isSaving}
+          style={{ width: '100%', height: '100%', border: '1px solid #3b82f6', outline: 'none', padding: '2px 4px', fontSize: 'inherit', boxSizing: 'border-box' }}
+        />
+      </td>
+    )
+  }
+
+  return (
+    <td 
+      className={className} 
+      style={{ ...style, cursor: 'text', opacity: isSaving ? 0.5 : 1 }} 
+      onClick={() => setIsEditing(true)}
+    >
+      {render ? render(val) : format ? format(val) : (val ?? 'N/A')}
+    </td>
+  )
+}
+
 export function DataTable({ records }: { records: any[] }) {
   const router = useRouter()
+  const supabase = createClient()
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [localRecords, setLocalRecords] = useState(records)
+  const [undoStack, setUndoStack] = useState<any[]>([])
+  const [redoStack, setRedoStack] = useState<any[]>([])
+
+  useEffect(() => {
+    setLocalRecords(records)
+  }, [records])
+
+  const handleCellSave = (id: string, field: string, oldVal: any, newVal: any) => {
+    setLocalRecords(prev => prev.map(r => r.id === id ? { ...r, [field]: newVal } : r))
+    setUndoStack(prev => [...prev, { id, field, oldVal, newVal }])
+    setRedoStack([])
+  }
+
+  useEffect(() => {
+    const handleKeyDown = async (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          // Redo
+          if (redoStack.length === 0) return;
+          const action = redoStack[redoStack.length - 1];
+          setRedoStack(prev => prev.slice(0, -1));
+          await supabase.from('mfp_data').update({ [action.field]: action.newVal }).eq('id', action.id);
+          setLocalRecords(prev => prev.map(r => r.id === action.id ? { ...r, [action.field]: action.newVal } : r));
+          setUndoStack(prev => [...prev, action]);
+        } else {
+          // Undo
+          if (undoStack.length === 0) return;
+          const action = undoStack[undoStack.length - 1];
+          setUndoStack(prev => prev.slice(0, -1));
+          await supabase.from('mfp_data').update({ [action.field]: action.oldVal }).eq('id', action.id);
+          setLocalRecords(prev => prev.map(r => r.id === action.id ? { ...r, [action.field]: action.oldVal } : r));
+          setRedoStack(prev => [...prev, action]);
+        }
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        if (redoStack.length === 0) return;
+        const action = redoStack[redoStack.length - 1];
+        setRedoStack(prev => prev.slice(0, -1));
+        await supabase.from('mfp_data').update({ [action.field]: action.newVal }).eq('id', action.id);
+        setLocalRecords(prev => prev.map(r => r.id === action.id ? { ...r, [action.field]: action.newVal } : r));
+        setUndoStack(prev => [...prev, action]);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [undoStack, redoStack]);
+
 
   const toggleSelectAll = () => {
     if (selectedIds.size === records.length) {
@@ -78,63 +212,47 @@ export function DataTable({ records }: { records: any[] }) {
                 <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 80 }}>Actions</th>
               </tr>
             </thead>
-            <tbody>
-              {records?.map(r => (
+                        <tbody>
+              {localRecords?.map(r => (
                 <tr key={r.id} style={{ background: selectedIds.has(r.id) ? '#e0e7ff' : undefined }}>
-                  {/* CHECKBOX */}
                   <td className="col-check" style={{ textAlign: 'center' }}>
                     <input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => toggleRow(r.id)} style={{ cursor: 'pointer' }} />
                   </td>
-                  {/* A-H */}
-                  <td className="col-year" style={{ fontWeight: 700 }}>{r.year}</td>
-                  <td className="col-funded">
-                    <span className={`badge badge-${r.funded_by?.toLowerCase()}`}>{r.funded_by}</span>
-                  </td>
-                  <td className="col-region">{r.region}</td>
-                  <td className="col-center" style={{ fontWeight: 600, color: 'var(--navy)' }}>{r.center}</td>
-                  <td className="col-prov">{r.province}</td>
-                  <td className="col-div">{r.division || 'N/A'}</td>
-                  <td className="col-muni">{r.municipality || 'N/A'}</td>
-                  <td className="col-school">
-                    {r.elementary_school || 'N/A'}
-                  </td>
-                  {/* I-N auto-calc */}
-                  <td>{formatNumber(r.milk_packs)}</td>
-                  <td>{formatNumber(r.total_volume_requirements)}</td>
-                  <td>{formatNumber(r.raw_milk_liters)}</td>
-                  <td>{r.whole_milk_kg?.toFixed(2) ?? 'N/A'}</td>
-                  <td>{r.skimmed_milk_kg?.toFixed(2) ?? 'N/A'}</td>
-                  <td>{r.sugar?.toFixed(2) ?? 'N/A'}</td>
-                  {/* O-T user inputs */}
-                  <td>{r.feeding_days || 'N/A'}</td>
-                  <td>{r.batch || 'N/A'}</td>
-                  <td style={{ fontWeight: 600 }}>{formatNumber(r.beneficiaries)}</td>
-                  <td>
-                    <span className={`badge badge-${r.milk_type?.toLowerCase()}`}>{r.milk_type || 'N/A'}</span>
-                  </td>
-                  <td>
-                    {r.price ? `₱${r.price.toFixed(2)}` : 'N/A'}
-                  </td>
-                  <td>
-                    {(r as any).cooperatives?.name ?? 'N/A'}
-                  </td>
-                  {/* U-W financial */}
-                  <td>
-                    {r.milk_cost ? `₱${formatNumber(r.milk_cost)}` : 'N/A'}
-                  </td>
-                  <td>
-                    {r.service_fee ? `₱${formatNumber(r.service_fee)}` : 'N/A'}
-                  </td>
-                  <td style={{ fontWeight: 600 }}>
-                    {r.total_funds_transferred ? `₱${formatNumber(r.total_funds_transferred)}` : 'N/A'}
-                  </td>
-                  <td style={{ whiteSpace: 'nowrap' }}>{r.mode_of_procurement || 'N/A'}</td>
-                  {/* Dates */}
-                  <td style={{ whiteSpace: 'nowrap' }}>{formatDate(r.moa_signing_date) || 'N/A'}</td>
-                  <td style={{ whiteSpace: 'nowrap' }}>{formatDate(r.fund_transfer_date) || 'N/A'}</td>
-                  <td style={{ whiteSpace: 'nowrap' }}>{formatDate(r.date_started) || 'N/A'}</td>
-                  <td style={{ whiteSpace: 'nowrap' }}>{formatDate(r.date_completed) || 'N/A'}</td>
-                  <td style={{ whiteSpace: 'nowrap' }}>{formatDate(r.liquidation_date) || 'N/A'}</td>
+                  <EditableCell onSave={handleCellSave} id={r.id} field="year" value={r.year} type="number" className="col-year" style={{ fontWeight: 700 }} />
+                  <EditableCell onSave={handleCellSave} id={r.id} field="funded_by" value={r.funded_by} className="col-funded" render={v => <span className={'badge badge-' + (v?.toLowerCase() || '')}>{v}</span>} />
+                  <EditableCell onSave={handleCellSave} id={r.id} field="region" value={r.region} className="col-region" />
+                  <EditableCell onSave={handleCellSave} id={r.id} field="center" value={r.center} className="col-center" style={{ fontWeight: 600, color: 'var(--navy)' }} />
+                  <EditableCell onSave={handleCellSave} id={r.id} field="province" value={r.province} className="col-prov" />
+                  <EditableCell onSave={handleCellSave} id={r.id} field="division" value={r.division} className="col-div" />
+                  <EditableCell onSave={handleCellSave} id={r.id} field="municipality" value={r.municipality} className="col-muni" />
+                  <EditableCell onSave={handleCellSave} id={r.id} field="elementary_school" value={r.elementary_school} className="col-school" />
+                  
+                  <EditableCell onSave={handleCellSave} id={r.id} field="milk_packs" value={r.milk_packs} type="number" format={formatNumber} />
+                  <EditableCell onSave={handleCellSave} id={r.id} field="total_volume_requirements" value={r.total_volume_requirements} type="number" format={formatNumber} />
+                  <EditableCell onSave={handleCellSave} id={r.id} field="raw_milk_liters" value={r.raw_milk_liters} type="number" format={formatNumber} />
+                  <EditableCell onSave={handleCellSave} id={r.id} field="whole_milk_kg" value={r.whole_milk_kg} type="number" format={v => v?.toFixed(2) ?? 'N/A'} />
+                  <EditableCell onSave={handleCellSave} id={r.id} field="skimmed_milk_kg" value={r.skimmed_milk_kg} type="number" format={v => v?.toFixed(2) ?? 'N/A'} />
+                  <EditableCell onSave={handleCellSave} id={r.id} field="sugar" value={r.sugar} type="number" format={v => v?.toFixed(2) ?? 'N/A'} />
+                  
+                  <EditableCell onSave={handleCellSave} id={r.id} field="feeding_days" value={r.feeding_days} type="number" />
+                  <EditableCell onSave={handleCellSave} id={r.id} field="batch" value={r.batch} />
+                  <EditableCell onSave={handleCellSave} id={r.id} field="beneficiaries" value={r.beneficiaries} type="number" format={formatNumber} style={{ fontWeight: 600 }} />
+                  <EditableCell onSave={handleCellSave} id={r.id} field="milk_type" value={r.milk_type} render={v => <span className={'badge badge-' + (v?.toLowerCase() || '')}>{v || 'N/A'}</span>} />
+                  <EditableCell onSave={handleCellSave} id={r.id} field="price" value={r.price} type="number" format={v => v ? '₱' + v.toFixed(2) : 'N/A'} />
+                  
+                  <td>{(r as any).cooperatives?.name ?? 'N/A'}</td>
+                  
+                  <EditableCell onSave={handleCellSave} id={r.id} field="milk_cost" value={r.milk_cost} type="number" format={v => v ? '₱' + formatNumber(v) : 'N/A'} />
+                  <EditableCell onSave={handleCellSave} id={r.id} field="service_fee" value={r.service_fee} type="number" format={v => v ? '₱' + formatNumber(v) : 'N/A'} />
+                  <EditableCell onSave={handleCellSave} id={r.id} field="total_funds_transferred" value={r.total_funds_transferred} type="number" format={v => v ? '₱' + formatNumber(v) : 'N/A'} style={{ fontWeight: 600 }} />
+                  <EditableCell onSave={handleCellSave} id={r.id} field="mode_of_procurement" value={r.mode_of_procurement} />
+                  
+                  <EditableCell onSave={handleCellSave} id={r.id} field="moa_signing_date" value={r.moa_signing_date} type="date" format={formatDate} />
+                  <EditableCell onSave={handleCellSave} id={r.id} field="fund_transfer_date" value={r.fund_transfer_date} type="date" format={formatDate} />
+                  <EditableCell onSave={handleCellSave} id={r.id} field="date_started" value={r.date_started} type="date" format={formatDate} />
+                  <EditableCell onSave={handleCellSave} id={r.id} field="date_completed" value={r.date_completed} type="date" format={formatDate} />
+                  <EditableCell onSave={handleCellSave} id={r.id} field="liquidation_date" value={r.liquidation_date} type="date" format={formatDate} />
+                  
                   <td>
                     <Link
                       href={`/data/${r.id}/edit`}
