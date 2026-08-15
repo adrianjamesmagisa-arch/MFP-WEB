@@ -34,18 +34,8 @@ export default function Sidebar({ userRole, userCenter, userName }: {
   const visibleItems = navItems.filter(item => {
     if (item.href === '/users' && userRole !== 'super_admin') return false
     if (item.href === '/centers' && userRole !== 'super_admin') return false
-    if (item.href === '/data' && userRole !== 'super_admin') return false
     return true
   })
-
-  // Add the customized "My Masterlists" link for encoders
-  if (userRole !== 'super_admin' && userCenter) {
-    visibleItems.splice(1, 0, {
-      href: `/centers/${encodeURIComponent(userCenter)}`,
-      icon: Database,
-      label: 'My Masterlists'
-    })
-  }
 
   return (
     <aside className="sidebar" style={{ height: '100vh', overflowY: 'auto', flexShrink: 0 }}>

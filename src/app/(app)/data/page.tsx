@@ -22,10 +22,6 @@ export default async function DataPage({
   const { data: profile } = await supabase
     .from('profiles').select('*').eq('id', user.id).single()
 
-  if (profile?.role === 'encoder' && profile?.center) {
-    redirect(`/centers/${encodeURIComponent(profile.center)}`)
-  }
-
   const params = await searchParams
   let query = supabase
     .from('mfp_data')
