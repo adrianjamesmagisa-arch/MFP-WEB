@@ -61,66 +61,111 @@ export default async function CenterMasterlistPage({
 
       <div className="card" style={{ overflow: 'hidden' }}>
         <div style={{ overflow: 'auto', maxHeight: 'calc(100vh - 200px)' }}>
-          <table className="data-table" style={{ minWidth: 2000, fontSize: '0.78rem' }}>
+          <table className="data-table" style={{ minWidth: 2400, fontSize: '0.78rem' }}>
             <thead>
               <tr>
-                <th style={{ position: 'sticky', left: 0, zIndex: 10 }}>YEAR</th>
-                <th style={{ position: 'sticky', left: 60, zIndex: 10 }}>FUNDED BY</th>
-                <th style={{ position: 'sticky', left: 160, zIndex: 10 }}>REGION</th>
-                <th style={{ position: 'sticky', left: 240, zIndex: 10 }}>PROVINCE</th>
-                <th>DIVISION / SDO</th>
-                <th>MUNICIPALITY</th>
-                <th>SCHOOL</th>
-                <th style={{ textAlign: 'right' }}>BENEFICIARIES</th>
-                <th style={{ textAlign: 'center' }}>MILK TYPE</th>
-                <th style={{ textAlign: 'right' }}>PRICE</th>
-                <th style={{ textAlign: 'right' }}>MILK PACKS</th>
-                <th style={{ textAlign: 'right' }}>TOTAL VOLUME (L)</th>
-                <th>SUPPLIER</th>
-                <th style={{ textAlign: 'right' }}>TOTAL FUNDS</th>
-                <th>INPUT DATE</th>
-                <th style={{ whiteSpace: 'nowrap' }}>ACTIONS</th>
+                {/* A-G */}
+                <th className="col-year" style={{ whiteSpace: 'nowrap' }}>A — Year</th>
+                <th className="col-funded" style={{ whiteSpace: 'nowrap' }}>B — Funded By</th>
+                <th className="col-region" style={{ whiteSpace: 'nowrap' }}>C — Region</th>
+                <th className="col-center" style={{ whiteSpace: 'nowrap' }}>D — Center</th>
+                <th className="col-prov" style={{ whiteSpace: 'nowrap' }}>E — Province</th>
+                <th className="col-div" style={{ whiteSpace: 'nowrap' }}>F — Division</th>
+                <th style={{ whiteSpace: 'nowrap' }}>G — Municipality</th>
+                <th style={{ whiteSpace: 'nowrap' }}>H — Elementary School</th>
+                {/* H-M auto-calc */}
+                <th style={{ whiteSpace: 'nowrap' }}>I — Milk Packs</th>
+                <th style={{ whiteSpace: 'nowrap' }}>J — Total Vol. Req (L)</th>
+                <th style={{ whiteSpace: 'nowrap' }}>K — Raw Milk (L)</th>
+                <th style={{ whiteSpace: 'nowrap' }}>L — Whole Milk (kg)</th>
+                <th style={{ whiteSpace: 'nowrap' }}>M — Skimmed Milk (kg)</th>
+                <th style={{ whiteSpace: 'nowrap' }}>N — Sugar (kg)</th>
+                {/* N-S user inputs */}
+                <th style={{ whiteSpace: 'nowrap' }}>O — Feeding Days</th>
+                <th style={{ whiteSpace: 'nowrap' }}>P — Batch</th>
+                <th style={{ whiteSpace: 'nowrap' }}>Q — Beneficiaries</th>
+                <th style={{ whiteSpace: 'nowrap' }}>R — Milk Type</th>
+                <th style={{ whiteSpace: 'nowrap' }}>S — Price (₱)</th>
+                <th style={{ whiteSpace: 'nowrap' }}>T — Supplier</th>
+                {/* T-V financial */}
+                <th style={{ whiteSpace: 'nowrap' }}>U — Milk Cost (₱)</th>
+                <th style={{ whiteSpace: 'nowrap' }}>V — Service Fee (₱)</th>
+                <th style={{ whiteSpace: 'nowrap' }}>W — Total Funds (₱)</th>
+                <th style={{ whiteSpace: 'nowrap' }}>X — Mode of Procurement</th>
+                {/* Dates */}
+                <th style={{ whiteSpace: 'nowrap' }}>Y — MOA Signing</th>
+                <th style={{ whiteSpace: 'nowrap' }}>Z — Fund Transfer</th>
+                <th style={{ whiteSpace: 'nowrap' }}>AA — Date Started</th>
+                <th style={{ whiteSpace: 'nowrap' }}>AB — Date Completed</th>
+                <th style={{ whiteSpace: 'nowrap' }}>AC — Liquidation</th>
+                <th style={{ whiteSpace: 'nowrap' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {!records || records.length === 0 ? (
-                <tr>
-                  <td colSpan={15} style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>
-                    No records found for this masterlist.
+
+              {records?.map(r => (
+                <tr key={r.id}>
+                  {/* A-H */}
+                  <td className="col-year" style={{ fontWeight: 700 }}>{r.year}</td>
+                  <td className="col-funded">
+                    <span className={`badge badge-${r.funded_by?.toLowerCase()}`}>{r.funded_by}</span>
+                  </td>
+                  <td className="col-region">{r.region}</td>
+                  <td className="col-center" style={{ fontWeight: 600, color: 'var(--navy)' }}>{r.center}</td>
+                  <td className="col-prov">{r.province}</td>
+                  <td className="col-div">{r.division || 'N/A'}</td>
+                  <td>{r.municipality || 'N/A'}</td>
+                  <td>
+                    {r.elementary_school || 'N/A'}
+                  </td>
+                  {/* I-N auto-calc */}
+                  <td style={{ textAlign: 'right' }}>{formatNumber(r.milk_packs)}</td>
+                  <td style={{ textAlign: 'right' }}>{formatNumber(r.total_volume_requirements)}</td>
+                  <td style={{ textAlign: 'right' }}>{formatNumber(r.raw_milk_liters)}</td>
+                  <td style={{ textAlign: 'right' }}>{r.whole_milk_kg?.toFixed(2) ?? 'N/A'}</td>
+                  <td style={{ textAlign: 'right' }}>{r.skimmed_milk_kg?.toFixed(2) ?? 'N/A'}</td>
+                  <td style={{ textAlign: 'right' }}>{r.sugar?.toFixed(2) ?? 'N/A'}</td>
+                  {/* O-T user inputs */}
+                  <td style={{ textAlign: 'center' }}>{r.feeding_days || 'N/A'}</td>
+                  <td style={{ textAlign: 'center' }}>{r.batch || 'N/A'}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatNumber(r.beneficiaries)}</td>
+                  <td>
+                    <span className={`badge badge-${r.milk_type?.toLowerCase()}`}>{r.milk_type || 'N/A'}</span>
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    {r.price ? `₱${r.price.toFixed(2)}` : 'N/A'}
+                  </td>
+                  <td>
+                    {(r as any).cooperatives?.name ?? 'N/A'}
+                  </td>
+                  {/* U-W financial */}
+                  <td style={{ textAlign: 'right' }}>
+                    {r.milk_cost ? `₱${formatNumber(r.milk_cost)}` : 'N/A'}
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    {r.service_fee ? `₱${formatNumber(r.service_fee)}` : 'N/A'}
+                  </td>
+                  <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                    {r.total_funds_transferred ? `₱${formatNumber(r.total_funds_transferred)}` : 'N/A'}
+                  </td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{r.mode_of_procurement || 'N/A'}</td>
+                  {/* Dates */}
+                  <td style={{ whiteSpace: 'nowrap' }}>{formatDate(r.moa_signing_date) || 'N/A'}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{formatDate(r.fund_transfer_date) || 'N/A'}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{formatDate(r.date_started) || 'N/A'}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{formatDate(r.date_completed) || 'N/A'}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{formatDate(r.liquidation_date) || 'N/A'}</td>
+                  <td>
+                    <Link
+                      href={`/data/${r.id}/edit`}
+                      className="btn btn-outline"
+                      style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}
+                    >
+                      Edit
+                    </Link>
                   </td>
                 </tr>
-              ) : (
-                records.map(r => (
-                  <tr key={r.id}>
-                    <td style={{ position: 'sticky', left: 0, background: 'white', zIndex: 5, borderRight: '1px solid #e2e8f0' }}>{r.year}</td>
-                    <td style={{ position: 'sticky', left: 60, background: 'white', zIndex: 5, borderRight: '1px solid #e2e8f0' }}>{r.funded_by}</td>
-                    <td style={{ position: 'sticky', left: 160, background: 'white', zIndex: 5, borderRight: '1px solid #e2e8f0' }}>{r.region}</td>
-                    <td style={{ position: 'sticky', left: 240, background: 'white', zIndex: 5, borderRight: '2px solid #cbd5e1' }}>{r.province}</td>
-                    <td>{r.division}</td>
-                    <td>{r.municipality}</td>
-                    <td>{r.elementary_school}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatNumber(r.beneficiaries)}</td>
-                    <td style={{ textAlign: 'center' }}>{r.milk_type}</td>
-                    <td style={{ textAlign: 'right' }}>{formatCurrency(r.price)}</td>
-                    <td style={{ textAlign: 'right', background: '#f8fafc' }}>{formatNumber(r.milk_packs)}</td>
-                    <td style={{ textAlign: 'right', background: '#f8fafc' }}>{formatNumber(r.total_volume_requirements, 2)}</td>
-                    <td style={{ maxWidth: 300, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={r.cooperatives?.name || ''}>
-                      {r.cooperatives?.name || '-'}
-                    </td>
-                    <td style={{ textAlign: 'right', fontWeight: 600, color: '#047857' }}>{formatCurrency(r.total_funds_transferred)}</td>
-                    <td style={{ color: '#64748b' }}>{formatDate(r.created_at)}</td>
-                    <td>
-                      <Link
-                        href={`/data/${r.id}/edit`}
-                        className="btn btn-outline"
-                        style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}
-                      >
-                        Edit
-                      </Link>
-                    </td>
-                  </tr>
-                ))
-              )}
+              ))}
             </tbody>
           </table>
         </div>
