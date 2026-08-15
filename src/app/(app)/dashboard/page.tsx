@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { formatCurrency, formatNumber } from '@/lib/utils'
 import { Users, Package, DollarSign, Database, BookOpen, HeartHandshake, Church } from 'lucide-react'
+import { DashboardFilter } from '@/components/DashboardFilter'
 
 interface FunderStat { funded_by: string; records: number; beneficiaries: number; milk_packs: number; milk_cost: number; total_funds: number }
 interface YearStat   { year: number; records: number; beneficiaries: number; milk_packs: number }
@@ -12,7 +13,7 @@ interface DashStats  {
   by_funder: FunderStat[]; by_year: YearStat[]; top_centers: CenterStat[]
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({ searchParams }: { searchParams: { year?: string, month?: string } }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -25,52 +26,73 @@ export default async function DashboardPage() {
 
   let stats: DashStats | null = null
 
+  // ── FETCH DATA ────────────────────────────────
+  let query = supabase
+    .from('mfp_data')
+    .select('beneficiaries, milk_packs, milk_cost, total_funds_transferred, funded_by, year, center, date_started')
+    .range(0, 49999)
+
   if (isEncoder && centerFilter) {
-    // ── ENCODER: query only their center ────────────────────────────────
-    const { data: rows } = await supabase
-      .from('mfp_data')
-      .select('beneficiaries, milk_packs, milk_cost, total_funds_transferred, funded_by, year')
-      .eq('center', centerFilter)
-      .range(0, 9999)
+    query = query.eq('center', centerFilter)
+  }
+  if (searchParams.year) {
+    query = query.eq('year', parseInt(searchParams.year))
+  }
 
-    const totalRecords       = rows?.length ?? 0
-    const totalBeneficiaries = rows?.reduce((s, r) => s + (r.beneficiaries || 0), 0) ?? 0
-    const totalMilkPacks     = rows?.reduce((s, r) => s + (r.milk_packs || 0), 0) ?? 0
-    const totalFunds         = rows?.reduce((s, r) => s + (r.total_funds_transferred || 0), 0) ?? 0
-    const totalMilkCost      = rows?.reduce((s, r) => s + (r.milk_cost || 0), 0) ?? 0
+  let { data: rows } = await query
 
-    const funderMap: Record<string, FunderStat> = {}
-    rows?.forEach(r => {
-      if (!funderMap[r.funded_by]) funderMap[r.funded_by] = { funded_by: r.funded_by, records: 0, beneficiaries: 0, milk_packs: 0, milk_cost: 0, total_funds: 0 }
-      funderMap[r.funded_by].records      += 1
-      funderMap[r.funded_by].beneficiaries += r.beneficiaries || 0
-      funderMap[r.funded_by].milk_packs   += r.milk_packs || 0
-      funderMap[r.funded_by].milk_cost    += r.milk_cost || 0
-      funderMap[r.funded_by].total_funds  += r.total_funds_transferred || 0
+  // ── IN-MEMORY MONTH FILTER ────────────────────────────────
+  if (searchParams.month && rows) {
+    const m = parseInt(searchParams.month)
+    rows = rows.filter(r => {
+      if (!r.date_started) return false
+      const d = new Date(r.date_started)
+      return (d.getMonth() + 1) === m
     })
+  }
 
-    const yearMap: Record<number, YearStat> = {}
-    rows?.forEach(r => {
-      if (!yearMap[r.year]) yearMap[r.year] = { year: r.year, records: 0, beneficiaries: 0, milk_packs: 0 }
-      yearMap[r.year].records      += 1
-      yearMap[r.year].beneficiaries += r.beneficiaries || 0
-      yearMap[r.year].milk_packs   += r.milk_packs || 0
-    })
+  // ── AGGREGATE STATS ────────────────────────────────
+  const _totalRecords       = rows?.length ?? 0
+  const _totalBeneficiaries = rows?.reduce((s, r) => s + (r.beneficiaries || 0), 0) ?? 0
+  const _totalMilkPacks     = rows?.reduce((s, r) => s + (r.milk_packs || 0), 0) ?? 0
+  const _totalFunds         = rows?.reduce((s, r) => s + (r.total_funds_transferred || 0), 0) ?? 0
+  const _totalMilkCost      = rows?.reduce((s, r) => s + (r.milk_cost || 0), 0) ?? 0
 
-    stats = {
-      total_records: totalRecords,
-      total_beneficiaries: totalBeneficiaries,
-      total_milk_packs: totalMilkPacks,
-      total_funds: totalFunds,
-      total_milk_cost: totalMilkCost,
-      by_funder: Object.values(funderMap),
-      by_year: Object.values(yearMap).sort((a, b) => a.year - b.year),
-      top_centers: [{ center: centerFilter, beneficiaries: totalBeneficiaries }],
-    }
-  } else {
-    // ── SUPER ADMIN / VIEWER: use aggregate RPC ──────────────────────────
-    const { data: rawStats } = await supabase.rpc('get_dashboard_stats')
-    stats = rawStats
+  const funderMap: Record<string, FunderStat> = {}
+  rows?.forEach(r => {
+    if (!funderMap[r.funded_by]) funderMap[r.funded_by] = { funded_by: r.funded_by, records: 0, beneficiaries: 0, milk_packs: 0, milk_cost: 0, total_funds: 0 }
+    funderMap[r.funded_by].records      += 1
+    funderMap[r.funded_by].beneficiaries += r.beneficiaries || 0
+    funderMap[r.funded_by].milk_packs   += r.milk_packs || 0
+    funderMap[r.funded_by].milk_cost    += r.milk_cost || 0
+    funderMap[r.funded_by].total_funds  += r.total_funds_transferred || 0
+  })
+
+  const yearMap: Record<number, YearStat> = {}
+  rows?.forEach(r => {
+    if (!yearMap[r.year]) yearMap[r.year] = { year: r.year, records: 0, beneficiaries: 0, milk_packs: 0 }
+    yearMap[r.year].records      += 1
+    yearMap[r.year].beneficiaries += r.beneficiaries || 0
+    yearMap[r.year].milk_packs   += r.milk_packs || 0
+  })
+
+  const centerMap: Record<string, CenterStat> = {}
+  rows?.forEach(r => {
+    if (!r.center) return
+    if (!centerMap[r.center]) centerMap[r.center] = { center: r.center, beneficiaries: 0 }
+    centerMap[r.center].beneficiaries += r.beneficiaries || 0
+  })
+  const topCentersArray = Object.values(centerMap).sort((a, b) => b.beneficiaries - a.beneficiaries).slice(0, 5)
+
+  stats = {
+    total_records: _totalRecords,
+    total_beneficiaries: _totalBeneficiaries,
+    total_milk_packs: _totalMilkPacks,
+    total_funds: _totalFunds,
+    total_milk_cost: _totalMilkCost,
+    by_funder: Object.values(funderMap),
+    by_year: Object.values(yearMap).sort((a, b) => a.year - b.year),
+    top_centers: topCentersArray,
   }
 
   const totalRecords       = stats?.total_records       ?? 0
@@ -112,6 +134,7 @@ export default async function DashboardPage() {
             📍 Showing {centerFilter} data only
           </div>
         )}
+        <DashboardFilter />
       </div>
 
       {/* Top stat cards */}
