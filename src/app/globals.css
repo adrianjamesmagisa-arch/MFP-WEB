@@ -51,7 +51,7 @@ h1, h2, h3 {
 .data-table th {
   background: var(--navy);
   color: white;
-  padding: 0.75rem 1rem;
+  padding: 0.5rem 0.6rem;
   text-align: center;
   vertical-align: middle;
   font-weight: 600;
@@ -64,7 +64,7 @@ h1, h2, h3 {
   border-right: 1px solid rgba(255,255,255,0.15);
 }
 .data-table td {
-  padding: 0.65rem 1rem;
+  padding: 0.45rem 0.6rem;
   border-bottom: 1px solid var(--gray-200);
   border-right: 1px solid var(--gray-200);
   white-space: nowrap;
@@ -81,12 +81,12 @@ h1, h2, h3 {
 .data-table tr:hover td { background: #eef2ff; }
 
 /* Sticky columns for A-F (Frozen Panes) */
-.col-year { position: sticky; left: 0; width: 80px; min-width: 80px; max-width: 80px; z-index: 5; background: white; }
-.col-funded { position: sticky; left: 80px; width: 110px; min-width: 110px; max-width: 110px; z-index: 5; background: white; }
-.col-region { position: sticky; left: 190px; width: 90px; min-width: 90px; max-width: 90px; z-index: 5; background: white; }
-.col-center { position: sticky; left: 280px; width: 90px; min-width: 90px; max-width: 90px; z-index: 5; background: white; }
-.col-prov { position: sticky; left: 370px; width: 130px; min-width: 130px; max-width: 130px; z-index: 5; background: white; }
-.col-div { position: sticky; left: 500px; width: 180px; min-width: 180px; max-width: 180px; z-index: 5; background: white; border-right: 2px solid var(--navy) !important; }
+.col-year { position: sticky; left: 0; width: 60px; min-width: 60px; max-width: 60px; z-index: 5; background: white; }
+.col-funded { position: sticky; left: 60px; width: 80px; min-width: 80px; max-width: 80px; z-index: 5; background: white; }
+.col-region { position: sticky; left: 140px; width: 70px; min-width: 70px; max-width: 70px; z-index: 5; background: white; }
+.col-center { position: sticky; left: 210px; width: 70px; min-width: 70px; max-width: 70px; z-index: 5; background: white; }
+.col-prov { position: sticky; left: 280px; width: 100px; min-width: 100px; max-width: 100px; z-index: 5; background: white; }
+.col-div { position: sticky; left: 380px; width: 100px; min-width: 100px; max-width: 100px; z-index: 5; background: white; border-right: 2px solid var(--navy) !important; }
 
 .data-table th.col-year, .data-table th.col-funded, .data-table th.col-region, .data-table th.col-center, .data-table th.col-prov, .data-table th.col-div {
   background: var(--navy);
