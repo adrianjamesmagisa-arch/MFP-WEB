@@ -415,10 +415,33 @@ export default function BulkEditPage() {
       date_completed: row.date_completed || null,
       liquidation: row.liquidation || null
     }))
-    
-    const { error: err } = await supabase.from('mfp_data').upsert(payload, { onConflict: 'id' })
-    if (err) { setError(err.message); setLoading(false) }
-    else { setSavedCount(validRows.length); setSuccess(true); sessionStorage.removeItem('bulkEditIds'); setTimeout(() => router.push('/data'), 2500) }
+    let hasError = false
+    let errorMessage = ''
+
+    // Use multiple .update() calls to avoid INSERT RLS policies triggered by .upsert()
+    const updatePromises = payload.map(record => {
+      const { id, ...updateData } = record
+      return supabase.from('mfp_data').update(updateData).eq('id', id)
+    })
+
+    const results = await Promise.all(updatePromises)
+    for (const res of results) {
+      if (res.error) {
+        hasError = true
+        errorMessage = res.error.message
+        break
+      }
+    }
+
+    if (hasError) {
+      setError(errorMessage)
+      setLoading(false)
+    } else {
+      setSavedCount(validRows.length)
+      setSuccess(true)
+      sessionStorage.removeItem('bulkEditIds')
+      setTimeout(() => router.push('/data'), 2500)
+    }
   }
 
   // ── Derived ───────────────────────────────────────────────────────────────────
