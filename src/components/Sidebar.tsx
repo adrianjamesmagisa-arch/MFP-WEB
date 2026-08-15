@@ -11,7 +11,6 @@ import {
 const navItems = [
   { href: '/dashboard',           icon: LayoutDashboard, label: 'Dashboard' },
   { href: '/data',                icon: Database,         label: 'MFP Data' },
-  { href: '/data/new',            icon: FileText,         label: 'Add Record',  indent: true },
   { href: '/centers',             icon: Building2,        label: 'Centers' },
   { href: '/users',               icon: Users,            label: 'Users' },
 ]
