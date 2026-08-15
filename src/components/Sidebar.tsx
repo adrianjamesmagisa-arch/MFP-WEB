@@ -23,6 +23,7 @@ export default function Sidebar({ userRole, userCenter, userName }: {
   const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()
+  const isCollapsed = pathname.includes('/edit') || pathname.includes('/add') || pathname.includes('/bulk-edit')
 
   async function handleSignOut() {
     await supabase.auth.signOut()
@@ -42,7 +43,7 @@ export default function Sidebar({ userRole, userCenter, userName }: {
   })
 
   return (
-    <aside className="sidebar" style={{ height: '100vh', overflowY: 'auto', flexShrink: 0 }}>
+    <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`} style={{ height: '100vh', overflowY: 'auto', flexShrink: 0, transition: 'width 0.2s ease' }}>
       {/* Logo */}
       <div style={{ padding: '1.5rem 1.25rem', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -52,10 +53,12 @@ export default function Sidebar({ userRole, userCenter, userName }: {
             justifyContent: 'center', fontSize: '1.2rem', flexShrink: 0
           }}>🐃</div>
           <div>
+            {!isCollapsed && <>
             <div style={{ fontWeight: 800, fontSize: '0.85rem', color: 'white', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
               DA-PCC MFP
             </div>
             <div style={{ fontSize: '0.7rem', color: '#64748b' }}>Monitoring System</div>
+          </>}
           </div>
         </div>
       </div>
@@ -72,8 +75,8 @@ export default function Sidebar({ userRole, userCenter, userName }: {
               className={`sidebar-link ${isActive ? 'active' : ''}`}
             >
               <Icon size={16} />
-              {item.label}
-              {isActive && <ChevronRight size={14} style={{ marginLeft: 'auto' }} />}
+              {!isCollapsed && <span>{item.label}</span>}
+              {isActive && !isCollapsed && <ChevronRight size={14} style={{ marginLeft: 'auto' }} />}
             </Link>
           )
         })}
@@ -81,7 +84,7 @@ export default function Sidebar({ userRole, userCenter, userName }: {
 
       {/* User info */}
       <div style={{ padding: '1rem', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-        <div style={{
+        {!isCollapsed && <div style={{
           background: 'rgba(255,255,255,0.05)', borderRadius: 10,
           padding: '0.75rem', marginBottom: '0.75rem'
         }}>
@@ -92,14 +95,14 @@ export default function Sidebar({ userRole, userCenter, userName }: {
             {userCenter && <span style={{ color: 'var(--gold)' }}>{userCenter} · </span>}
             {userRole?.replace('_', ' ')}
           </div>
-        </div>
+        </div>}
         <button
           onClick={handleSignOut}
           className="btn btn-outline"
           style={{ width: '100%', justifyContent: 'center', fontSize: '0.8rem', color: '#94a3b8', borderColor: 'rgba(255,255,255,0.1)' }}
         >
           <LogOut size={14} />
-          Sign Out
+          {!isCollapsed && <span>Sign Out</span>}
         </button>
       </div>
     </aside>

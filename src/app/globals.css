@@ -81,23 +81,24 @@ h1, h2, h3 {
 .data-table tr:hover td { background: #eef2ff; }
 
 /* Sticky columns for A-H (Frozen Panes) */
-.col-year { position: sticky; left: 0; width: 60px; min-width: 60px; max-width: 60px; z-index: 5; background: white; }
-.col-funded { position: sticky; left: 60px; width: 80px; min-width: 80px; max-width: 80px; z-index: 5; background: white; }
-.col-region { position: sticky; left: 140px; width: 70px; min-width: 70px; max-width: 70px; z-index: 5; background: white; }
-.col-center { position: sticky; left: 210px; width: 70px; min-width: 70px; max-width: 70px; z-index: 5; background: white; }
-.col-prov { position: sticky; left: 280px; width: 100px; min-width: 100px; max-width: 100px; z-index: 5; background: white; }
-.col-div { position: sticky; left: 380px; width: 100px; min-width: 100px; max-width: 100px; z-index: 5; background: white; }
-.col-muni { position: sticky; left: 480px; width: 120px; min-width: 120px; max-width: 120px; z-index: 5; background: white; }
-.col-school { position: sticky; left: 600px; width: 160px; min-width: 160px; max-width: 160px; z-index: 5; background: white; border-right: 2px solid var(--navy) !important; }
+.col-check { position: sticky; left: 0; width: 40px; min-width: 40px; max-width: 40px; z-index: 5; background: white; border-right: 1px solid #cbd5e1; }
+.col-year { position: sticky; left: 40px; width: 60px; min-width: 60px; max-width: 60px; z-index: 5; background: white; }
+.col-funded { position: sticky; left: 100px; width: 80px; min-width: 80px; max-width: 80px; z-index: 5; background: white; }
+.col-region { position: sticky; left: 180px; width: 70px; min-width: 70px; max-width: 70px; z-index: 5; background: white; }
+.col-center { position: sticky; left: 250px; width: 70px; min-width: 70px; max-width: 70px; z-index: 5; background: white; }
+.col-prov { position: sticky; left: 320px; width: 100px; min-width: 100px; max-width: 100px; z-index: 5; background: white; }
+.col-div { position: sticky; left: 420px; width: 100px; min-width: 100px; max-width: 100px; z-index: 5; background: white; }
+.col-muni { position: sticky; left: 520px; width: 120px; min-width: 120px; max-width: 120px; z-index: 5; background: white; }
+.col-school { position: sticky; left: 640px; width: 160px; min-width: 160px; max-width: 160px; z-index: 5; background: white; border-right: 2px solid var(--navy) !important; }
 
-.data-table th.col-year, .data-table th.col-funded, .data-table th.col-region, .data-table th.col-center, .data-table th.col-prov, .data-table th.col-div, .data-table th.col-muni, .data-table th.col-school {
+.data-table th.col-check, .data-table th.col-year, .data-table th.col-funded, .data-table th.col-region, .data-table th.col-center, .data-table th.col-prov, .data-table th.col-div, .data-table th.col-muni, .data-table th.col-school {
   background: var(--navy);
   z-index: 20;
 }
-.data-table tr:nth-child(even) td.col-year, .data-table tr:nth-child(even) td.col-funded, .data-table tr:nth-child(even) td.col-region, .data-table tr:nth-child(even) td.col-center, .data-table tr:nth-child(even) td.col-prov, .data-table tr:nth-child(even) td.col-div, .data-table tr:nth-child(even) td.col-muni, .data-table tr:nth-child(even) td.col-school {
+.data-table tr:nth-child(even) td.col-check, .data-table tr:nth-child(even) td.col-year, .data-table tr:nth-child(even) td.col-funded, .data-table tr:nth-child(even) td.col-region, .data-table tr:nth-child(even) td.col-center, .data-table tr:nth-child(even) td.col-prov, .data-table tr:nth-child(even) td.col-div, .data-table tr:nth-child(even) td.col-muni, .data-table tr:nth-child(even) td.col-school {
   background: var(--gray-50);
 }
-.data-table tr:hover td.col-year, .data-table tr:hover td.col-funded, .data-table tr:hover td.col-region, .data-table tr:hover td.col-center, .data-table tr:hover td.col-prov, .data-table tr:hover td.col-div, .data-table tr:hover td.col-muni, .data-table tr:hover td.col-school {
+.data-table tr:hover td.col-check, .data-table tr:hover td.col-year, .data-table tr:hover td.col-funded, .data-table tr:hover td.col-region, .data-table tr:hover td.col-center, .data-table tr:hover td.col-prov, .data-table tr:hover td.col-div, .data-table tr:hover td.col-muni, .data-table tr:hover td.col-school {
   background: #eef2ff;
 }
 
@@ -165,7 +166,7 @@ h1, h2, h3 {
 .sidebar {
   background: var(--navy);
   color: white;
-  width: 260px;
+  width: var(--sidebar-width, 260px);
   height: 100vh;
   position: sticky;
   top: 0;
@@ -271,3 +272,8 @@ h1, h2, h3 {
   color: var(--gray-600);
   margin-top: 0.2rem;
 }
+
+/* Collapsed Sidebar */
+.sidebar.collapsed { --sidebar-width: 72px; }
+.sidebar.collapsed .sidebar-link { justify-content: center; padding: 0.75rem; margin: 0.1rem 0.5rem; }
+.form-input-sm { padding: 0.25rem 0.5rem; font-size: 0.78rem; border-radius: 4px; }
