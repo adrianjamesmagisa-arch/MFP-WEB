@@ -231,7 +231,7 @@ export default function EditRecordPage() {
   const params = useParams() as { id: string }
   const [rows, setRows]           = useState<FormState[]>([emptyForm()])
   // colOverrides: column fields where formula is DISABLED for all rows
-  const [colOverrides, setColOverrides] = useState<Set<string>>(new Set())
+  const [colOverrides, setColOverrides] = useState<Set<string>>(new Set(Object.keys(CALC_DEFS)))
   const [cooperatives, setCoop]   = useState<Cooperative[]>([])
   const [profile, setProfile]     = useState<UserProfile | null>(null)
   const [formulas, setFormulas]   = useState({ ...DEFAULT_FORMULAS })
