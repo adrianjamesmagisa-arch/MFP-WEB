@@ -48,26 +48,8 @@ export default function LoginPage() {
           </h1>
           <p style={{ color: '#94a3b8', lineHeight: 1.6, fontSize: '0.95rem' }}>
             National Milk Feeding Program Monitoring System<br />
-            Department of Agriculture — Philippine Carabao Center
+            Operations Department — Philippine Carabao Center
           </p>
-          <div style={{
-            marginTop: '2.5rem', display: 'grid',
-            gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem'
-          }}>
-            {[
-              { label: 'Funding Agencies', value: '3' },
-              { label: 'PCC Centers', value: '13' },
-              { label: 'Years of Data', value: '7+' },
-            ].map(s => (
-              <div key={s.label} style={{
-                background: 'rgba(255,255,255,0.06)',
-                borderRadius: 10, padding: '1rem 0.5rem', textAlign: 'center'
-              }}>
-                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--gold)' }}>{s.value}</div>
-                <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: 2 }}>{s.label}</div>
-              </div>
-            ))}
-          </div>
         </div>
       </div>
 

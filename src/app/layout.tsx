@@ -3,7 +3,7 @@ import './globals.css'
 
 export const metadata: Metadata = {
   title: 'DA-PCC Milk Feeding Program',
-  description: 'National Milk Feeding Program Monitoring System — Department of Agriculture, Philippine Carabao Center',
+  description: 'National Milk Feeding Program Monitoring System — Operations Department, Philippine Carabao Center',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
