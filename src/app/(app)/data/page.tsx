@@ -132,14 +132,14 @@ export default async function DataPage({
             <thead>
               <tr>
                 {/* A-G */}
-                <th className="col-year" style={{ whiteSpace: 'nowrap' }}>A — Year</th>
-                <th className="col-funded" style={{ whiteSpace: 'nowrap' }}>B — Funded By</th>
-                <th className="col-region" style={{ whiteSpace: 'nowrap' }}>C — Region</th>
-                <th className="col-center" style={{ whiteSpace: 'nowrap' }}>D — Center</th>
-                <th className="col-prov" style={{ whiteSpace: 'nowrap' }}>E — Province</th>
-                <th className="col-div" style={{ whiteSpace: 'nowrap' }}>F — Division</th>
-                <th style={{ whiteSpace: 'nowrap' }}>G — Municipality</th>
-                <th style={{ whiteSpace: 'nowrap' }}>H — Elementary School</th>
+                <th className="col-year" style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 60 }}>A — Year</th>
+                <th className="col-funded" style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 80 }}>B — Funded By</th>
+                <th className="col-region" style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 70 }}>C — Region</th>
+                <th className="col-center" style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 70 }}>D — Center</th>
+                <th className="col-prov" style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 100 }}>E — Province</th>
+                <th className="col-div" style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 100 }}>F — Division</th>
+                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 120 }}>G — Municipality</th>
+                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 160 }}>H — Elementary School</th>
                 {/* I-N auto-calc */}
                 <th style={{ width: 90, minWidth: 90, whiteSpace: 'normal', lineHeight: 1.2 }}>I — Milk Packs</th>
                 <th style={{ width: 90, minWidth: 90, whiteSpace: 'normal', lineHeight: 1.2 }}>J — Total Vol. Req (L)</th>
@@ -147,25 +147,25 @@ export default async function DataPage({
                 <th style={{ width: 90, minWidth: 90, whiteSpace: 'normal', lineHeight: 1.2 }}>L — Whole Milk (kg)</th>
                 <th style={{ width: 90, minWidth: 90, whiteSpace: 'normal', lineHeight: 1.2 }}>M — Skimmed Milk (kg)</th>
                 <th style={{ width: 90, minWidth: 90, whiteSpace: 'normal', lineHeight: 1.2 }}>N — Sugar (kg)</th>
-                {/* N-S user inputs */}
+                {/* O-S user inputs */}
                 <th style={{ width: 90, minWidth: 90, whiteSpace: 'normal', lineHeight: 1.2 }}>O — Feeding Days</th>
-                <th style={{ whiteSpace: 'nowrap' }}>P — Batch</th>
-                <th style={{ whiteSpace: 'nowrap' }}>Q — Beneficiaries</th>
-                <th style={{ whiteSpace: 'nowrap' }}>R — Milk Type</th>
-                <th style={{ whiteSpace: 'nowrap' }}>S — Price (₱)</th>
-                <th style={{ whiteSpace: 'nowrap' }}>T — Supplier</th>
-                {/* T-V financial */}
-                <th style={{ whiteSpace: 'nowrap' }}>U — Milk Cost (₱)</th>
-                <th style={{ whiteSpace: 'nowrap' }}>V — Service Fee (₱)</th>
-                <th style={{ whiteSpace: 'nowrap' }}>W — Total Funds (₱)</th>
-                <th style={{ whiteSpace: 'nowrap' }}>X — Mode of Procurement</th>
-                {/* Dates */}
-                <th style={{ whiteSpace: 'nowrap' }}>Y — MOA Signing</th>
-                <th style={{ whiteSpace: 'nowrap' }}>Z — Fund Transfer</th>
-                <th style={{ whiteSpace: 'nowrap' }}>AA — Date Started</th>
-                <th style={{ whiteSpace: 'nowrap' }}>AB — Date Completed</th>
-                <th style={{ whiteSpace: 'nowrap' }}>AC — Liquidation</th>
-                <th style={{ whiteSpace: 'nowrap' }}>Actions</th>
+                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 80 }}>P — Batch</th>
+                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 90 }}>Q — Beneficiaries</th>
+                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 90 }}>R — Milk Type</th>
+                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 90 }}>S — Price (₱)</th>
+                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 160 }}>T — Supplier</th>
+                {/* U-X financial & mode */}
+                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 90 }}>U — Milk Cost (₱)</th>
+                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 90 }}>V — Service Fee (₱)</th>
+                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 100 }}>W — Total Funds (₱)</th>
+                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 120 }}>X — Mode of Procurement</th>
+                {/* Y-AC Dates */}
+                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 100 }}>Y — MOA Signing</th>
+                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 100 }}>Z — Fund Transfer</th>
+                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 100 }}>AA — Date Started</th>
+                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 100 }}>AB — Date Completed</th>
+                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 100 }}>AC — Liquidation</th>
+                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 80 }}>Actions</th>
               </tr>
             </thead>
             <tbody>
