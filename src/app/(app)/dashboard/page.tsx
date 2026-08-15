@@ -34,7 +34,7 @@ export default async function DashboardPage(props: { searchParams: Promise<{ yea
     .select('beneficiaries, milk_packs, milk_cost, total_funds_transferred, funded_by, year, center, date_started')
     .range(0, 49999)
 
-  if (isEncoder && centerFilter) {
+  if (centerFilter) {
     query = query.eq('center', centerFilter)
   }
   if (searchParams.year) {

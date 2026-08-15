@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>PCC Milk Feeding Program System - Training</title>
+
+  <!-- Reveal.js CSS -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/reset.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/reveal.css">
+  <!-- We can use a clean, modern theme like 'simple' or 'white' -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/theme/simple.css" id="theme">
+
+  <style>
+    /* Custom Overrides for branding */
+    .reveal h1, .reveal h2, .reveal h3, .reveal h4, .reveal h5, .reveal h6 {
+      color: #0f172a; /* Slate 900 */
+      font-weight: 700;
+    }
+    .reveal .slide-background-content {
+      background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+    }
+    .accent { color: #2563eb; font-weight: bold; }
+    .warning { color: #dc2626; font-weight: bold; }
+    .success { color: #16a34a; font-weight: bold; }
+    
+    .feature-box {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+      font-size: 0.8em;
+      margin: 10px 0;
+      text-align: left;
+      border-left: 6px solid #2563eb;
+    }
+    .instruction-step {
+      font-size: 0.8em;
+      text-align: left;
+      margin-bottom: 20px;
+      padding-left: 40px;
+      position: relative;
+    }
+    .instruction-step::before {
+      content: "✓";
+      position: absolute;
+      left: 0;
+      color: #16a34a;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="reveal">
+    <div class="slides">
+
+      <!-- Slide 1: Title -->
+      <section>
+        <h2>Modernizing the <br><span class="accent">Milk Feeding Program</span></h2>
+        <h4>Transitioning from Excel to a Centralized Web System</h4>
+        <p><small>Operations Department Training & Overview</small></p>
+      </section>
+
+      <!-- Slide 2: The Problem -->
+      <section>
+        <h2>Why Move Away from <span class="warning">Excel</span>?</h2>
+        <div style="display: flex; gap: 20px; justify-content: center; margin-top: 40px;">
+          <div class="feature-box" style="border-left-color: #dc2626; width: 45%;">
+            <h4>Fragmented Data</h4>
+            <p>Multiple files spread across different centers, making it impossible to get a real-time nationwide overview.</p>
+          </div>
+          <div class="feature-box" style="border-left-color: #dc2626; width: 45%;">
+            <h4>Formula Errors</h4>
+            <p>Accidental overwrites of manual formulas causing inaccurate data and broken reports.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Slide 3: The Solution -->
+      <section>
+        <h2>Introducing <span class="success">MFP-WEB</span></h2>
+        <p>A secure, cloud-based platform custom-built for our operations.</p>
+        <div class="feature-box">
+          <strong>Centralized Database:</strong> All centers input data into one secure, unified system.
+        </div>
+        <div class="feature-box">
+          <strong>Bulletproof Formulas:</strong> Calculations are locked and handled by the system automatically. No more broken cells.
+        </div>
+        <div class="feature-box">
+          <strong>Real-Time Dashboard:</strong> Instant insights and metrics at the click of a button.
+        </div>
+      </section>
+
+      <!-- Slide 4: Key Features -->
+      <section>
+        <h2>System Highlights</h2>
+        <ul>
+          <li><strong>Role-Based Access:</strong> Encoders only see their center's data; Super Admins see everything.</li>
+          <li><strong>Smart Data Entry:</strong> Sticky columns, auto-suggest dropdowns for suppliers, and spreadsheet-like speed.</li>
+          <li><strong>Bulk Editing:</strong> Select multiple records from the Masterlist and update them all at once.</li>
+          <li><strong>Built-in Validation:</strong> The system automatically warns you about duplicate records.</li>
+        </ul>
+      </section>
+
+      <!-- Slide 5: How to Use - Dashboard -->
+      <section>
+        <h2>How to Use: <span class="accent">Dashboard</span></h2>
+        <p>Your new command center for tracking the program.</p>
+        <div class="instruction-step">
+          <strong>Login:</strong> Access the system using your secure credentials. You will land on the Dashboard.
+        </div>
+        <div class="instruction-step">
+          <strong>Filter Data:</strong> Use the dropdowns at the top right to filter the metrics by <em>Year</em>, <em>Month</em>, or <em>Center</em>.
+        </div>
+        <div class="instruction-step">
+          <strong>Review Metrics:</strong> Instantly view total volume requirements, total funds transferred, and milk cost breakdowns across the country.
+        </div>
+      </section>
+
+      <!-- Slide 6: How to Use - Add Records -->
+      <section>
+        <h2>How to Use: <span class="accent">Add Records</span></h2>
+        <p>Entering data is just as fast as Excel, but much smarter.</p>
+        <div class="instruction-step">
+          <strong>Navigate:</strong> Click "Add Records" on the left sidebar.
+        </div>
+        <div class="instruction-step">
+          <strong>Fill the Rows:</strong> Type across the row just like a spreadsheet. Sticky columns (A to F) will follow you as you scroll right.
+        </div>
+        <div class="instruction-step">
+          <strong>Auto-Calculations:</strong> Yellow columns are calculated automatically (e.g., Milk Packs = Beneficiaries × Feeding Days). You don't need to touch them!
+        </div>
+        <div class="instruction-step">
+          <strong>Smart Suppliers:</strong> In the Supplier column, simply start typing the name of the Cooperative to filter the dropdown.
+        </div>
+      </section>
+
+      <!-- Slide 7: How to Use - Bulk Edit -->
+      <section>
+        <h2>How to Use: <span class="accent">Bulk Edit</span></h2>
+        <p>Need to update 10 records at once? No problem.</p>
+        <div class="instruction-step">
+          <strong>Select Records:</strong> Go to the "Masterlist" page. Use the checkboxes on the left to select the records you want to update.
+        </div>
+        <div class="instruction-step">
+          <strong>Click Bulk Edit:</strong> Click the "Bulk Edit" button that appears at the top.
+        </div>
+        <div class="instruction-step">
+          <strong>Update & Save:</strong> You will be taken to a familiar spreadsheet view containing only your selected records. Make your changes and click Save.
+        </div>
+      </section>
+
+      <!-- Slide 8: Q&A -->
+      <section>
+        <h2>Thank You!</h2>
+        <p>Welcome to the future of the Milk Feeding Program.</p>
+        <br>
+        <h4>Questions?</h4>
+      </section>
+
+    </div>
+  </div>
+
+  <!-- Reveal.js Scripts -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/reveal.js"></script>
+  <script>
+    Reveal.initialize({
+      hash: true,
+      slideNumber: true,
+      transition: 'slide' // none/fade/slide/convex/concave/zoom
+    });
+  </script>
+</body>
+</html>
