@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
 import { PCC_CENTERS } from '@/lib/types'
 import Link from 'next/link'
 import { Building2, Calendar, CheckCircle2, Clock } from 'lucide-react'
@@ -6,6 +7,13 @@ import { formatDistanceToNow } from 'date-fns'
 
 export default async function CentersPage() {
   const supabase = await createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  const { data: profile } = await supabase.from('profiles').select('*').eq('id', user?.id).single()
+
+  if (profile?.role === 'encoder') {
+    redirect('/dashboard')
+  }
 
   // Get the latest input date for each center to determine active status
   const { data: latestInputs } = await supabase
