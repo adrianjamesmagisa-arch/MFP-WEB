@@ -247,11 +247,11 @@ export function DataTable({ records }: { records: any[] }) {
                   <EditableCell onSave={handleCellSave} id={r.id} field="total_funds_transferred" value={r.total_funds_transferred} type="number" format={v => v ? '₱' + formatNumber(v) : 'N/A'} style={{ fontWeight: 600 }} />
                   <EditableCell onSave={handleCellSave} id={r.id} field="mode_of_procurement" value={r.mode_of_procurement} />
                   
-                  <EditableCell onSave={handleCellSave} id={r.id} field="moa_signing_date" value={r.moa_signing_date} type="date" format={formatDate} />
-                  <EditableCell onSave={handleCellSave} id={r.id} field="fund_transfer_date" value={r.fund_transfer_date} type="date" format={formatDate} />
+                  <EditableCell onSave={handleCellSave} id={r.id} field="moa_signing" value={r.moa_signing} type="date" format={formatDate} />
+                  <EditableCell onSave={handleCellSave} id={r.id} field="fund_transfer" value={r.fund_transfer} type="date" format={formatDate} />
                   <EditableCell onSave={handleCellSave} id={r.id} field="date_started" value={r.date_started} type="date" format={formatDate} />
                   <EditableCell onSave={handleCellSave} id={r.id} field="date_completed" value={r.date_completed} type="date" format={formatDate} />
-                  <EditableCell onSave={handleCellSave} id={r.id} field="liquidation_date" value={r.liquidation_date} type="date" format={formatDate} />
+                  <EditableCell onSave={handleCellSave} id={r.id} field="liquidation" value={r.liquidation} type="date" format={formatDate} />
                   
                   <td>
                     <Link

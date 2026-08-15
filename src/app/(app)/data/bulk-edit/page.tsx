@@ -159,9 +159,9 @@ function isDuplicate(r: FormState, existing: any[], currentId: string): boolean 
     String(ex.feeding_days) === String(r.feeding_days) &&
     parseFloat(ex.milk_cost || '0').toFixed(2) === parseFloat(r.milk_cost || '0').toFixed(2) &&
     parseFloat(ex.total_funds_transferred || '0').toFixed(2) === parseFloat(r.total_funds_transferred || '0').toFixed(2) &&
-    (ex.moa_signing_date || '') === (r.moa_signing || '') &&
-    (ex.fund_transfer_date || '') === (r.fund_transfer || '') &&
-    (ex.liquidation_date || '') === (r.liquidation || '')
+    (ex.moa_signing || '') === (r.moa_signing || '') &&
+    (ex.fund_transfer || '') === (r.fund_transfer || '') &&
+    (ex.liquidation || '') === (r.liquidation || '')
   )
 }
 
@@ -280,9 +280,9 @@ export default function BulkEditPage() {
           service_fee: d.service_fee !== null ? String(d.service_fee) : '0',
           total_funds_transferred: d.total_funds_transferred ? String(d.total_funds_transferred) : '',
           mode_of_procurement: d.mode_of_procurement || '',
-          moa_signing: d.moa_signing_date || '', fund_transfer: d.fund_transfer_date || '',
+          moa_signing: d.moa_signing || '', fund_transfer: d.fund_transfer || '',
           date_started: d.date_started || '', date_completed: d.date_completed || '',
-          liquidation: d.liquidation_date || ''
+          liquidation: d.liquidation || ''
         })))
       }
     })
@@ -303,7 +303,7 @@ export default function BulkEditPage() {
           }
 
           // Fetch existing records for duplicate checking
-          let q = supabase.from('mfp_data').select('milk_cost, total_funds_transferred, feeding_days, beneficiaries, moa_signing_date, fund_transfer_date, liquidation_date')
+          let q = supabase.from('mfp_data').select('milk_cost, total_funds_transferred, feeding_days, beneficiaries, moa_signing, fund_transfer, liquidation')
           if (center && data.role !== 'super_admin') q = q.eq('center', center)
           q.then(({ data: records }) => {
             if (records) setExistingRecords(records)
@@ -409,11 +409,11 @@ export default function BulkEditPage() {
       service_fee: parseFloat(row.service_fee),
       total_funds_transferred: parseFloat(row.total_funds_transferred),
       mode_of_procurement: row.mode_of_procurement || null,
-      moa_signing_date: row.moa_signing || null,
-      fund_transfer_date: row.fund_transfer || null,
+      moa_signing: row.moa_signing || null,
+      fund_transfer: row.fund_transfer || null,
       date_started: row.date_started || null,
       date_completed: row.date_completed || null,
-      liquidation_date: row.liquidation || null
+      liquidation: row.liquidation || null
     }))
     
     const { error: err } = await supabase.from('mfp_data').upsert(payload, { onConflict: 'id' })

@@ -158,9 +158,9 @@ function isDuplicate(r: FormState, existing: any[], currentId: string): boolean 
     String(ex.feeding_days) === String(r.feeding_days) &&
     parseFloat(ex.milk_cost || '0').toFixed(2) === parseFloat(r.milk_cost || '0').toFixed(2) &&
     parseFloat(ex.total_funds_transferred || '0').toFixed(2) === parseFloat(r.total_funds_transferred || '0').toFixed(2) &&
-    (ex.moa_signing_date || '') === (r.moa_signing || '') &&
-    (ex.fund_transfer_date || '') === (r.fund_transfer || '') &&
-    (ex.liquidation_date || '') === (r.liquidation || '')
+    (ex.moa_signing || '') === (r.moa_signing || '') &&
+    (ex.fund_transfer || '') === (r.fund_transfer || '') &&
+    (ex.liquidation || '') === (r.liquidation || '')
   )
 }
 
@@ -266,9 +266,9 @@ export default function EditRecordPage() {
           service_fee: data.service_fee !== null ? String(data.service_fee) : '0',
           total_funds_transferred: data.total_funds_transferred ? String(data.total_funds_transferred) : '',
           mode_of_procurement: data.mode_of_procurement || '',
-          moa_signing: data.moa_signing_date || '', fund_transfer: data.fund_transfer_date || '',
+          moa_signing: data.moa_signing || '', fund_transfer: data.fund_transfer || '',
           date_started: data.date_started || '', date_completed: data.date_completed || '',
-          liquidation: data.liquidation_date || ''
+          liquidation: data.liquidation || ''
         }]);
       }
     });
@@ -289,7 +289,7 @@ export default function EditRecordPage() {
           }
 
           // Fetch existing records for duplicate checking
-          let q = supabase.from('mfp_data').select('milk_cost, total_funds_transferred, feeding_days, beneficiaries, moa_signing_date, fund_transfer_date, liquidation_date')
+          let q = supabase.from('mfp_data').select('milk_cost, total_funds_transferred, feeding_days, beneficiaries, moa_signing, fund_transfer, liquidation')
           if (center && data.role !== 'super_admin') q = q.eq('center', center)
           q.then(({ data: records }) => {
             if (records) setExistingRecords(records)
@@ -377,9 +377,9 @@ export default function EditRecordPage() {
         milk_cost: parseFloat(validRows[0].milk_cost) || 0, service_fee: parseFloat(validRows[0].service_fee) || 0,
         total_funds_transferred: parseFloat(validRows[0].total_funds_transferred) || 0,
         mode_of_procurement: validRows[0].mode_of_procurement || null,
-        moa_signing_date: validRows[0].moa_signing || null, fund_transfer_date: validRows[0].fund_transfer || null,
+        moa_signing: validRows[0].moa_signing || null, fund_transfer: validRows[0].fund_transfer || null,
         date_started: validRows[0].date_started || null, date_completed: validRows[0].date_completed || null,
-        liquidation_date: validRows[0].liquidation || null
+        liquidation: validRows[0].liquidation || null
       }).eq('id', params.id)
     if (err) { setError(err.message); setLoading(false) }
     else { setSavedCount(validRows.length); setSuccess(true); setTimeout(() => router.push('/data'), 2500) }
