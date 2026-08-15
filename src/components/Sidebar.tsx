@@ -12,10 +12,7 @@ const navItems = [
   { href: '/dashboard',           icon: LayoutDashboard, label: 'Dashboard' },
   { href: '/data',                icon: Database,         label: 'MFP Data' },
   { href: '/data/new',            icon: FileText,         label: 'Add Record',  indent: true },
-  { href: '/summary/lds',         icon: FileText,         label: 'Summary: LDS' },
-  { href: '/summary/deped-sbfp',  icon: FileText,         label: 'Summary: DepEd-SBFP' },
-  { href: '/summary/dswd-sfp',    icon: FileText,         label: 'Summary: DSWD-SFP' },
-  { href: '/cooperatives',        icon: Building2,        label: 'Cooperatives' },
+  { href: '/centers',             icon: Building2,        label: 'Centers' },
   { href: '/users',               icon: Users,            label: 'Users' },
 ]
 

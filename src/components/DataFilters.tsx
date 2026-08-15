@@ -50,14 +50,49 @@ export function DataFilters({ filterOptions }: { filterOptions?: FilterOptions }
     [searchParams]
   )
 
-  const handleFilterChange = (name: string, value: string) => {
-    // If the value is already selected, unselect it (toggle)
-    const currentVal = searchParams.get(name)
-    if (currentVal === value) {
-      router.push(`/data?${createQueryString(name, '')}`)
-    } else {
-      router.push(`/data?${createQueryString(name, value)}`)
+  const [localFilters, setLocalFilters] = useState<Record<string, string>>({})
+
+  const togglePopover = () => {
+    if (!isOpen) {
+      const filters: Record<string, string> = {}
+      // Sync from URL when opening
+      filterGroups.forEach(g => {
+        const val = searchParams.get(g.key)
+        if (val) filters[g.key] = val
+      })
+      setLocalFilters(filters)
     }
+    setIsOpen(!isOpen)
+  }
+
+  const handleLocalFilterChange = (name: string, value: string) => {
+    setLocalFilters(prev => {
+      const newFilters = { ...prev }
+      if (newFilters[name] === value) {
+        delete newFilters[name]
+      } else {
+        newFilters[name] = value
+      }
+      return newFilters
+    })
+  }
+
+  const applyFilters = () => {
+    const params = new URLSearchParams(searchParams.toString())
+    filterGroups.forEach(g => params.delete(g.key))
+    Object.entries(localFilters).forEach(([k, v]) => {
+      params.set(k, v)
+    })
+    router.push(`/data?${params.toString()}`)
+    setIsOpen(false)
+  }
+
+  const clearFilters = () => {
+    setLocalFilters({})
+    const params = new URLSearchParams(searchParams.toString())
+    filterGroups.forEach(g => params.delete(g.key))
+    router.push(`/data?${params.toString()}`)
+    setIsOpen(false)
   }
 
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -103,7 +138,7 @@ export function DataFilters({ filterOptions }: { filterOptions?: FilterOptions }
       <div ref={popoverRef}>
         <button 
           className="btn btn-outline" 
-          onClick={() => setIsOpen(!isOpen)}
+          onClick={togglePopover}
           style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: isOpen ? '#f8fafc' : 'white' }}
         >
           <Filter size={18} />
@@ -134,7 +169,7 @@ export function DataFilters({ filterOptions }: { filterOptions?: FilterOptions }
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               {filterGroups.map(group => {
                 const isExpanded = expandedGroup === group.key
-                const activeValue = searchParams.get(group.key)
+                const activeValue = localFilters[group.key]
 
                 return (
                   <div key={group.key} style={{ borderBottom: '1px solid #e2e8f0' }}>
@@ -175,7 +210,7 @@ export function DataFilters({ filterOptions }: { filterOptions?: FilterOptions }
                                 <input 
                                   type="checkbox" 
                                   checked={isSelected}
-                                  onChange={() => handleFilterChange(group.key, opt)}
+                                  onChange={() => handleLocalFilterChange(group.key, opt)}
                                   style={{ marginTop: '0.15rem' }}
                                 />
                                 <span style={{ lineHeight: 1.4 }}>{opt}</span>
@@ -185,7 +220,7 @@ export function DataFilters({ filterOptions }: { filterOptions?: FilterOptions }
                         )}
                         {activeValue && (
                            <button 
-                             onClick={() => handleFilterChange(group.key, '')}
+                             onClick={() => handleLocalFilterChange(group.key, activeValue)}
                              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.5rem', color: '#ef4444', fontSize: '0.75rem', border: 'none', background: 'none', cursor: 'pointer', padding: 0 }}
                            >
                              <X size={12} /> Clear Filter
@@ -196,6 +231,21 @@ export function DataFilters({ filterOptions }: { filterOptions?: FilterOptions }
                   </div>
                 )
               })}
+              {/* Action Buttons */}
+              <div style={{ padding: '1rem', borderTop: '1px solid #e2e8f0', display: 'flex', gap: '0.5rem', background: '#f8fafc', borderBottomLeftRadius: '0.5rem', borderBottomRightRadius: '0.5rem' }}>
+                <button 
+                  onClick={clearFilters}
+                  style={{ flex: 1, padding: '0.5rem', background: 'white', border: '1px solid #cbd5e1', borderRadius: '0.375rem', fontSize: '0.875rem', color: '#475569', cursor: 'pointer', fontWeight: 500 }}
+                >
+                  Remove Filters
+                </button>
+                <button 
+                  onClick={applyFilters}
+                  style={{ flex: 1, padding: '0.5rem', background: 'var(--navy)', border: '1px solid var(--navy)', borderRadius: '0.375rem', fontSize: '0.875rem', color: 'white', cursor: 'pointer', fontWeight: 500 }}
+                >
+                  Search
+                </button>
+              </div>
             </div>
           </div>
         )}

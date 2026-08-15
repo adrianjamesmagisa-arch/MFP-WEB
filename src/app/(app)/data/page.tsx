@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { formatCurrency, formatNumber, formatDate } from '@/lib/utils'
 import { Plus } from 'lucide-react'
 import { DataFilters } from '@/components/DataFilters'
+import { REGIONS, PCC_CENTERS } from '@/lib/types'
 
 export default async function DataPage({
   searchParams
@@ -51,8 +52,8 @@ export default async function DataPage({
 
   const { data: records } = await query
 
-  // Fetch unique filter options for the popover (excluding role limitations if needed, but safer to respect them)
-  let filterQuery = supabase.from('mfp_data').select('funded_by, region, center, province, division, municipality, milk_type')
+  // Fetch unique filter options for dynamic fields, using a limit to prevent massive payload delays
+  let filterQuery = supabase.from('mfp_data').select('province, division, municipality').limit(5000)
   if (profile?.role === 'encoder' && profile?.center) {
     filterQuery = filterQuery.eq('center', profile.center)
   }
@@ -62,13 +63,13 @@ export default async function DataPage({
     Array.from(new Set(allData?.map(d => d[key as keyof typeof d]).filter(Boolean) as string[])).sort()
 
   const filterOptions = {
-    funded_by: getUnique('funded_by'),
-    center: getUnique('center'),
-    region: getUnique('region'),
+    funded_by: ['DepEd', 'DSWD', 'LDS'],
+    center: PCC_CENTERS,
+    region: REGIONS,
+    milk_type: ['PM', 'SMP', 'SM', 'Karabao'],
     province: getUnique('province'),
     division: getUnique('division'),
     municipality: getUnique('municipality'),
-    milk_type: getUnique('milk_type'),
     supplier: [], // Will require joining cooperatives if supplier is needed
   }
 

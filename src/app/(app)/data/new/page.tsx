@@ -138,6 +138,18 @@ function countUserFilled(row: FormState): number {
   return USER_INPUT_FIELDS.filter(f => row[f] !== '' && row[f] !== em[f]).length
 }
 
+function isRowValid(r: FormState): boolean {
+  if (parseInt(r.beneficiaries || '0') <= 0) return false
+  if (parseFloat(r.price || '0') <= 0) return false
+  
+  if (r.funded_by === 'DepEd') {
+    if (!r.division?.trim()) return false
+    if (!r.elementary_school?.trim()) return false
+  }
+  
+  return true
+}
+
 // ─── Styles ─────────────────────────────────────────────────────────────────────
 const ROW_H = 46
 
@@ -279,9 +291,9 @@ export default function NewRecordPage() {
   }
 
   // ── Submit ────────────────────────────────────────────────────────────────────
-  async function handleSubmit(e: React.FormEvent) {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    const validRows = rows.filter(r => parseInt(r.beneficiaries) > 0 && parseFloat(r.price) > 0)
+    const validRows = rows.filter(isRowValid)
     if (validRows.length === 0) {
       setError('Please fill at least one row — Beneficiaries (Q) and Price (S) are required per row')
       return
@@ -319,7 +331,7 @@ export default function NewRecordPage() {
 
   // ── Derived ───────────────────────────────────────────────────────────────────
   const isSuperAdmin = profile?.role === 'super_admin'
-  const validRowCount = rows.filter(r => parseInt(r.beneficiaries) > 0 && parseFloat(r.price) > 0).length
+  const validRowCount = rows.filter(isRowValid).length
   const activeBorder = (rowIdx: number, letter: string): React.CSSProperties => {
     if (activeCell?.rowIdx !== rowIdx || activeCell?.letter !== letter) return {}
     return { boxShadow: 'inset 0 0 0 2px #2563eb' }
@@ -406,9 +418,10 @@ export default function NewRecordPage() {
   function renderDataRow(rowIdx: number) {
     const row     = rows[rowIdx]
     const prov    = PROVINCES_BY_REGION[row.region] ?? []
-    const isValid = parseInt(row.beneficiaries) > 0 && parseFloat(row.price) > 0
+    const isValid = isRowValid(row)
     const filled  = countUserFilled(row)
     const opacity = filled === 0 && rowIdx >= 2 ? 0.5 : 1
+    const isDeped = row.funded_by === 'DepEd'
 
     const hc = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       updateRow(rowIdx, e.target.name as keyof FormState, e.target.value)
@@ -469,7 +482,7 @@ export default function NewRecordPage() {
 
         {/* F: Division */}
         <td style={{ ...iCell, width: 180, ...activeBorder(rowIdx, 'F') }}>
-          <input name="division" style={cInput} placeholder="e.g. Isabela SDO" value={row.division} onChange={hc} onFocus={fc('F', 'division')} onKeyDown={noEnter} title={row.division} />
+          <input name="division" style={cInput} placeholder={isDeped ? "SDO Name *" : "SDO Name (Optional)"} value={row.division} onChange={hc} onFocus={fc('F', 'division')} onKeyDown={noEnter} title={row.division} />
         </td>
 
         {/* G: Municipality */}
@@ -479,7 +492,7 @@ export default function NewRecordPage() {
 
         {/* H: School */}
         <td style={{ ...iCell, width: 240, ...activeBorder(rowIdx, 'H') }}>
-          <input name="elementary_school" style={cInput} placeholder="School name" value={row.elementary_school} onChange={hc} onFocus={fc('H', 'elementary_school')} onKeyDown={noEnter} title={row.elementary_school} />
+          <input name="elementary_school" style={cInput} placeholder={isDeped ? "School name *" : "School name (Optional)"} value={row.elementary_school} onChange={hc} onFocus={fc('H', 'elementary_school')} onKeyDown={noEnter} title={row.elementary_school} />
         </td>
 
         {/* I-N: Calc */}
