@@ -12,7 +12,7 @@ export default async function DataPage({
   searchParams: Promise<{
     year?: string; funded_by?: string; region?: string; center?: string
     search?: string; province?: string; division?: string; municipality?: string
-    milk_type?: string; supplier?: string
+    milk_type?: string; supplier?: string; date_started_month?: string; date_completed_month?: string
   }>
 }) {
   const supabase = await createClient()
@@ -41,9 +41,27 @@ export default async function DataPage({
 
   // Handle specific filter categories
   if (params.year)      query = query.eq('year', Number(params.year))
-  if (params.month) {
-    const m = params.month.substring(0, 2)
-    query = query.like('created_at', `____-${m}-%`)
+  if (params.date_started_month) {
+    const m = params.date_started_month.substring(0, 2)
+    if (params.year) {
+      const end = new Date(Number(params.year), Number(m), 1).toISOString().split('T')[0]
+      query = query.gte('date_started', `${params.year}-${m}-01`).lt('date_started', end)
+    } else {
+      const years = [2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026, 2027]
+      const orConditions = years.map(y => `and(date_started.gte.${y}-${m}-01,date_started.lt.${new Date(y, Number(m), 1).toISOString().split('T')[0]})`).join(',')
+      query = query.or(orConditions)
+    }
+  }
+  if (params.date_completed_month) {
+    const m = params.date_completed_month.substring(0, 2)
+    if (params.year) {
+      const end = new Date(Number(params.year), Number(m), 1).toISOString().split('T')[0]
+      query = query.gte('date_completed', `${params.year}-${m}-01`).lt('date_completed', end)
+    } else {
+      const years = [2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026, 2027]
+      const orConditions = years.map(y => `and(date_completed.gte.${y}-${m}-01,date_completed.lt.${new Date(y, Number(m), 1).toISOString().split('T')[0]})`).join(',')
+      query = query.or(orConditions)
+    }
   }
   if (params.funded_by) query = query.eq('funded_by', params.funded_by)
   if (params.region)    query = query.eq('region', params.region)
@@ -155,7 +173,7 @@ export default async function DataPage({
                   <td className="col-prov">{r.province}</td>
                   <td className="col-div">{r.division || 'N/A'}</td>
                   <td>{r.municipality || 'N/A'}</td>
-                  <td style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <td>
                     {r.elementary_school || 'N/A'}
                   </td>
                   {/* I-N auto-calc */}
@@ -175,7 +193,7 @@ export default async function DataPage({
                   <td style={{ textAlign: 'right' }}>
                     {r.price ? `₱${r.price.toFixed(2)}` : 'N/A'}
                   </td>
-                  <td style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <td>
                     {(r as any).cooperatives?.name ?? 'N/A'}
                   </td>
                   {/* U-W financial */}

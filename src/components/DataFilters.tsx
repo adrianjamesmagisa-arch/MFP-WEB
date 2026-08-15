@@ -102,7 +102,12 @@ export function DataFilters({ filterOptions }: { filterOptions?: FilterOptions }
 
   const filterGroups = [
     { key: 'year', label: 'Year', options: filterOptions?.year || [] },
-    { key: 'month', label: 'Input Month', options: [
+    { key: 'date_started_month', label: 'Date Started (Month)', options: [
+      '01 - January', '02 - February', '03 - March', '04 - April',
+      '05 - May', '06 - June', '07 - July', '08 - August',
+      '09 - September', '10 - October', '11 - November', '12 - December'
+    ] },
+    { key: 'date_completed_month', label: 'Date Completed (Month)', options: [
       '01 - January', '02 - February', '03 - March', '04 - April',
       '05 - May', '06 - June', '07 - July', '08 - August',
       '09 - September', '10 - October', '11 - November', '12 - December'

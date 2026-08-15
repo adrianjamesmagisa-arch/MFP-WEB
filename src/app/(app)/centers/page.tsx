@@ -21,7 +21,10 @@ export default async function CentersPage() {
 
   if (latestInputs) {
     latestInputs.forEach(row => {
-      if (!centerStats[row.center]?.lastInput) {
+      // Ignore initial seeded data (which has exactly 12:00:00 UTC timestamp on the 15th)
+      const isSeededData = row.created_at.includes('T12:00:00+00:00')
+      
+      if (!isSeededData && !centerStats[row.center]?.lastInput) {
         centerStats[row.center] = { lastInput: row.created_at }
       }
     })
