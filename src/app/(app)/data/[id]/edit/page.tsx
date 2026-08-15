@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
+import { useRouter, useParams } from 'next/navigation'
 import { PCC_CENTERS, REGIONS, MODES_OF_PROCUREMENT, type Cooperative } from '@/lib/types'
 import { Save, X, AlertCircle, CheckCircle2, RotateCcw, PenLine } from 'lucide-react'
 
@@ -227,7 +227,8 @@ const noEnter = (e: React.KeyboardEvent) => { if (e.key === 'Enter') e.preventDe
 // ─── Component ──────────────────────────────────────────────────────────────────
 
 
-export default function EditRecordPage({ params }: { params: { id: string } }) {
+export default function EditRecordPage() {
+  const params = useParams() as { id: string }
   const [rows, setRows]           = useState<FormState[]>([emptyForm()])
   // colOverrides: column fields where formula is DISABLED for all rows
   const [colOverrides, setColOverrides] = useState<Set<string>>(new Set())
