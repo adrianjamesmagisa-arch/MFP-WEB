@@ -13,7 +13,8 @@ interface DashStats  {
   by_funder: FunderStat[]; by_year: YearStat[]; top_centers: CenterStat[]
 }
 
-export default async function DashboardPage({ searchParams }: { searchParams: { year?: string, month?: string } }) {
+export default async function DashboardPage(props: { searchParams: Promise<{ year?: string, month?: string }> }) {
+  const searchParams = await props.searchParams;
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
