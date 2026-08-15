@@ -23,7 +23,7 @@ export default function Sidebar({ userRole, userCenter, userName }: {
   const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()
-  const isCollapsed = pathname.includes('/edit') || pathname.includes('/add') || pathname.includes('/bulk-edit')
+  const isCollapsed = pathname.includes('/edit') || pathname.includes('/add') || pathname.includes('/new') || pathname.includes('/bulk-edit')
 
   async function handleSignOut() {
     await supabase.auth.signOut()
