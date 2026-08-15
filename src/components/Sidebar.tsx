@@ -70,7 +70,6 @@ export default function Sidebar({ userRole, userCenter, userName }: {
               key={item.href}
               href={item.href}
               className={`sidebar-link ${isActive ? 'active' : ''}`}
-              style={item.indent ? { paddingLeft: '2.5rem', fontSize: '0.82rem' } : {}}
             >
               <Icon size={16} />
               {item.label}
