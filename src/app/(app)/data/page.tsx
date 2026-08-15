@@ -186,33 +186,33 @@ export default async function DataPage({
                     {r.elementary_school || 'N/A'}
                   </td>
                   {/* I-N auto-calc */}
-                  <td style={{ textAlign: 'right' }}>{formatNumber(r.milk_packs)}</td>
-                  <td style={{ textAlign: 'right' }}>{formatNumber(r.total_volume_requirements)}</td>
-                  <td style={{ textAlign: 'right' }}>{formatNumber(r.raw_milk_liters)}</td>
-                  <td style={{ textAlign: 'right' }}>{r.whole_milk_kg?.toFixed(2) ?? 'N/A'}</td>
-                  <td style={{ textAlign: 'right' }}>{r.skimmed_milk_kg?.toFixed(2) ?? 'N/A'}</td>
-                  <td style={{ textAlign: 'right' }}>{r.sugar?.toFixed(2) ?? 'N/A'}</td>
+                  <td>{formatNumber(r.milk_packs)}</td>
+                  <td>{formatNumber(r.total_volume_requirements)}</td>
+                  <td>{formatNumber(r.raw_milk_liters)}</td>
+                  <td>{r.whole_milk_kg?.toFixed(2) ?? 'N/A'}</td>
+                  <td>{r.skimmed_milk_kg?.toFixed(2) ?? 'N/A'}</td>
+                  <td>{r.sugar?.toFixed(2) ?? 'N/A'}</td>
                   {/* O-T user inputs */}
-                  <td style={{ textAlign: 'center' }}>{r.feeding_days || 'N/A'}</td>
-                  <td style={{ textAlign: 'center' }}>{r.batch || 'N/A'}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatNumber(r.beneficiaries)}</td>
+                  <td>{r.feeding_days || 'N/A'}</td>
+                  <td>{r.batch || 'N/A'}</td>
+                  <td style={{ fontWeight: 600 }}>{formatNumber(r.beneficiaries)}</td>
                   <td>
                     <span className={`badge badge-${r.milk_type?.toLowerCase()}`}>{r.milk_type || 'N/A'}</span>
                   </td>
-                  <td style={{ textAlign: 'right' }}>
+                  <td>
                     {r.price ? `₱${r.price.toFixed(2)}` : 'N/A'}
                   </td>
                   <td>
                     {(r as any).cooperatives?.name ?? 'N/A'}
                   </td>
                   {/* U-W financial */}
-                  <td style={{ textAlign: 'right' }}>
+                  <td>
                     {r.milk_cost ? `₱${formatNumber(r.milk_cost)}` : 'N/A'}
                   </td>
-                  <td style={{ textAlign: 'right' }}>
+                  <td>
                     {r.service_fee ? `₱${formatNumber(r.service_fee)}` : 'N/A'}
                   </td>
-                  <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                  <td style={{ fontWeight: 600 }}>
                     {r.total_funds_transferred ? `₱${formatNumber(r.total_funds_transferred)}` : 'N/A'}
                   </td>
                   <td style={{ whiteSpace: 'nowrap' }}>{r.mode_of_procurement || 'N/A'}</td>
