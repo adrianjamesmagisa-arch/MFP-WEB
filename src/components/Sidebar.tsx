@@ -35,6 +35,11 @@ export default function Sidebar({ userRole, userCenter, userName }: {
     if (item.href === '/users' && userRole !== 'super_admin') return false
     if (item.href === '/centers' && userRole !== 'super_admin') return false
     return true
+  }).map(item => {
+    if (item.href === '/data' && userRole === 'encoder' && userCenter) {
+      return { ...item, label: `${userCenter} Masterlist` }
+    }
+    return item
   })
 
   return (
