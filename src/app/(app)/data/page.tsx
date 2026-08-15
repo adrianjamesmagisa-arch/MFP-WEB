@@ -1,0 +1,214 @@
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+import Link from 'next/link'
+import { formatCurrency, formatNumber, formatDate } from '@/lib/utils'
+import { Plus } from 'lucide-react'
+import { DataFilters } from '@/components/DataFilters'
+
+export default async function DataPage({
+  searchParams
+}: {
+  searchParams: Promise<{
+    year?: string; funded_by?: string; region?: string; center?: string
+    search?: string; province?: string; division?: string; municipality?: string
+    milk_type?: string; supplier?: string
+  }>
+}) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  const { data: profile } = await supabase
+    .from('profiles').select('*').eq('id', user.id).single()
+
+  const params = await searchParams
+  let query = supabase
+    .from('mfp_data')
+    .select('*, cooperatives(name)')
+    .order('year', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(300)
+
+  if (profile?.role === 'encoder' && profile?.center) {
+    query = query.eq('center', profile.center)
+  }
+
+  // Handle Search parameter (multi-column text search)
+  if (params.search) {
+    query = query.or(`center.ilike.%${params.search}%,province.ilike.%${params.search}%,municipality.ilike.%${params.search}%,elementary_school.ilike.%${params.search}%,division.ilike.%${params.search}%`)
+  }
+
+  // Handle specific filter categories
+  if (params.year)      query = query.eq('year', Number(params.year))
+  if (params.funded_by) query = query.eq('funded_by', params.funded_by)
+  if (params.region)    query = query.eq('region', params.region)
+  if (params.province)  query = query.eq('province', params.province)
+  if (params.division)  query = query.eq('division', params.division)
+  if (params.municipality) query = query.eq('municipality', params.municipality)
+  if (params.milk_type) query = query.eq('milk_type', params.milk_type)
+  if (params.supplier)  query = query.eq('supplier', params.supplier) // Assumes supplier is mapped correctly or handled in DataFilters
+  if (params.center && profile?.role !== 'encoder') query = query.eq('center', params.center)
+
+  const { data: records } = await query
+
+  // Fetch unique filter options for the popover (excluding role limitations if needed, but safer to respect them)
+  let filterQuery = supabase.from('mfp_data').select('funded_by, region, center, province, division, municipality, milk_type')
+  if (profile?.role === 'encoder' && profile?.center) {
+    filterQuery = filterQuery.eq('center', profile.center)
+  }
+  const { data: allData } = await filterQuery
+
+  const getUnique = (key: string) => 
+    Array.from(new Set(allData?.map(d => d[key as keyof typeof d]).filter(Boolean) as string[])).sort()
+
+  const filterOptions = {
+    funded_by: getUnique('funded_by'),
+    center: getUnique('center'),
+    region: getUnique('region'),
+    province: getUnique('province'),
+    division: getUnique('division'),
+    municipality: getUnique('municipality'),
+    milk_type: getUnique('milk_type'),
+    supplier: [], // Will require joining cooperatives if supplier is needed
+  }
+
+  return (
+    <div>
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">MFP Data</h1>
+          <p className="page-subtitle">
+            {records?.length ?? 0} record(s) found
+            {profile?.role === 'encoder' && profile?.center && ` · ${profile.center} only`}
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: '0.75rem' }}>
+          <Link href="/data/new" className="btn btn-gold">
+            <Plus size={16} /> Add Record
+          </Link>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <DataFilters filterOptions={filterOptions} />
+
+      {/* Table — horizontally scrollable, all columns */}
+      <div className="card" style={{ overflow: 'hidden' }}>
+        <div style={{ overflow: 'auto', maxHeight: 'calc(100vh - 260px)' }}>
+          <table className="data-table" style={{ minWidth: 2400, fontSize: '0.78rem' }}>
+            <thead>
+              <tr>
+                {/* A-G */}
+                <th className="col-year" style={{ whiteSpace: 'nowrap' }}>A — Year</th>
+                <th className="col-funded" style={{ whiteSpace: 'nowrap' }}>B — Funded By</th>
+                <th className="col-region" style={{ whiteSpace: 'nowrap' }}>C — Region</th>
+                <th className="col-center" style={{ whiteSpace: 'nowrap' }}>D — Center</th>
+                <th className="col-prov" style={{ whiteSpace: 'nowrap' }}>E — Province</th>
+                <th className="col-div" style={{ whiteSpace: 'nowrap' }}>F — Division</th>
+                <th style={{ whiteSpace: 'nowrap' }}>G — Municipality</th>
+                <th style={{ whiteSpace: 'nowrap' }}>H — Elementary School</th>
+                {/* H-M auto-calc */}
+                <th style={{ whiteSpace: 'nowrap' }}>I — Milk Packs</th>
+                <th style={{ whiteSpace: 'nowrap' }}>J — Total Vol. Req (L)</th>
+                <th style={{ whiteSpace: 'nowrap' }}>K — Raw Milk (L)</th>
+                <th style={{ whiteSpace: 'nowrap' }}>L — Whole Milk (kg)</th>
+                <th style={{ whiteSpace: 'nowrap' }}>M — Skimmed Milk (kg)</th>
+                <th style={{ whiteSpace: 'nowrap' }}>N — Sugar (kg)</th>
+                {/* N-S user inputs */}
+                <th style={{ whiteSpace: 'nowrap' }}>O — Feeding Days</th>
+                <th style={{ whiteSpace: 'nowrap' }}>P — Batch</th>
+                <th style={{ whiteSpace: 'nowrap' }}>Q — Beneficiaries</th>
+                <th style={{ whiteSpace: 'nowrap' }}>R — Milk Type</th>
+                <th style={{ whiteSpace: 'nowrap' }}>S — Price (₱)</th>
+                <th style={{ whiteSpace: 'nowrap' }}>T — Supplier</th>
+                {/* T-V financial */}
+                <th style={{ whiteSpace: 'nowrap' }}>U — Milk Cost (₱)</th>
+                <th style={{ whiteSpace: 'nowrap' }}>V — Service Fee (₱)</th>
+                <th style={{ whiteSpace: 'nowrap' }}>W — Total Funds (₱)</th>
+                <th style={{ whiteSpace: 'nowrap' }}>X — Mode of Procurement</th>
+                {/* Dates */}
+                <th style={{ whiteSpace: 'nowrap' }}>Y — MOA Signing</th>
+                <th style={{ whiteSpace: 'nowrap' }}>Z — Fund Transfer</th>
+                <th style={{ whiteSpace: 'nowrap' }}>AA — Date Started</th>
+                <th style={{ whiteSpace: 'nowrap' }}>AB — Date Completed</th>
+                <th style={{ whiteSpace: 'nowrap' }}>AC — Liquidation</th>
+                <th style={{ whiteSpace: 'nowrap' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+
+              {records?.map(r => (
+                <tr key={r.id}>
+                  {/* A-H */}
+                  <td className="col-year" style={{ fontWeight: 700 }}>{r.year}</td>
+                  <td className="col-funded">
+                    <span className={`badge badge-${r.funded_by?.toLowerCase()}`}>{r.funded_by}</span>
+                  </td>
+                  <td className="col-region">{r.region}</td>
+                  <td className="col-center" style={{ fontWeight: 600, color: 'var(--navy)' }}>{r.center}</td>
+                  <td className="col-prov">{r.province}</td>
+                  <td className="col-div">{r.division || 'N/A'}</td>
+                  <td>{r.municipality || 'N/A'}</td>
+                  <td style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {r.elementary_school || 'N/A'}
+                  </td>
+                  {/* I-N auto-calc */}
+                  <td style={{ textAlign: 'right' }}>{formatNumber(r.milk_packs)}</td>
+                  <td style={{ textAlign: 'right' }}>{formatNumber(r.total_volume_requirements)}</td>
+                  <td style={{ textAlign: 'right' }}>{formatNumber(r.raw_milk_liters)}</td>
+                  <td style={{ textAlign: 'right' }}>{r.whole_milk_kg?.toFixed(2) ?? 'N/A'}</td>
+                  <td style={{ textAlign: 'right' }}>{r.skimmed_milk_kg?.toFixed(2) ?? 'N/A'}</td>
+                  <td style={{ textAlign: 'right' }}>{r.sugar?.toFixed(2) ?? 'N/A'}</td>
+                  {/* O-T user inputs */}
+                  <td style={{ textAlign: 'center' }}>{r.feeding_days || 'N/A'}</td>
+                  <td style={{ textAlign: 'center' }}>{r.batch || 'N/A'}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatNumber(r.beneficiaries)}</td>
+                  <td>
+                    <span className={`badge badge-${r.milk_type?.toLowerCase()}`}>{r.milk_type || 'N/A'}</span>
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    {r.price ? `₱${r.price.toFixed(2)}` : 'N/A'}
+                  </td>
+                  <td style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {(r as any).cooperatives?.name ?? 'N/A'}
+                  </td>
+                  {/* U-W financial */}
+                  <td style={{ textAlign: 'right' }}>
+                    {r.milk_cost ? `₱${formatNumber(r.milk_cost)}` : 'N/A'}
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    {r.service_fee ? `₱${formatNumber(r.service_fee)}` : 'N/A'}
+                  </td>
+                  <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                    {r.total_funds_transferred ? `₱${formatNumber(r.total_funds_transferred)}` : 'N/A'}
+                  </td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{r.mode_of_procurement || 'N/A'}</td>
+                  {/* Dates */}
+                  <td style={{ whiteSpace: 'nowrap' }}>{formatDate(r.moa_signing_date) || 'N/A'}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{formatDate(r.fund_transfer_date) || 'N/A'}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{formatDate(r.date_started) || 'N/A'}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{formatDate(r.date_completed) || 'N/A'}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{formatDate(r.liquidation_date) || 'N/A'}</td>
+                  <td>
+                    <Link
+                      href={`/data/${r.id}/edit`}
+                      className="btn btn-outline"
+                      style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}
+                    >
+                      Edit
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {records?.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--gray-400)', background: 'white', borderRadius: 12, border: '1px solid var(--gray-200)', marginTop: '-1rem', borderTop: 'none', borderTopLeftRadius: 0, borderTopRightRadius: 0 }}>
+          No records found matching your filters.
+        </div>
+      )}
+    </div>
+  )
+}
