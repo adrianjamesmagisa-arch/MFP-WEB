@@ -101,6 +101,12 @@ export function DataFilters({ filterOptions }: { filterOptions?: FilterOptions }
   }
 
   const filterGroups = [
+    { key: 'year', label: 'Year', options: filterOptions?.year || [] },
+    { key: 'month', label: 'Input Month', options: [
+      '01 - January', '02 - February', '03 - March', '04 - April',
+      '05 - May', '06 - June', '07 - July', '08 - August',
+      '09 - September', '10 - October', '11 - November', '12 - December'
+    ] },
     { key: 'funded_by', label: 'Funded By', options: filterOptions?.funded_by || ['DepEd', 'DSWD', 'LDS'] },
     { key: 'center', label: 'Center', options: filterOptions?.center || [] },
     { key: 'region', label: 'Region', options: filterOptions?.region || [] },

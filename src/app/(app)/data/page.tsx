@@ -41,6 +41,10 @@ export default async function DataPage({
 
   // Handle specific filter categories
   if (params.year)      query = query.eq('year', Number(params.year))
+  if (params.month) {
+    const m = params.month.substring(0, 2)
+    query = query.like('created_at', `____-${m}-%`)
+  }
   if (params.funded_by) query = query.eq('funded_by', params.funded_by)
   if (params.region)    query = query.eq('region', params.region)
   if (params.province)  query = query.eq('province', params.province)
@@ -63,6 +67,7 @@ export default async function DataPage({
     Array.from(new Set(allData?.map(d => d[key as keyof typeof d]).filter(Boolean) as string[])).sort()
 
   const filterOptions = {
+    year: ['2019', '2020', '2021', '2022', '2023', '2024', '2025', '2026', '2027'],
     funded_by: ['DepEd', 'DSWD', 'LDS'],
     center: PCC_CENTERS,
     region: REGIONS,
