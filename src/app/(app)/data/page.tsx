@@ -138,8 +138,8 @@ export default async function DataPage({
                 <th className="col-center" style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 70 }}>D — Center</th>
                 <th className="col-prov" style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 100 }}>E — Province</th>
                 <th className="col-div" style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 100 }}>F — Division</th>
-                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 120 }}>G — Municipality</th>
-                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 160 }}>H — Elementary School</th>
+                <th className="col-muni" style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 120 }}>G — Municipality</th>
+                <th className="col-school" style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 160 }}>H — Elementary School</th>
                 {/* I-N auto-calc */}
                 <th style={{ width: 90, minWidth: 90, whiteSpace: 'normal', lineHeight: 1.2 }}>I — Milk Packs</th>
                 <th style={{ width: 90, minWidth: 90, whiteSpace: 'normal', lineHeight: 1.2 }}>J — Total Vol. Req (L)</th>
@@ -181,8 +181,8 @@ export default async function DataPage({
                   <td className="col-center" style={{ fontWeight: 600, color: 'var(--navy)' }}>{r.center}</td>
                   <td className="col-prov">{r.province}</td>
                   <td className="col-div">{r.division || 'N/A'}</td>
-                  <td>{r.municipality || 'N/A'}</td>
-                  <td>
+                  <td className="col-muni">{r.municipality || 'N/A'}</td>
+                  <td className="col-school">
                     {r.elementary_school || 'N/A'}
                   </td>
                   {/* I-N auto-calc */}

@@ -80,22 +80,24 @@ h1, h2, h3 {
 .data-table tr:nth-child(even) td { background: var(--gray-50); }
 .data-table tr:hover td { background: #eef2ff; }
 
-/* Sticky columns for A-F (Frozen Panes) */
+/* Sticky columns for A-H (Frozen Panes) */
 .col-year { position: sticky; left: 0; width: 60px; min-width: 60px; max-width: 60px; z-index: 5; background: white; }
 .col-funded { position: sticky; left: 60px; width: 80px; min-width: 80px; max-width: 80px; z-index: 5; background: white; }
 .col-region { position: sticky; left: 140px; width: 70px; min-width: 70px; max-width: 70px; z-index: 5; background: white; }
 .col-center { position: sticky; left: 210px; width: 70px; min-width: 70px; max-width: 70px; z-index: 5; background: white; }
 .col-prov { position: sticky; left: 280px; width: 100px; min-width: 100px; max-width: 100px; z-index: 5; background: white; }
-.col-div { position: sticky; left: 380px; width: 100px; min-width: 100px; max-width: 100px; z-index: 5; background: white; border-right: 2px solid var(--navy) !important; }
+.col-div { position: sticky; left: 380px; width: 100px; min-width: 100px; max-width: 100px; z-index: 5; background: white; }
+.col-muni { position: sticky; left: 480px; width: 120px; min-width: 120px; max-width: 120px; z-index: 5; background: white; }
+.col-school { position: sticky; left: 600px; width: 160px; min-width: 160px; max-width: 160px; z-index: 5; background: white; border-right: 2px solid var(--navy) !important; }
 
-.data-table th.col-year, .data-table th.col-funded, .data-table th.col-region, .data-table th.col-center, .data-table th.col-prov, .data-table th.col-div {
+.data-table th.col-year, .data-table th.col-funded, .data-table th.col-region, .data-table th.col-center, .data-table th.col-prov, .data-table th.col-div, .data-table th.col-muni, .data-table th.col-school {
   background: var(--navy);
   z-index: 20;
 }
-.data-table tr:nth-child(even) td.col-year, .data-table tr:nth-child(even) td.col-funded, .data-table tr:nth-child(even) td.col-region, .data-table tr:nth-child(even) td.col-center, .data-table tr:nth-child(even) td.col-prov, .data-table tr:nth-child(even) td.col-div {
+.data-table tr:nth-child(even) td.col-year, .data-table tr:nth-child(even) td.col-funded, .data-table tr:nth-child(even) td.col-region, .data-table tr:nth-child(even) td.col-center, .data-table tr:nth-child(even) td.col-prov, .data-table tr:nth-child(even) td.col-div, .data-table tr:nth-child(even) td.col-muni, .data-table tr:nth-child(even) td.col-school {
   background: var(--gray-50);
 }
-.data-table tr:hover td.col-year, .data-table tr:hover td.col-funded, .data-table tr:hover td.col-region, .data-table tr:hover td.col-center, .data-table tr:hover td.col-prov, .data-table tr:hover td.col-div {
+.data-table tr:hover td.col-year, .data-table tr:hover td.col-funded, .data-table tr:hover td.col-region, .data-table tr:hover td.col-center, .data-table tr:hover td.col-prov, .data-table tr:hover td.col-div, .data-table tr:hover td.col-muni, .data-table tr:hover td.col-school {
   background: #eef2ff;
 }
 
