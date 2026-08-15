@@ -81,7 +81,7 @@ function EditableCell({ id, field, value, type = 'text', className, style, forma
       style={{ ...style, cursor: 'text', opacity: isSaving ? 0.5 : 1 }} 
       onClick={() => setIsEditing(true)}
     >
-      {render ? render(val) : format ? format(val) : (val ?? 'N/A')}
+      {(val === null || val === undefined || val === '') ? 'N/A' : render ? render(val) : format ? format(val) : val}
     </td>
   )
 }
