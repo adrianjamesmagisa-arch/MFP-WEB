@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { formatCurrency, formatNumber } from '@/lib/utils'
 import { Users, Package, DollarSign, Database, BookOpen, HeartHandshake, Church } from 'lucide-react'
 import { DashboardFilter } from '@/components/DashboardFilter'
+import { PCC_CENTERS } from '@/lib/types'
 
 interface FunderStat { funded_by: string; records: number; beneficiaries: number; milk_packs: number; milk_cost: number; total_funds: number }
 interface YearStat   { year: number; records: number; beneficiaries: number; milk_packs: number }
@@ -13,7 +14,7 @@ interface DashStats  {
   by_funder: FunderStat[]; by_year: YearStat[]; top_centers: CenterStat[]
 }
 
-export default async function DashboardPage(props: { searchParams: Promise<{ year?: string, month?: string }> }) {
+export default async function DashboardPage(props: { searchParams: Promise<{ year?: string, month?: string, center?: string }> }) {
   const searchParams = await props.searchParams;
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -23,7 +24,7 @@ export default async function DashboardPage(props: { searchParams: Promise<{ yea
     .from('profiles').select('*').eq('id', user.id).single()
 
   const isEncoder   = profile?.role === 'encoder'
-  const centerFilter = isEncoder ? profile?.center : null
+  const centerFilter = isEncoder ? profile?.center : searchParams.center
 
   let stats: DashStats | null = null
 
@@ -130,12 +131,12 @@ export default async function DashboardPage(props: { searchParams: Promise<{ yea
           </p>
         </div>
         {/* Center badge for encoders */}
-        {isEncoder && centerFilter && (
+        {centerFilter && (
           <div style={{ background: 'var(--navy)', color: 'white', borderRadius: 10, padding: '0.6rem 1.25rem', fontSize: '0.82rem', fontWeight: 700 }}>
             📍 Showing {centerFilter} data only
           </div>
         )}
-        <DashboardFilter />
+        <DashboardFilter centers={PCC_CENTERS} isEncoder={isEncoder} />
       </div>
 
       {/* Top stat cards */}
