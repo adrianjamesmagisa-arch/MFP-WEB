@@ -91,7 +91,7 @@ export default async function CenterDetailPage({ params }: { params: Promise<{ c
                 return (
                   <Link 
                     key={key}
-                    href={`/centers/${encodeURIComponent(decodedCenter)}/masterlist?month=${group.monthStr}&year=${group.yearStr}`}
+                    href={`/data?center=${encodeURIComponent(decodedCenter)}&input_month=${group.monthStr}&input_year=${group.yearStr}`}
                     style={{ 
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                       padding: '1rem', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '0.5rem',
@@ -131,7 +131,7 @@ export default async function CenterDetailPage({ params }: { params: Promise<{ c
               sortedYears.map(year => (
                 <Link 
                   key={year}
-                  href={`/centers/${encodeURIComponent(decodedCenter)}/masterlist?data_year=${year}`}
+                  href={`/data?center=${encodeURIComponent(decodedCenter)}&year=${year}`}
                   style={{ 
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                     padding: '1rem', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '0.5rem',

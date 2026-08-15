@@ -13,6 +13,7 @@ export default async function DataPage({
     year?: string; funded_by?: string; region?: string; center?: string
     search?: string; province?: string; division?: string; municipality?: string
     milk_type?: string; supplier?: string; date_started_month?: string; date_completed_month?: string
+    input_month?: string; input_year?: string;
   }>
 }) {
   const supabase = await createClient()
@@ -71,6 +72,14 @@ export default async function DataPage({
   if (params.milk_type) query = query.eq('milk_type', params.milk_type)
   if (params.supplier)  query = query.eq('supplier', params.supplier) // Assumes supplier is mapped correctly or handled in DataFilters
   if (params.center && profile?.role !== 'encoder') query = query.eq('center', params.center)
+
+  if (params.input_month && params.input_year) {
+    const startDate = new Date(parseInt(params.input_year), parseInt(params.input_month) - 1, 1)
+    const endDate = new Date(parseInt(params.input_year), parseInt(params.input_month), 1)
+    query = query
+      .gte('created_at', startDate.toISOString())
+      .lt('created_at', endDate.toISOString())
+  }
 
   const { data: records } = await query
 
