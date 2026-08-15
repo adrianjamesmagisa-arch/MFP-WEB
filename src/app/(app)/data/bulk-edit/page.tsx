@@ -191,7 +191,7 @@ const cTh: React.CSSProperties = { ...lTh, background: '#fef3c7', color: '#92400
 const nTd: React.CSSProperties = {
   background: '#f8fafc', color: '#1e293b', fontWeight: 600, fontSize: '0.73rem',
   padding: '4px 8px', border: '1px solid #e2e8f0', height: 36,
-  verticalAlign: 'middle', whiteSpace: 'nowrap', boxSizing: 'border-box',
+  verticalAlign: 'middle', whiteSpace: 'normal', boxSizing: 'border-box',
 }
 const cnTd: React.CSSProperties = { ...nTd, background: '#fffbeb', color: '#92400e' }
 const rnTd: React.CSSProperties = {
@@ -703,7 +703,7 @@ export default function BulkEditPage() {
       <form id="xls-form" onSubmit={handleSubmit}>
         <div style={{ background: 'white', borderRadius: 12, border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ borderCollapse: 'collapse', tableLayout: 'fixed', whiteSpace: 'nowrap', fontSize: '0.78rem' }}>
+            <table style={{ borderCollapse: 'collapse', tableLayout: 'fixed', whiteSpace: 'normal', fontSize: '0.78rem' }}>
               <thead>
                 {/* Column letters */}
                 <tr>
