@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Calendar, ChevronLeft, List, FileSpreadsheet } from 'lucide-react'
 import { format } from 'date-fns'
@@ -7,6 +8,14 @@ export default async function CenterDetailPage({ params }: { params: Promise<{ c
   const { center } = await params
   const decodedCenter = decodeURIComponent(center)
   const supabase = await createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  const { data: profile } = await supabase.from('profiles').select('*').eq('id', user?.id).single()
+
+  if (profile?.role === 'encoder' && profile?.center !== decodedCenter) {
+    // Prevent encoders from viewing other centers' masterlists
+    redirect('/dashboard')
+  }
 
   // Fetch all record timestamps for this center
   const { data: records } = await supabase

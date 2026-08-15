@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronLeft } from 'lucide-react'
 import { formatCurrency, formatNumber, formatDate } from '@/lib/utils'
@@ -15,6 +16,13 @@ export default async function CenterMasterlistPage({
   const decodedCenter = decodeURIComponent(center)
   const sp = await searchParams
   const supabase = await createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  const { data: profile } = await supabase.from('profiles').select('*').eq('id', user?.id).single()
+
+  if (profile?.role === 'encoder' && profile?.center !== decodedCenter) {
+    redirect('/dashboard')
+  }
 
   let query = supabase.from('mfp_data').select('*, cooperatives(name)').eq('center', decodedCenter).order('created_at', { ascending: false })
 
@@ -71,6 +79,7 @@ export default async function CenterMasterlistPage({
                 <th>SUPPLIER</th>
                 <th style={{ textAlign: 'right' }}>TOTAL FUNDS</th>
                 <th>INPUT DATE</th>
+                <th style={{ whiteSpace: 'nowrap' }}>ACTIONS</th>
               </tr>
             </thead>
             <tbody>
@@ -100,6 +109,15 @@ export default async function CenterMasterlistPage({
                     </td>
                     <td style={{ textAlign: 'right', fontWeight: 600, color: '#047857' }}>{formatCurrency(r.total_funds_transferred)}</td>
                     <td style={{ color: '#64748b' }}>{formatDate(r.created_at)}</td>
+                    <td>
+                      <Link
+                        href={`/data/${r.id}/edit`}
+                        className="btn btn-outline"
+                        style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}
+                      >
+                        Edit
+                      </Link>
+                    </td>
                   </tr>
                 ))
               )}
