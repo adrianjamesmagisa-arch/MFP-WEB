@@ -2,17 +2,27 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
+import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
-  LayoutDashboard, Database, FileText, Users,
-  Building2, LogOut, ChevronRight, Milk
+  LayoutDashboard, Database, Users,
+  Building2, LogOut, ChevronRight, ChevronDown,
+  FileBarChart2, BarChart3, BookOpenCheck, HeartHandshake, Church, Package
 } from 'lucide-react'
 
 const navItems = [
-  { href: '/dashboard',           icon: LayoutDashboard, label: 'Dashboard' },
-  { href: '/data',                icon: Database,         label: 'MFP Data' },
-  { href: '/centers',             icon: Building2,        label: 'Centers' },
-  { href: '/users',               icon: Users,            label: 'Users' },
+  { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+  { href: '/data',      icon: Database,         label: 'MFP Data' },
+  { href: '/centers',   icon: Building2,         label: 'Centers' },
+  { href: '/users',     icon: Users,             label: 'Users' },
+]
+
+const reportItems = [
+  { href: '/reports/pimd',         icon: BarChart3,      label: 'PIMD Report' },
+  { href: '/reports/summary-deped',icon: BookOpenCheck,  label: 'Summary DepEd' },
+  { href: '/reports/summary-lds',  icon: Church,         label: 'Summary LDS' },
+  { href: '/reports/summary-dswd', icon: HeartHandshake, label: 'Summary DSWD' },
+  { href: '/reports/packs',        icon: Package,        label: 'Packs Delivered' },
 ]
 
 export default function Sidebar({ userRole, userCenter, userName }: {
@@ -25,6 +35,9 @@ export default function Sidebar({ userRole, userCenter, userName }: {
   const supabase = createClient()
   const isCollapsed = pathname.includes('/edit') || pathname.includes('/add') || pathname.includes('/new') || pathname.includes('/bulk-edit')
 
+  const isInReports = pathname.startsWith('/reports')
+  const [reportsOpen, setReportsOpen] = useState(isInReports)
+
   async function handleSignOut() {
     await supabase.auth.signOut()
     router.push('/login')
@@ -32,7 +45,7 @@ export default function Sidebar({ userRole, userCenter, userName }: {
   }
 
   const visibleItems = navItems.filter(item => {
-    if (item.href === '/users' && userRole !== 'super_admin') return false
+    if (item.href === '/users'   && userRole !== 'super_admin') return false
     if (item.href === '/centers' && userRole !== 'super_admin') return false
     return true
   }).map(item => {
@@ -77,6 +90,61 @@ export default function Sidebar({ userRole, userCenter, userName }: {
               <Icon size={16} />
               {!isCollapsed && <span>{item.label}</span>}
               {isActive && !isCollapsed && <ChevronRight size={14} style={{ marginLeft: 'auto' }} />}
+            </Link>
+          )
+        })}
+
+        {/* ── Reports Group ── */}
+        {!isCollapsed && (
+          <>
+            <button
+              onClick={() => setReportsOpen(o => !o)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '0.625rem',
+                width: '100%', padding: '0.6rem 1.25rem',
+                background: isInReports ? 'rgba(245,158,11,0.12)' : 'transparent',
+                border: 'none', cursor: 'pointer', color: isInReports ? 'var(--gold)' : '#94a3b8',
+                fontSize: '0.82rem', fontWeight: 600, textAlign: 'left',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <FileBarChart2 size={16} />
+              <span style={{ flex: 1 }}>Reports</span>
+              {reportsOpen
+                ? <ChevronDown size={14} />
+                : <ChevronRight size={14} />}
+            </button>
+
+            {reportsOpen && (
+              <div style={{ paddingLeft: '0.75rem' }}>
+                {reportItems.map(item => {
+                  const Icon = item.icon
+                  const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={`sidebar-link ${isActive ? 'active' : ''}`}
+                      style={{ fontSize: '0.78rem', paddingLeft: '0.75rem' }}
+                    >
+                      <Icon size={14} />
+                      <span>{item.label}</span>
+                      {isActive && <ChevronRight size={12} style={{ marginLeft: 'auto' }} />}
+                    </Link>
+                  )
+                })}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Collapsed: show report icons */}
+        {isCollapsed && reportItems.map(item => {
+          const Icon = item.icon
+          const isActive = pathname === item.href
+          return (
+            <Link key={item.href} href={item.href} className={`sidebar-link ${isActive ? 'active' : ''}`}>
+              <Icon size={16} />
             </Link>
           )
         })}
