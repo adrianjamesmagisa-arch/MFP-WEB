@@ -249,7 +249,7 @@ export default function PIMDReportPage() {
           </div>
           {/* DA + Bagong Pilipinas logos */}
           <div style={{flexShrink:0}}>
-            <Image src="/pimd/logos.png" alt="DA and Bagong Pilipinas Logos" width={160} height={80} style={{objectFit:'contain'}}/>
+            <Image src="/pimd/logos_cropped.png" alt="DA and Bagong Pilipinas Logos" width={160} height={80} style={{objectFit:'contain'}}/>
           </div>
         </div>
 
