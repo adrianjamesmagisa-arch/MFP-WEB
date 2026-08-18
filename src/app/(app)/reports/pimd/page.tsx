@@ -7,11 +7,9 @@ import { Download, Filter } from 'lucide-react'
 import Image from 'next/image'
 
 // ── Brand colours ──────────────────────────────────────────────────
-const NAVY  = '#0f2557'
-const NAVY2 = '#1a3a6b'
-const GOLD  = '#f5a623'
-const LBG   = '#dce9f8'
+const NAVY  = '#0f2f57'
 const WHITE = '#ffffff'
+const LBG   = 'linear-gradient(135deg, #dce9f8 0%, #fefcf3 50%, #dce9f8 100%)' // matched from Canva
 
 const YEARS  = ['2019','2020','2021','2022','2023','2024','2025','2026']
 const MONTHS = [
@@ -39,18 +37,16 @@ interface Stats {
 // ── SVG Vertical Bar Chart ─────────────────────────────────────────
 function BarChart({ data }: { data: Record<string,number> }) {
   const entries = Object.entries(data).filter(([,v]) => v > 0).sort((a,b) => b[1]-a[1])
-  if (!entries.length) return (
-    <div style={{textAlign:'center',color:'#94a3b8',padding:'1.5rem',fontSize:'0.78rem'}}>No data</div>
-  )
+  if (!entries.length) return <div style={{textAlign:'center',color:'#94a3b8',padding:'1.5rem',fontSize:'0.78rem'}}>No data</div>
 
   const maxVal = Math.max(...entries.map(([,v]) => v), 1)
   const mag = Math.pow(10, Math.floor(Math.log10(maxVal)))
   const yMax = Math.ceil(maxVal / mag) * mag
   const steps = 4
 
-  const W=310, H=170, PL=52, PB=44, PT=18, PR=8
+  const W=310, H=160, PL=45, PB=25, PT=15, PR=8
   const cW=W-PL-PR, cH=H-PT-PB
-  const bW=(cW/entries.length)*0.55
+  const bW=(cW/entries.length)*0.45
   const bGap=cW/entries.length
 
   return (
@@ -62,24 +58,27 @@ function BarChart({ data }: { data: Record<string,number> }) {
         return (
           <g key={i}>
             <line x1={PL} y1={y} x2={W-PR} y2={y} stroke="#e2e8f0" strokeWidth={0.7}/>
-            <text x={PL-4} y={y+3} textAnchor="end" fontSize={7} fill="#94a3b8">{lbl}</text>
+            <text x={PL-4} y={y+3} textAnchor="end" fontSize={8} fill="#64748b">{lbl}</text>
           </g>
         )
       })}
-      <line x1={PL} y1={PT} x2={PL} y2={PT+cH} stroke="#cbd5e1" strokeWidth={1}/>
-      <line x1={PL} y1={PT+cH} x2={W-PR} y2={PT+cH} stroke="#cbd5e1" strokeWidth={1}/>
+      {/* Bottom axis line */}
+      <line x1={PL} y1={PT+cH} x2={W-PR} y2={PT+cH} stroke="#cbd5e1" strokeWidth={1.5}/>
+      
       {entries.map(([type,val],i)=>{
         const bH=Math.max((val/yMax)*cH,2)
         const x=PL+i*bGap+(bGap-bW)/2
         const y=PT+cH-bH
         const vlbl=val>=1000000?`${(val/1000000).toFixed(2)}M`:val>=1000?`${(val/1000).toFixed(0)}K`:String(val)
-        const words=(MILK_LABEL[type]??type).split(' ')
+        const label = MILK_LABEL[type]??type
         return (
           <g key={type}>
-            <rect x={x} y={y} width={bW} height={bH} fill={NAVY} rx={2}/>
-            <text x={x+bW/2} y={y-4} textAnchor="middle" fontSize={7} fontWeight="bold" fill={NAVY}>{vlbl}</text>
-            {words.map((w,wi)=>(
-              <text key={wi} x={x+bW/2} y={PT+cH+13+wi*9} textAnchor="middle" fontSize={6.5} fill="#475569">{w}</text>
+            <rect x={x} y={y} width={bW} height={bH} fill={NAVY}/>
+            <text x={x+bW/2} y={y-5} textAnchor="middle" fontSize={7.5} fontWeight="bold" fill={NAVY}>{vlbl}</text>
+            
+            {/* 2-line label below bar */}
+            {label.split(' ').map((w,wi)=>(
+              <text key={wi} x={x+bW/2} y={PT+cH+10+wi*9} textAnchor="middle" fontSize={6.5} fill="#475569">{w}</text>
             ))}
           </g>
         )
@@ -91,13 +90,12 @@ function BarChart({ data }: { data: Record<string,number> }) {
 // ── SVG Horizontal Bar Chart ───────────────────────────────────────
 function HBar({ data }: { data: Record<string,number> }) {
   const entries = Object.entries(data).filter(([,v]) => v > 0).sort((a,b) => b[1]-a[1])
-  if (!entries.length) return (
-    <div style={{textAlign:'center',color:'#90aed6',padding:'1.5rem',fontSize:'0.78rem'}}>No data</div>
-  )
+  if (!entries.length) return <div style={{textAlign:'center',color:'#90aed6',padding:'1.5rem',fontSize:'0.78rem'}}>No data</div>
+  
   const maxVal=Math.max(...entries.map(([,v])=>v),1)
-  const W=290, rowH=30, labelW=90, numW=44, PR=8
+  const W=290, rowH=24, labelW=85, numW=40, PR=15
   const barAreaW=W-labelW-numW-PR
-  const H=entries.length*rowH+8
+  const H=entries.length*rowH+25
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{overflow:'visible',display:'block'}}>
@@ -107,9 +105,25 @@ function HBar({ data }: { data: Record<string,number> }) {
         const label=MILK_LABEL[type]??type
         return (
           <g key={type}>
-            <text x={0} y={y+17} fontSize={8} fill="#90aed6" fontWeight={700}>{label}</text>
-            <rect x={labelW} y={y+7} width={Math.max(bW,2)} height={14} fill={GOLD} rx={3} opacity={0.92}/>
-            <text x={labelW+Math.max(bW,2)+4} y={y+18} fontSize={7.5} fill={WHITE} fontWeight={700}>{n(val)}</text>
+            <text x={labelW-5} y={y+12} textAnchor="end" fontSize={7} fill={WHITE} fontWeight={600}>{label}</text>
+            {/* White bar */}
+            <rect x={labelW} y={y+4} width={Math.max(bW,2)} height={11} fill={WHITE}/>
+            {/* Number outside the bar */}
+            <text x={labelW+Math.max(bW,2)+4} y={y+12} fontSize={7} fill={WHITE} fontWeight={600}>{val}</text>
+          </g>
+        )
+      })}
+      
+      {/* Bottom axis with slanted labels (0, 20000, 40000...) */}
+      <line x1={labelW} y1={entries.length*rowH+10} x2={W-PR} y2={entries.length*rowH+10} stroke="rgba(255,255,255,0.2)" strokeWidth={1}/>
+      {Array.from({length:6},(_,i)=>{
+        const v = (maxVal/5)*i
+        const x = labelW + (v/maxVal)*barAreaW
+        const vStr = v>=1000?`${(v/1000).toFixed(0)}k`:v.toFixed(0)
+        return (
+          <g key={i}>
+            <line x1={x} y1={entries.length*rowH+10} x2={x} y2={entries.length*rowH+13} stroke="rgba(255,255,255,0.4)" strokeWidth={1}/>
+            <text x={x} y={entries.length*rowH+20} fontSize={6} fill="rgba(255,255,255,0.7)" transform={`rotate(-45 ${x} ${entries.length*rowH+20})`} textAnchor="end">{vStr}</text>
           </g>
         )
       })}
@@ -162,7 +176,7 @@ export default function PIMDReportPage() {
     const volumeByType:Record<string,number>  = {}
     const packsByType:Record<string,number>   = {}
     rows.forEach(r=>{
-      const f=r.funded_by||'Others'
+      const f=r.funded_by||'OTHERS'
       beneByFunder[f]  = (beneByFunder[f]||0)  + (r.beneficiaries||0)
       packsByFunder[f] = (packsByFunder[f]||0) + (r.milk_packs||0)
       const t=r.milk_type||'Unknown'
@@ -184,8 +198,6 @@ export default function PIMDReportPage() {
   }
 
   const eff = center || 'NATIONAL IMPACT ZONE'
-  const dateLbl = [year?`FY ${year}`:'All Years', month?MONTHS.find(m=>m[0]===month)?.[1]:''].filter(Boolean).join(' · ')
-  const printFooter = [eff, dateLbl, new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'})].filter(Boolean).join(' · ')
 
   return (
     <>
@@ -194,9 +206,12 @@ export default function PIMDReportPage() {
           aside,.no-print { display:none !important; }
           main { padding:0 !important; overflow:visible !important; background:white !important; }
           body { background:white !important; margin:0 !important; }
-          #pimd { width:210mm; max-width:210mm; margin:0 auto; box-shadow:none !important; border-radius:0 !important; }
+          #pimd { width:210mm; max-width:210mm; margin:0 auto; box-shadow:none !important; border-radius:0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         }
         @page { size:A4 portrait; margin:6mm; }
+        
+        .box-title { color:white; font-size:0.6rem; font-weight:400; text-transform:uppercase; letter-spacing:1px; margin-bottom:0.2rem; }
+        .box-val { color:white; font-size:1.8rem; font-weight:900; letter-spacing:-0.5px; line-height:1; }
       `}</style>
 
       {/* ── Filter bar ────────────────────────── */}
@@ -232,173 +247,200 @@ export default function PIMDReportPage() {
       ══════════════════════════════════════════ */}
       <div id="pimd" style={{
         width:'100%', maxWidth:760, margin:'0 auto',
-        fontFamily:"'Plus Jakarta Sans','Inter',Arial,sans-serif",
-        background:'white', boxShadow:'0 6px 40px rgba(0,0,0,0.18)',
-        borderRadius:10, overflow:'hidden',
+        fontFamily:"'Inter',Arial,sans-serif",
+        background: LBG,
+        position: 'relative',
+        overflow: 'hidden',
+        minHeight: 1000
       }}>
 
         {/* ── HEADER ─────────────────────────────── */}
-        <div style={{background:NAVY, padding:'1.2rem 1.6rem 0.9rem', borderBottom:`4px solid ${GOLD}`, display:'flex', alignItems:'center', justifyContent:'space-between'}}>
-          <div>
-            <div style={{fontSize:'1.9rem',fontWeight:900,color:WHITE,lineHeight:1.1,textTransform:'uppercase',letterSpacing:'-0.5px'}}>
+        <div style={{display:'flex', width:'100%', alignItems:'stretch', height:110}}>
+          {/* Left Navy Block */}
+          <div style={{background:NAVY, width:'75%', padding:'1.5rem 2rem', position:'relative'}}>
+            <div style={{fontSize:'2.1rem',fontWeight:900,color:WHITE,lineHeight:1.05,textTransform:'uppercase',letterSpacing:'-1px'}}>
               MILK FEEDING PROGRAM<br/>FACTSHEET
             </div>
-            <div style={{width:170,height:3,background:GOLD,margin:'0.45rem 0'}}/>
-            <div style={{color:'#a8c4f0',fontWeight:700,fontSize:'0.85rem',letterSpacing:2,textTransform:'uppercase'}}>{eff}</div>
-            {dateLbl && <div style={{color:'#6b93c9',fontSize:'0.7rem',marginTop:'0.1rem'}}>{dateLbl}</div>}
+            <div style={{width:'90%',height:2,background:WHITE,margin:'0.6rem 0'}}/>
+            <div style={{color:WHITE,fontWeight:400,fontSize:'0.9rem',textTransform:'uppercase',letterSpacing:0.5}}>{eff}</div>
+            
+            {/* The little cutout triangle to match the angle? The canva design just has a straight box overlapping another navy box */}
           </div>
-          {/* DA + Bagong Pilipinas logos */}
-          <div style={{flexShrink:0}}>
-            <Image src="/pimd/logos_cropped.png" alt="DA and Bagong Pilipinas Logos" width={160} height={80} style={{objectFit:'contain'}}/>
+          {/* Right Navy Block (slightly different shade or texture in Canva, we'll just use NAVY and put the logos) */}
+          <div style={{background:'#164070', width:'25%', position:'relative', display:'flex', alignItems:'center', justifyContent:'center'}}>
+            {/* Logos sit here */}
+            <div style={{display:'flex', gap:'0.5rem', alignItems:'center'}}>
+              <div style={{position:'relative', width:55, height:55}}>
+                <Image src="/pimd/da-logo.png" alt="DA Logo" fill style={{objectFit:'contain'}}/>
+              </div>
+              <div style={{position:'relative', width:60, height:60}}>
+                <Image src="/pimd/bagong-pilipinas.png" alt="Bagong Pilipinas" fill style={{objectFit:'contain'}}/>
+              </div>
+            </div>
           </div>
         </div>
 
         {loading ? (
           <div style={{textAlign:'center',padding:'5rem',color:'#64748b'}}>⏳ Loading data…</div>
-        ) : stats ? (<>
+        ) : stats ? (
+          <div style={{padding:'1.5rem 2rem 2rem', display:'flex', flexDirection:'column', gap:'1rem', position:'relative', zIndex:1}}>
 
-          {/* ── METRICS ROW ───────────────────────── */}
-          <div style={{background:LBG,padding:'1rem 1.4rem',display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.65rem'}}>
-            <div style={{display:'flex',flexDirection:'column',gap:'0.55rem'}}>
-              <div style={{background:NAVY,borderRadius:10,padding:'0.85rem 1.2rem',textAlign:'center'}}>
-                <div style={{color:'#90aed6',fontSize:'0.57rem',fontWeight:700,textTransform:'uppercase',letterSpacing:1.5}}>GROSS INCOME FROM THE RAW MILK</div>
-                <div style={{color:WHITE,fontSize:'1.5rem',fontWeight:900,marginTop:'0.15rem',letterSpacing:'-0.5px'}}>{c(stats.grossIncome)}</div>
+            {/* ── METRICS ROW 1 ───────────────────────── */}
+            <div style={{display:'flex', gap:'1rem'}}>
+              {/* Left Column */}
+              <div style={{flex:1.2, display:'flex', flexDirection:'column', gap:'0.6rem'}}>
+                <div style={{background:NAVY, borderRadius:12, padding:'1.2rem', textAlign:'center'}}>
+                  <div className="box-title">GROSS INCOME FROM THE RAW MILK</div>
+                  <div className="box-val">{c(stats.grossIncome)}</div>
+                </div>
+                <div style={{background:NAVY, borderRadius:12, padding:'1.2rem', textAlign:'center'}}>
+                  <div className="box-title">GROSS REVENUE EARNED (COOPERATIVE)</div>
+                  <div className="box-val">{c(stats.grossRevenue)}</div>
+                </div>
               </div>
-              <div style={{background:NAVY2,borderRadius:10,padding:'0.85rem 1.2rem',textAlign:'center'}}>
-                <div style={{color:'#90aed6',fontSize:'0.57rem',fontWeight:700,textTransform:'uppercase',letterSpacing:1.5}}>GROSS REVENUE EARNED (COOPERATIVE)</div>
-                <div style={{color:WHITE,fontSize:'1.5rem',fontWeight:900,marginTop:'0.15rem',letterSpacing:'-0.5px'}}>{c(stats.grossRevenue)}</div>
+
+              {/* Right Column */}
+              <div style={{flex:0.8, display:'flex', flexDirection:'column', gap:'0.6rem'}}>
+                <div style={{background:NAVY, borderRadius:12, padding:'1.2rem', textAlign:'center', height:'100%', display:'flex', flexDirection:'column', justifyContent:'center'}}>
+                  <div className="box-title">MILK FEEDING PROGRAM<br/>ACCOMPLISHMENT</div>
+                  <div className="box-val" style={{marginTop:'0.2rem'}}>00%</div>
+                </div>
+                <div style={{background:NAVY, borderRadius:12, padding:'0.8rem 1.2rem', display:'flex', alignItems:'center', justifyContent:'space-between'}}>
+                  <div>
+                    <div className="box-title" style={{textAlign:'left'}}>NO. OF CHILD DEVELOPMENT<br/>CENTERS UNDER DSWD</div>
+                    <div className="box-val" style={{textAlign:'left'}}>{n(stats.dswdCenters)}</div>
+                  </div>
+                  <div style={{background:WHITE, borderRadius:4, padding:'0.2rem', display:'flex', alignItems:'center', justifyContent:'center'}}>
+                    <Image src="/pimd/dswd-logo.png" alt="DSWD" width={32} height={32} style={{objectFit:'contain'}}/>
+                  </div>
+                </div>
               </div>
             </div>
-            <div style={{display:'flex',flexDirection:'column',gap:'0.55rem'}}>
-              <div style={{background:NAVY,borderRadius:10,padding:'0.85rem 1.2rem',textAlign:'center',flex:1}}>
-                <div style={{color:'#90aed6',fontSize:'0.57rem',fontWeight:700,textTransform:'uppercase',letterSpacing:1.5}}>MILK FEEDING PROGRAM ACCOMPLISHMENT</div>
-                <div style={{color:WHITE,fontSize:'2rem',fontWeight:900,marginTop:'0.1rem'}}>00%</div>
-              </div>
-              <div style={{background:NAVY,borderRadius:10,padding:'0.85rem 1.2rem',flex:1,display:'flex',alignItems:'center',justifyContent:'space-between',gap:'0.75rem'}}>
-                <div>
-                  <div style={{color:'#90aed6',fontSize:'0.57rem',fontWeight:700,textTransform:'uppercase',letterSpacing:1}}>NO. OF CHILD DEVELOPMENT<br/>CENTERS UNDER DSWD</div>
-                  <div style={{color:WHITE,fontSize:'2rem',fontWeight:900,marginTop:'0.1rem'}}>{n(stats.dswdCenters)}</div>
-                </div>
-                <Image src="/pimd/dswd-logo.png" alt="DSWD" width={40} height={40} style={{objectFit:'contain',flexShrink:0}}/>
-              </div>
-            </div>
-          </div>
 
-          {/* ── BENEFICIARIES ROW ─────────────────── */}
-          <div style={{background:LBG,padding:'0 1.4rem 1rem'}}>
-            <div style={{background:NAVY,borderRadius:12,padding:'0.9rem 1.4rem',display:'grid',gridTemplateColumns:'1fr 1fr',gap:0}}>
-              {/* Left: beneficiaries */}
-              <div style={{paddingRight:'1.25rem',borderRight:'1.5px solid rgba(255,255,255,0.15)'}}>
-                <div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}>
-                  <Image src="/pimd/children-left.png" alt="children" width={38} height={38} style={{objectFit:'contain'}}/>
-                  <div style={{color:'#90aed6',fontSize:'0.56rem',fontWeight:700,textTransform:'uppercase',letterSpacing:1}}>TOTAL NUMBER OF CHILDREN BENEFICIARIES</div>
+            {/* ── BENEFICIARIES ROW ─────────────────── */}
+            <div style={{background:WHITE, borderRadius:16, border:`3px solid ${NAVY}`, padding:'1rem 1rem 0.5rem', display:'flex', flexDirection:'column'}}>
+              
+              <div style={{display:'flex', gap:'0.8rem', marginBottom:'0.8rem'}}>
+                {/* Total Beneficiaries Box */}
+                <div style={{flex:1, background:NAVY, borderRadius:12, padding:'1rem', position:'relative', display:'flex', flexDirection:'column', alignItems:'center'}}>
+                  <div style={{position:'absolute', bottom:-5, left:5}}>
+                    <Image src="/pimd/children-left.png" alt="Children" width={55} height={55} style={{objectFit:'contain'}}/>
+                  </div>
+                  <div className="box-title">TOTAL NUMBER OF CHILDREN BENEFICIARIES</div>
+                  <div className="box-val" style={{fontSize:'2.2rem'}}>{n(stats.totalBene)}</div>
                 </div>
-                <div style={{color:WHITE,fontSize:'2.1rem',fontWeight:900,letterSpacing:'-1px',margin:'0.15rem 0'}}>{n(stats.totalBene)}</div>
-                <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'0.25rem',marginTop:'0.4rem'}}>
-                  {['DSWD','DepEd','LDS','Others'].map(f=>(
+
+                {/* Milk Packs Box */}
+                <div style={{flex:1, background:NAVY, borderRadius:12, padding:'1rem', position:'relative', display:'flex', flexDirection:'column', alignItems:'center'}}>
+                  <div style={{position:'absolute', bottom:-5, right:5}}>
+                    <Image src="/pimd/children-right.png" alt="Children" width={55} height={55} style={{objectFit:'contain'}}/>
+                  </div>
+                  <div className="box-title">MILK PACKS DISTRIBUTED TO CHILDREN BENEFICIARIES</div>
+                  <div className="box-val" style={{fontSize:'2.2rem'}}>{n(stats.totalPacks)}</div>
+                </div>
+              </div>
+
+              {/* The breakdowns */}
+              <div style={{display:'flex', alignItems:'center'}}>
+                {/* Left Breakdown */}
+                <div style={{flex:1, display:'flex', justifyContent:'center', gap:'1.5rem'}}>
+                  {['DSWD','DEPED','LGU','OTHERS'].map(f=>(
                     <div key={f} style={{textAlign:'center'}}>
-                      <div style={{color:WHITE,fontWeight:900,fontSize:'0.95rem'}}>{n(stats.beneByFunder[f]||0)}</div>
-                      <div style={{color:'#90aed6',fontSize:'0.54rem',fontWeight:700,textTransform:'uppercase'}}>{f}</div>
+                      <div style={{color:NAVY, fontWeight:900, fontSize:'1.1rem'}}>{n(stats.beneByFunder[f]||0)}</div>
+                      <div style={{color:NAVY, fontWeight:700, fontSize:'0.6rem'}}>{f}</div>
+                    </div>
+                  ))}
+                </div>
+                {/* Divider */}
+                <div style={{width:2, height:30, background:NAVY}}/>
+                {/* Right Breakdown */}
+                <div style={{flex:1, display:'flex', justifyContent:'center', gap:'1.5rem'}}>
+                  {['DSWD','DEPED','LGU','OTHERS'].map(f=>(
+                    <div key={f} style={{textAlign:'center'}}>
+                      <div style={{color:NAVY, fontWeight:900, fontSize:'1.1rem'}}>{n(stats.packsByFunder[f]||0)}</div>
+                      <div style={{color:NAVY, fontWeight:700, fontSize:'0.6rem'}}>{f}</div>
                     </div>
                   ))}
                 </div>
               </div>
-              {/* Right: packs */}
-              <div style={{paddingLeft:'1.25rem'}}>
-                <div style={{display:'flex',alignItems:'center',gap:'0.5rem',justifyContent:'space-between'}}>
-                  <div style={{color:'#90aed6',fontSize:'0.56rem',fontWeight:700,textTransform:'uppercase',letterSpacing:1}}>MILK PACKS DISTRIBUTED TO CHILDREN</div>
-                  <Image src="/pimd/children-right.png" alt="children" width={38} height={38} style={{objectFit:'contain'}}/>
+            </div>
+
+            {/* ── CHARTS ROW ────────────────────────── */}
+            <div style={{display:'flex', gap:'1rem'}}>
+              {/* Milk Utilized Chart */}
+              <div style={{flex:1, background:WHITE, borderRadius:16, padding:'1rem', boxShadow:'0 4px 20px rgba(0,0,0,0.08)'}}>
+                <div style={{color:NAVY, fontWeight:900, fontSize:'1rem', textAlign:'center', marginBottom:'1rem', letterSpacing:'-0.5px'}}>
+                  MILK UTILIZED
                 </div>
-                <div style={{color:GOLD,fontSize:'2.1rem',fontWeight:900,letterSpacing:'-1px',margin:'0.15rem 0'}}>{n(stats.totalPacks)}</div>
-                <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'0.25rem',marginTop:'0.4rem'}}>
-                  {['DSWD','DepEd','LDS','Others'].map(f=>(
-                    <div key={f} style={{textAlign:'center'}}>
-                      <div style={{color:WHITE,fontWeight:900,fontSize:'0.95rem'}}>{n(stats.packsByFunder[f]||0)}</div>
-                      <div style={{color:'#90aed6',fontSize:'0.54rem',fontWeight:700,textTransform:'uppercase'}}>{f}</div>
+                <BarChart data={stats.volumeByType}/>
+              </div>
+
+              {/* Packaging & Size Chart */}
+              <div style={{flex:1, background:NAVY, borderRadius:16, padding:'1rem', position:'relative'}}>
+                <div style={{color:WHITE, fontWeight:900, fontSize:'1rem', textAlign:'center', marginBottom:'0.8rem', letterSpacing:'-0.5px'}}>
+                  PACKAGING AND SIZE
+                </div>
+                <HBar data={stats.packsByType}/>
+                {/* Milky Boy */}
+                <div style={{position:'absolute', bottom:-10, left:-15, zIndex:10}}>
+                  <Image src="/pimd/milky-boy.png" alt="Milky Boy" width={55} height={75} style={{objectFit:'contain'}}/>
+                </div>
+              </div>
+            </div>
+
+            {/* ── BOTTOM ROW ────────────────────────── */}
+            <div style={{display:'flex', marginTop:'3rem', gap:'1rem'}}>
+              
+              {/* Left Side: Photo + Suppliers Box */}
+              <div style={{flex:1.1, position:'relative'}}>
+                {/* The large photo overlapping upwards */}
+                <div style={{position:'absolute', bottom:-20, left:-20, width:330, height:280, zIndex:20}}>
+                  <Image src="/pimd/children-photo.png" alt="Children drinking" fill style={{objectFit:'contain', objectPosition:'bottom left'}}/>
+                </div>
+                
+                {/* Cooperative Milk Suppliers Box (positioned relative to fit in the grid) */}
+                <div style={{background:NAVY, padding:'1rem', textAlign:'center', width:140, marginLeft:'auto', position:'relative', zIndex:10}}>
+                  <div className="box-title">NO. OF COOPERATIVE<br/>MILK SUPPLIERS</div>
+                  <div className="box-val" style={{fontSize:'2.5rem', marginTop:'0.5rem'}}>{n(stats.coopCount)}</div>
+                </div>
+              </div>
+
+              {/* Right Side: Grid of 4 stats */}
+              <div style={{flex:0.9, display:'flex', flexDirection:'column', gap:'4px'}}>
+                {/* Districts */}
+                <div style={{background:NAVY, padding:'0.8rem 1.2rem', display:'flex', alignItems:'center', justifyContent:'space-between'}}>
+                  <div className="box-title" style={{margin:0, fontSize:'0.7rem'}}>NO. OF DISTRICTS SUPPLIED</div>
+                  <div className="box-val">{n(stats.districtCount)}</div>
+                </div>
+
+                <div style={{display:'flex', gap:'4px'}}>
+                  {/* Division */}
+                  <div style={{background:NAVY, padding:'0.8rem 1.2rem', flex:1, display:'flex', flexDirection:'column', justifyContent:'center'}}>
+                    <div className="box-title" style={{fontSize:'0.65rem'}}>NO. OF SCHOOL<br/>DIVISION OFFICE</div>
+                    <div style={{display:'flex', alignItems:'center', justifyContent:'center', gap:'0.8rem', marginTop:'0.4rem'}}>
+                      <div className="box-val" style={{fontSize:'2.5rem'}}>{n(stats.divisionCount)}</div>
+                      <div style={{background:WHITE, padding:'2px', borderRadius:2}}>
+                        <Image src="/pimd/deped-logo.png" alt="DepEd" width={30} height={30} style={{objectFit:'contain'}}/>
+                      </div>
                     </div>
-                  ))}
+                  </div>
+                  {/* Provinces */}
+                  <div style={{background:NAVY, padding:'0.8rem 1.2rem', flex:1, display:'flex', flexDirection:'column', justifyContent:'center', textAlign:'center'}}>
+                    <div className="box-title" style={{fontSize:'0.65rem'}}>NO. OF PROVINCES<br/>SUPPLIED</div>
+                    <div className="box-val" style={{fontSize:'2.2rem', marginTop:'0.4rem'}}>{n(stats.provinceCount)}</div>
+                  </div>
+                </div>
+
+                {/* Schools */}
+                <div style={{background:NAVY, padding:'0.8rem 1.2rem', display:'flex', alignItems:'center', justifyContent:'space-between'}}>
+                  <div className="box-title" style={{margin:0, fontSize:'0.7rem'}}>NO. OF SCHOOLS SUPPLIED</div>
+                  <div className="box-val">{n(stats.schoolCount)}</div>
                 </div>
               </div>
+
             </div>
           </div>
-
-          {/* ── CHARTS ROW ────────────────────────── */}
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',background:'white'}}>
-            {/* Milk Utilized */}
-            <div style={{padding:'0.9rem 1.1rem',borderRight:'1px solid #e2e8f0'}}>
-              <div style={{fontWeight:900,fontSize:'0.78rem',color:NAVY,textTransform:'uppercase',letterSpacing:1,textAlign:'center',marginBottom:'0.4rem'}}>
-                MILK UTILIZED
-              </div>
-              <BarChart data={stats.volumeByType}/>
-              {/* Milk can icon */}
-              <div style={{display:'flex',justifyContent:'center',marginTop:'0.3rem'}}>
-                <Image src="/pimd/milk-pack.png" alt="milk" width={32} height={32} style={{objectFit:'contain'}}/>
-              </div>
-            </div>
-            {/* Packaging & Size */}
-            <div style={{background:NAVY,padding:'0.9rem 1.1rem'}}>
-              <div style={{fontWeight:900,fontSize:'0.78rem',color:WHITE,textTransform:'uppercase',letterSpacing:1,textAlign:'center',marginBottom:'0.5rem',borderBottom:`2px solid ${GOLD}`,paddingBottom:'0.35rem'}}>
-                PACKAGING AND SIZE
-              </div>
-              <HBar data={stats.packsByType}/>
-            </div>
-          </div>
-
-          {/* ── BOTTOM ROW ────────────────────────── */}
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1.65fr'}}>
-            {/* Left: children photo + coop count */}
-            <div style={{background:NAVY2,position:'relative',overflow:'hidden',display:'flex',flexDirection:'column'}}>
-              <div style={{flex:1,position:'relative',minHeight:140}}>
-                <Image
-                  src="/pimd/children-photo.png"
-                  alt="Children drinking milk"
-                  fill
-                  style={{objectFit:'cover',objectPosition:'center top'}}
-                />
-                {/* dark overlay at bottom for text */}
-                <div style={{position:'absolute',bottom:0,left:0,right:0,height:'55%',background:'linear-gradient(to top, rgba(15,37,87,0.95) 0%, transparent 100%)'}}/>
-              </div>
-              <div style={{background:NAVY,padding:'0.75rem 1rem',textAlign:'center',borderTop:`3px solid ${GOLD}`}}>
-                <div style={{color:'#90aed6',fontSize:'0.57rem',fontWeight:700,textTransform:'uppercase',letterSpacing:1}}>NO. OF COOPERATIVE<br/>MILK SUPPLIERS</div>
-                <div style={{color:GOLD,fontSize:'2.4rem',fontWeight:900,lineHeight:1}}>{n(stats.coopCount)}</div>
-              </div>
-            </div>
-
-            {/* Right: 4-stat grid */}
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',background:NAVY}}>
-              {/* Districts – full row */}
-              <div style={{gridColumn:'1/-1',padding:'0.7rem 1.1rem',borderBottom:'1px solid rgba(255,255,255,0.1)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-                <div style={{color:'#90aed6',fontSize:'0.58rem',fontWeight:700,textTransform:'uppercase',letterSpacing:1}}>NO. OF DISTRICTS SUPPLIED</div>
-                <div style={{color:WHITE,fontSize:'1.8rem',fontWeight:900}}>{n(stats.districtCount)}</div>
-              </div>
-              {/* Division */}
-              <div style={{padding:'0.7rem 1rem',borderRight:'1px solid rgba(255,255,255,0.1)',borderBottom:'1px solid rgba(255,255,255,0.1)'}}>
-                <div style={{color:'#90aed6',fontSize:'0.57rem',fontWeight:700,textTransform:'uppercase',letterSpacing:1}}>NO. OF SCHOOL<br/>DIVISION OFFICE</div>
-                <div style={{display:'flex',alignItems:'center',gap:'0.4rem',marginTop:'0.2rem'}}>
-                  <div style={{color:WHITE,fontSize:'1.8rem',fontWeight:900}}>{n(stats.divisionCount)}</div>
-                  <Image src="/pimd/deped-logo.png" alt="DepEd" width={32} height={32} style={{objectFit:'contain'}}/>
-                </div>
-              </div>
-              {/* Provinces */}
-              <div style={{padding:'0.7rem 1rem',borderBottom:'1px solid rgba(255,255,255,0.1)'}}>
-                <div style={{color:'#90aed6',fontSize:'0.57rem',fontWeight:700,textTransform:'uppercase',letterSpacing:1}}>NO. OF PROVINCES<br/>SUPPLIED</div>
-                <div style={{color:WHITE,fontSize:'1.8rem',fontWeight:900,marginTop:'0.2rem'}}>{n(stats.provinceCount)}</div>
-              </div>
-              {/* Schools – full row */}
-              <div style={{gridColumn:'1/-1',padding:'0.7rem 1.1rem',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-                <div style={{color:'#90aed6',fontSize:'0.58rem',fontWeight:700,textTransform:'uppercase',letterSpacing:1}}>NO. OF SCHOOLS SUPPLIED</div>
-                <div style={{color:WHITE,fontSize:'1.8rem',fontWeight:900}}>{n(stats.schoolCount)}</div>
-              </div>
-            </div>
-          </div>
-
-          {/* ── FOOTER ────────────────────────────── */}
-          <div style={{background:'#07163a',padding:'0.45rem 1.4rem',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-            <div style={{color:'#4a6fa5',fontSize:'0.6rem'}}>DA-PCC Milk Feeding Program Monitoring System</div>
-            <div style={{color:'#4a6fa5',fontSize:'0.6rem'}}>{printFooter}</div>
-          </div>
-
-        </>) : null}
+        ) : null}
       </div>
     </>
   )
