@@ -473,7 +473,7 @@ export default function PIMDReportPage() {
     }
   }
 
-  const eff = center === ALL_CENTERS_VALUE ? 'ALL CENTERS' : (center === 'NIZ' ? 'NHQGP (NIZ)' : (center || 'ALL CENTERS').toUpperCase())
+  const reportScopeLabel = center === ALL_CENTERS_VALUE ? 'ALL CENTERS' : (center === 'NIZ' ? 'NHQGP (NIZ)' : (center || 'ALL CENTERS').toUpperCase())
 
   const tbBtn = (active: boolean) => ({
     background: active ? NAVY : 'transparent', border: 'none', cursor: 'pointer',
@@ -502,7 +502,7 @@ export default function PIMDReportPage() {
     .box-title{color:white;font-size:25px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px}
     .box-val{color:white;font-size:68px;font-weight:900;letter-spacing:-1px;line-height:1}
     .abs-card{position:absolute;border-radius:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
-    .pimd-header-main{position:absolute;left:0;top:86px;width:1089px;height:270px;padding:0;display:block}
+    .pimd-header-main{position:absolute;left:0;top:86px;width:1089px;height:270px;padding:0;display:block;overflow:visible}
     .pimd-header-logos{position:absolute;left:1090px;top:114px;width:324px;height:213px}
     .pimd-gross-income{position:absolute;left:67px;top:424px;width:928px;height:151px;padding:0 40px}
     .pimd-accomplishment{position:absolute;left:1022px;top:424px;width:325px;height:151px}
@@ -599,13 +599,17 @@ export default function PIMDReportPage() {
 
               {showReference && <img className="pimd-reference-overlay" src="/__pimd_reference__/inforgraphic-template.png" alt="" style={{ width: ARTBOARD_WIDTH, height: ARTBOARD_HEIGHT }} data-html2canvas-ignore="true" />}
 
-              <div className="pimd-header-main" style={{ background: HDR_NAVY }}>
-                <h1 className="pimd-title" style={{ position: 'absolute', margin: 0, padding: 0, fontSize: '64px', fontWeight: 900, lineHeight: 0.9, letterSpacing: '-1px', color: WHITE, left: '52px', top: '132px', textAlign: 'left' }}>
-                  <span style={{ display: 'block' }}>MILK FEEDING PROGRAM</span>
-                  <span style={{ display: 'block' }}>FACTSHEET</span>
-                </h1>
-                <div className="pimd-title-rule" style={{ position: 'absolute', left: '49px', top: '258px', width: '868px', height: '2px', background: WHITE }} />
-                <div className="pimd-scope-label" style={{ position: 'absolute', left: '52px', top: '283px', fontSize: '24px', fontWeight: 500, color: WHITE, letterSpacing: '1px' }}>{eff}</div>
+              <div className="pimd-header-main" style={{ background: HDR_NAVY }} />
+              
+              <h1 className="pimd-header-title pimd-on-navy-text" style={{ position: 'absolute', margin: 0, padding: 0, fontSize: '64px', fontWeight: 900, lineHeight: 0.84, letterSpacing: '-1px', left: '52px', top: '132px', textAlign: 'left', whiteSpace: 'nowrap', zIndex: 10 }}>
+                <span style={{ display: 'block' }}>MILK FEEDING PROGRAM</span>
+                <span style={{ display: 'block' }}>FACTSHEET</span>
+              </h1>
+              
+              <div className="pimd-header-rule" style={{ position: 'absolute', left: '49px', top: '258px', width: '868px', height: '2px', background: WHITE, zIndex: 10 }} />
+              
+              <div className="pimd-header-scope pimd-on-navy-text" style={{ position: 'absolute', left: '52px', top: '283px', fontSize: '29px', fontWeight: 400, lineHeight: 1, whiteSpace: 'nowrap', zIndex: 10 }}>
+                {reportScopeLabel}
               </div>
 
               <div className="pimd-header-logos" style={{ background: HDR_LOGO }}>
