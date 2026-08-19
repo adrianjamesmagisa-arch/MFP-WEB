@@ -309,7 +309,7 @@ export default function PIMDReportPage() {
     const cLabel = center === ALL_CENTERS_VALUE ? 'All-Centers' : sanitize(center || 'All-Centers')
     const yLabel = year || 'All-Years'
     const mLabel = month ? (MONTHS.find(([v]) => v === month)?.[1] ?? month) : 'All-Months'
-    return \`Milk_Feeding_Program_Factsheet_\${cLabel}_\${yLabel}_\${sanitize(mLabel)}.pdf\`
+    return `Milk_Feeding_Program_Factsheet_${cLabel}_${yLabel}_${sanitize(mLabel)}.pdf`
   }, [center, year, month])
 
   const recalcScale = useCallback(() => {
@@ -395,7 +395,7 @@ export default function PIMDReportPage() {
         else if (Math.abs(ml - 200) < 10) size = '200 POUCH'
         else if (Math.abs(ml - 500) < 10) size = '500 ML'
         else if (Math.abs(ml - 1000) < 10) size = '1 LITER BOTTLE'
-        else size = \`\${Math.round(ml)} ML\`
+        else size = `${Math.round(ml)} ML`
       } else {
         if (t === 'PM') size = '180 ML CAN/POUCH'
         else if (t === 'Karabao') size = '200 POUCH'
