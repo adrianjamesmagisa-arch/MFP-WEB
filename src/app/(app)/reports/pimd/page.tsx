@@ -47,8 +47,8 @@ interface Stats {
   provinceCount: number; schoolCount: number
 }
 
-function FittedText({ text, maxWidth, maxSize = 62, minSize = 44, weight = 900, color = WHITE }: {
-  text: string; maxWidth: number; maxSize?: number; minSize?: number; weight?: number; color?: string
+function FittedText({ text, maxWidth, maxSize = 62, minSize = 44, weight = 900, color = WHITE, className = '' }: {
+  text: string; maxWidth: number; maxSize?: number; minSize?: number; weight?: number; color?: string; className?: string
 }) {
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -65,7 +65,7 @@ function FittedText({ text, maxWidth, maxSize = 62, minSize = 44, weight = 900, 
     // overflow:visible is critical — html2canvas clips glyphs (₱, tall numerals, descenders)
     // that extend outside an overflow:hidden box even though the screen looks fine.
     // The fitting loop uses scrollWidth vs clientWidth (horizontal) so visible doesn't break it.
-    <div ref={ref} style={{ width: maxWidth, fontWeight: weight, color, whiteSpace: 'nowrap', lineHeight: 1.05, letterSpacing: '-1px', textAlign: 'center', overflow: 'visible', margin: '0 auto', paddingBottom: '3px' }}>
+    <div ref={ref} className={className} style={{ width: maxWidth, fontWeight: weight, color, whiteSpace: 'nowrap', lineHeight: 1.05, letterSpacing: '-1px', textAlign: 'center', overflow: 'visible', margin: '0 auto', paddingBottom: '3px' }}>
       {text}
     </div>
   )
@@ -304,7 +304,10 @@ export default function PIMDReportPage() {
     await new Promise<void>(res => requestAnimationFrame(() => requestAnimationFrame(() => res())))
   }
 
-  // ─── Shared capture: opens the preview modal ────────────────────────────
+  // ─── Ref for Preview Reset ───────────────────────────────
+  const previewBodyRef = useRef<HTMLDivElement>(null)
+
+  // ─── Fetch the active center & options ────────────────────────────
   const openPreviewModal = async () => {
     if (isCapturing || !stats) return
     setIsCapturing(true)
@@ -313,19 +316,14 @@ export default function PIMDReportPage() {
       const root = document.getElementById('pimd-visible-capture-root') as HTMLElement
       if (!root) throw new Error('PIMD visible capture root was not found.')
 
-      const h2c = (await import('html2canvas')).default
-      const canvas = await h2c(root, {
-        scale: Math.max(4, Math.ceil(window.devicePixelRatio * 2)),
-        useCORS: true,
-        allowTaint: false,
-        backgroundColor: null,
-        logging: false,
-        removeContainer: true,
+      const { toBlob } = await import('html-to-image')
+      const blob = await toBlob(root, {
+        pixelRatio: Math.max(4, Math.ceil(window.devicePixelRatio * 2)),
+        cacheBust: true,
+        backgroundColor: undefined,
       })
 
-      const blob = await new Promise<Blob>(resolve =>
-        canvas.toBlob(b => resolve(b!), 'image/png')
-      )
+      if (!blob) throw new Error('Capture returned null blob.')
       const src = URL.createObjectURL(blob)
       
       // Mandatory Debug PNG download
@@ -336,6 +334,13 @@ export default function PIMDReportPage() {
 
       setPreviewBlob(blob)
       setPreviewSrc(src)
+      
+      requestAnimationFrame(() => {
+        if (previewBodyRef.current) {
+          previewBodyRef.current.scrollTop = 0
+          previewBodyRef.current.scrollLeft = 0
+        }
+      })
     } catch (err) {
       console.error(err)
       alert('Capture failed. Please try again.')
@@ -401,9 +406,49 @@ export default function PIMDReportPage() {
 <head>
   <style>
     @page { size: A4 portrait; margin: 0; }
-    html, body { width: 210mm; height: 297mm; margin: 0; padding: 0; overflow: hidden; background: white; }
-    .page { width: 210mm; height: 297mm; box-sizing: border-box; padding: 1mm; display: flex; justify-content: center; align-items: center; overflow: hidden; }
-    .page img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: center; }
+    html, body { width: 210mm; height: 297mm; margin: 0; padding: 0; overflow: hidden; background: white;  /* ─── Preview Modal Fixes ─── */
+  .pimd-modal-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center; z-index: 99999;
+  }
+  .pimd-modal-box {
+    background: white; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
+    display: flex; flexDirection: column;
+    width: min(900px, 96vw);
+    height: min(96vh, 1080px);
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    overflow: hidden;
+  }
+  .pimd-modal-header {
+    padding: 1rem 1.25rem; border-bottom: 1px solid #e2e8f0;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .pimd-modal-preview {
+    min-width: 0;
+    min-height: 0;
+    display: grid;
+    place-items: center;
+    overflow: auto; /* Allow scrolling if user zooms */
+    padding: 12px;
+    background: #e6e9ee;
+  }
+  .pimd-modal-preview img {
+    display: block;
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    object-position: center;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+  }
+  .pimd-modal-footer {
+    padding: 1rem 1.25rem; border-top: 1px solid #e2e8f0; background: #f8fafc;
+    display: flex; justify-content: space-between; align-items: center;
+    position: relative;
+    z-index: 2;
+  } { display: block; width: 100%; height: 100%; object-fit: contain; object-position: center; }
     * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   </style>
 </head>
@@ -438,6 +483,14 @@ export default function PIMDReportPage() {
   })
 
   const CSS = `
+    .pimd-on-navy-text {
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+      opacity: 1 !important;
+      mix-blend-mode: normal !important;
+      filter: none !important;
+      text-shadow: none !important;
+    }
     .pimd-viewer{width:100%;min-width:0;display:flex;justify-content:center;align-items:flex-start;overflow:auto;padding:16px;box-sizing:border-box;background:#e5e7eb;border-radius:8px}
     .pimd-viewer.fp{overflow:hidden;align-items:center}
     .pimd-scaled-slot{position:relative;flex:0 0 auto}
@@ -468,7 +521,12 @@ export default function PIMDReportPage() {
     .pimd-provinces{position:absolute;left:1073px;top:1605px;width:285px;height:150px;padding:0 20px;z-index:4}
     .pimd-schools{position:absolute;left:1073px;top:1765px;width:285px;height:151px;padding:0 20px;z-index:4}
     .ztbtn:hover{background:#e2e8f0!important}
-    @media print{.no-print{display:none!important}body{background:white!important;margin:0!important}}
+    @media print{
+      .no-print{display:none!important}
+      body{background:white!important;margin:0!important}
+      .pimd-on-navy-text { color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; opacity: 1 !important; }
+      #pimd-factsheet { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    }
     .pimd-modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:10000;display:flex;align-items:center;justify-content:center;padding:24px;backdrop-filter:blur(4px)}
     .pimd-modal-box{background:white;border-radius:16px;box-shadow:0 32px 80px rgba(0,0,0,0.5);display:flex;flex-direction:column;max-width:680px;width:100%;max-height:calc(100vh - 48px);overflow:hidden}
     .pimd-modal-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1.5px solid #e2e8f0;flex-shrink:0}
@@ -542,12 +600,12 @@ export default function PIMDReportPage() {
               {showReference && <img className="pimd-reference-overlay" src="/__pimd_reference__/inforgraphic-template.png" alt="" style={{ width: ARTBOARD_WIDTH, height: ARTBOARD_HEIGHT }} data-html2canvas-ignore="true" />}
 
               <div className="pimd-header-main" style={{ background: HDR_NAVY }}>
-                <h1 style={{ position: 'absolute', margin: 0, padding: 0, fontSize: '64px', fontWeight: 900, lineHeight: 1, letterSpacing: '-1px', color: WHITE, left: '52px', top: '44px', textAlign: 'left' }}>
+                <h1 className="pimd-title" style={{ position: 'absolute', margin: 0, padding: 0, fontSize: '64px', fontWeight: 900, lineHeight: 0.9, letterSpacing: '-1px', color: WHITE, left: '52px', top: '132px', textAlign: 'left' }}>
                   <span style={{ display: 'block' }}>MILK FEEDING PROGRAM</span>
                   <span style={{ display: 'block' }}>FACTSHEET</span>
                 </h1>
-                <div style={{ position: 'absolute', left: '49px', top: '172px', width: '868px', height: '2px', background: WHITE }} />
-                <div style={{ position: 'absolute', left: '52px', top: '201px', fontSize: '24px', fontWeight: 500, color: WHITE, letterSpacing: '1px' }}>{eff}</div>
+                <div className="pimd-title-rule" style={{ position: 'absolute', left: '49px', top: '258px', width: '868px', height: '2px', background: WHITE }} />
+                <div className="pimd-scope-label" style={{ position: 'absolute', left: '52px', top: '283px', fontSize: '24px', fontWeight: 500, color: WHITE, letterSpacing: '1px' }}>{eff}</div>
               </div>
 
               <div className="pimd-header-logos" style={{ background: HDR_LOGO }}>
@@ -560,24 +618,26 @@ export default function PIMDReportPage() {
               </div>
 
               <div className="abs-card pimd-gross-income" style={{ background: NAVY }}>
-                <div className="box-title" style={{ marginBottom: '10px' }}>GROSS INCOME FROM THE RAW MILK</div>
-                <FittedText text={cur(stats.grossIncome)} maxWidth={840} maxSize={62} minSize={44} />
+                <div className="box-title pimd-on-navy-text" style={{ marginBottom: '10px' }}>GROSS INCOME FROM THE RAW MILK</div>
+                <FittedText text={cur(stats.grossIncome)} maxWidth={840} maxSize={62} minSize={44} className="pimd-on-navy-text" />
               </div>
 
-              <div className="abs-card pimd-accomplishment" style={{ background: NAVY }}>
-                <div className="box-title" style={{ fontSize: '19px' }}>MILK FEEDING PROGRAM<br />ACCOMPLISHMENT</div>
-                <div className="box-val" style={{ fontSize: '70px', marginTop: '14px' }}>00%</div>
+              <div className="abs-card pimd-accomplishment" style={{ background: NAVY, padding: 0 }}>
+                <div className="pimd-accomplishment-content" style={{ position: 'absolute', inset: 0, display: 'grid', gridTemplateRows: 'auto minmax(0, 1fr)', alignItems: 'center', justifyItems: 'center', padding: '12px 10px 10px' }}>
+                  <div className="pimd-accomplishment-label pimd-on-navy-text" style={{ margin: 0, textAlign: 'center', lineHeight: 1.08, fontSize: '19px' }}>MILK FEEDING PROGRAM<br />ACCOMPLISHMENT</div>
+                  <div className="pimd-accomplishment-value pimd-on-navy-text" style={{ alignSelf: 'center', display: 'block', margin: 0, padding: '0 0 5px', fontSize: '70px', lineHeight: 1, whiteSpace: 'nowrap', overflow: 'visible', textAlign: 'center' }}>00%</div>
+                </div>
               </div>
 
               <div className="abs-card pimd-gross-revenue" style={{ background: NAVY }}>
-                <div className="box-title" style={{ marginBottom: '10px' }}>GROSS REVENUE EARNED (COOPERATIVE)</div>
-                <FittedText text={cur(stats.grossRevenue)} maxWidth={840} maxSize={62} minSize={44} />
+                <div className="box-title pimd-on-navy-text" style={{ marginBottom: '10px' }}>GROSS REVENUE OF THE MILK FEEDING PROGRAM</div>
+                <FittedText text={cur(stats.grossRevenue)} maxWidth={840} maxSize={62} minSize={44} className="pimd-on-navy-text" />
               </div>
 
               <div className="pimd-dswd-centers" style={{ background: NAVY }}>
                 <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
-                  <div className="box-title" style={{ fontSize: '18px', lineHeight: 1.15, padding: '0 48px', width: '100%', textAlign: 'center' }}>NO. OF CHILD<br />DEVELOPMENT<br />CENTERS UNDER DSWD</div>
-                  <div style={{ width: '100%', marginTop: '4px', textAlign: 'center' }}><FittedText text={formatCount(stats.dswdCenters)} maxWidth={200} maxSize={64} minSize={44} /></div>
+                  <div className="box-title pimd-on-navy-text" style={{ fontSize: '18px', lineHeight: 1.15, padding: '0 48px', width: '100%', textAlign: 'center' }}>NO. OF CHILD<br />DEVELOPMENT<br />CENTERS UNDER DSWD</div>
+                  <div style={{ width: '100%', marginTop: '4px', textAlign: 'center' }}><FittedText text={formatCount(stats.dswdCenters)} maxWidth={200} maxSize={64} minSize={44} className="pimd-on-navy-text" /></div>
                 </div>
                 <img src="/assets/pimd-infographic/01_DSWD_LOGO_TRANSPARENT.png" alt="DSWD" style={{ position: 'absolute', right: '16px', bottom: '16px', objectFit: 'contain', background: 'transparent', width: '41px', height: '36px', zIndex: 5 }} />
               </div>
@@ -604,9 +664,9 @@ export default function PIMDReportPage() {
 
               <div className="pimd-beneficiary-total-card" style={{ background: NAVY, overflow: 'visible' }}>
                 <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', paddingTop: '14px', pointerEvents: 'none' }}>
-                  <div className="box-title" style={{ width: '100%', padding: '0 12px', textAlign: 'center', fontWeight: 800, lineHeight: 1.05, fontSize: '21px' }}>TOTAL NUMBER OF CHILDREN BENEFICIARIES</div>
+                  <div className="box-title pimd-on-navy-text" style={{ width: '100%', padding: '0 12px', textAlign: 'center', fontWeight: 800, lineHeight: 1.05, fontSize: '21px' }}>TOTAL NUMBER OF CHILDREN BENEFICIARIES</div>
                   <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
-                    <FittedText text={formatCount(stats.totalBene)} maxWidth={346} maxSize={50} minSize={42} />
+                    <FittedText text={formatCount(stats.totalBene)} maxWidth={346} maxSize={50} minSize={42} className="pimd-on-navy-text" />
                   </div>
                 </div>
               </div>
@@ -616,9 +676,9 @@ export default function PIMDReportPage() {
 
               <div className="pimd-milk-packs-card" style={{ background: NAVY, overflow: 'visible' }}>
                 <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', paddingTop: '14px', pointerEvents: 'none' }}>
-                  <div className="box-title" style={{ width: '100%', padding: '0 12px', textAlign: 'center', fontWeight: 800, lineHeight: 1.05, fontSize: '19px' }}>MILK PACKS DISTRIBUTED TO CHILDREN<br />BENEFICIARIES</div>
+                  <div className="box-title pimd-on-navy-text" style={{ width: '100%', padding: '0 12px', textAlign: 'center', fontWeight: 800, lineHeight: 1.05, fontSize: '19px' }}>MILK PACKS DISTRIBUTED TO CHILDREN<br />BENEFICIARIES</div>
                   <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
-                    <FittedText text={formatCount(stats.totalPacks)} maxWidth={346} maxSize={48} minSize={42} />
+                    <FittedText text={formatCount(stats.totalPacks)} maxWidth={346} maxSize={48} minSize={42} className="pimd-on-navy-text" />
                   </div>
                 </div>
               </div>
@@ -637,33 +697,34 @@ export default function PIMDReportPage() {
                 <img src="/assets/pimd-infographic/08_THREE_CHILDREN_DRINKING_MILK_TRANSPARENT.png" alt="Children drinking" className="pimd-transparent-asset" style={{ objectPosition: 'bottom left', pointerEvents: 'none' }} />
               </div>
 
-              <div className="abs-card pimd-cooperative-suppliers" style={{ background: NAVY }}>
-                <div className="box-title" style={{ fontSize: '18px' }}>NO. OF COOPERATIVE<br />MILK SUPPLIERS</div>
-                <div style={{ marginTop: '15px' }}><FittedText text={formatCount(stats.coopCount)} maxWidth={200} maxSize={64} minSize={44} /></div>
+              <div className="abs-card pimd-cooperative-suppliers" style={{ background: NAVY, padding: 0 }}>
+                <div style={{ position: 'absolute', inset: 0, display: 'grid', gridTemplateRows: 'auto minmax(0, 1fr)', alignItems: 'center', justifyItems: 'center', padding: '12px 10px 10px' }}>
+                  <div className="box-title pimd-on-navy-text" style={{ fontSize: '18px', textAlign: 'center', margin: 0, lineHeight: 1.1 }}>NO. OF COOPERATIVE<br />MILK SUPPLIERS</div>
+                  <div className="pimd-cooperative-value pimd-on-navy-text" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', margin: 0, paddingBottom: '6px', lineHeight: 1, whiteSpace: 'nowrap', overflow: 'visible' }}><FittedText text={formatCount(stats.coopCount)} maxWidth={200} maxSize={64} minSize={44} className="pimd-on-navy-text" /></div>
+                </div>
               </div>
 
               <div className="abs-card pimd-districts" style={{ background: NAVY, flexDirection: 'row', justifyContent: 'space-between', padding: '0 40px' }}>
-                <div className="box-title" style={{ fontSize: '22px', margin: 0 }}>NO. OF DISTRICTS SUPPLIED</div>
-                <div className="box-val" style={{ fontSize: '56px', margin: 0, paddingBottom: '4px' }}>{formatCount(stats.districtCount)}</div>
+                <div className="box-title pimd-on-navy-text" style={{ fontSize: '23px', margin: 0, textAlign: 'left' }}>NO. OF LEGISLATIVE<br />DISTRICTS SUPPLIED</div>
+                <div className="box-val pimd-on-navy-text" style={{ fontSize: '56px', margin: 0, paddingBottom: '4px' }}>{formatCount(stats.districtCount)}</div>
               </div>
 
-              <div className="pimd-sdo-card-background" style={{ background: NAVY }} />
-              <div className="pimd-sdo-card-content">
-                <div className="box-title" style={{ fontSize: '24px', marginBottom: '28px', pointerEvents: 'auto' }}>NO. OF SCHOOL<br />DIVISION OFFICE</div>
-                <div style={{ pointerEvents: 'auto' }}><FittedText text={formatCount(stats.divisionCount)} maxWidth={250} maxSize={110} minSize={44} /></div>
-              </div>
-              <div className="pimd-asset-wrapper" style={{ left: '838px', top: '1843px', width: '98px', height: '51px', zIndex: 41, pointerEvents: 'auto' }}>
-                <img src="/assets/pimd-infographic/07_DEPED_LOGO_TRANSPARENT.png" alt="DepEd" className="pimd-transparent-asset" />
+              <div className="pimd-sdo-card-background" style={{ background: NAVY }}>
+                <div className="pimd-sdo-content" style={{ position: 'absolute', inset: 0, display: 'grid', gridTemplateRows: '82px minmax(0, 1fr) 58px', justifyItems: 'center', alignItems: 'center' }}>
+                  <div className="pimd-sdo-label pimd-on-navy-text" style={{ gridRow: 1, alignSelf: 'center', textAlign: 'center', lineHeight: 1.12, fontSize: '24px', pointerEvents: 'auto' }}>NO. OF SCHOOL<br />DIVISION OFFICE</div>
+                  <div className="pimd-sdo-value pimd-on-navy-text" style={{ gridRow: 2, alignSelf: 'center', margin: 0, lineHeight: 1, whiteSpace: 'nowrap', overflow: 'visible', pointerEvents: 'auto' }}><FittedText text={formatCount(stats.divisionCount)} maxWidth={250} maxSize={110} minSize={44} className="pimd-on-navy-text" /></div>
+                  <img src="/assets/pimd-infographic/07_DEPED_LOGO_TRANSPARENT.png" alt="DepEd" className="pimd-deped-logo" style={{ gridRow: 3, alignSelf: 'center', width: 'auto', maxWidth: '98px', maxHeight: '46px', objectFit: 'contain', background: 'transparent' }} />
+                </div>
               </div>
 
               <div className="abs-card pimd-provinces" style={{ background: NAVY }}>
-                <div className="box-title" style={{ fontSize: '19px' }}>NO. OF PROVINCES<br />SUPPLIED</div>
-                <div style={{ marginTop: '15px' }}><FittedText text={formatCount(stats.provinceCount)} maxWidth={240} maxSize={70} minSize={44} /></div>
+                <div className="box-title pimd-on-navy-text" style={{ fontSize: '19px' }}>NO. OF PROVINCES<br />SUPPLIED</div>
+                <div style={{ marginTop: '15px' }}><FittedText text={formatCount(stats.provinceCount)} maxWidth={240} maxSize={70} minSize={44} className="pimd-on-navy-text" /></div>
               </div>
 
               <div className="abs-card pimd-schools" style={{ background: NAVY }}>
-                <div className="box-title" style={{ fontSize: '19px' }}>NO. OF SCHOOLS<br />SUPPLIED</div>
-                <div style={{ marginTop: '15px' }}><FittedText text={formatCount(stats.schoolCount)} maxWidth={240} maxSize={70} minSize={44} /></div>
+                <div className="box-title pimd-on-navy-text" style={{ fontSize: '19px' }}>NO. OF SCHOOLS<br />SUPPLIED</div>
+                <div style={{ marginTop: '15px' }}><FittedText text={formatCount(stats.schoolCount)} maxWidth={240} maxSize={70} minSize={44} className="pimd-on-navy-text" /></div>
               </div>
 
             </section>
@@ -692,8 +753,15 @@ export default function PIMDReportPage() {
             </div>
 
             {/* Preview image */}
-            <div className="pimd-modal-preview">
-              <img src={previewSrc} alt="Factsheet preview" />
+            <div className="pimd-modal-preview" ref={previewBodyRef}>
+              <img src={previewSrc} alt="Factsheet preview" onLoad={() => {
+                requestAnimationFrame(() => {
+                  if (previewBodyRef.current) {
+                    previewBodyRef.current.scrollTop = 0
+                    previewBodyRef.current.scrollLeft = 0
+                  }
+                })
+              }} />
             </div>
 
             {/* Footer buttons */}
