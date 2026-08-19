@@ -1,8 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { formatCurrency, formatNumber } from '@/lib/utils'
 import { DashboardFilter } from '@/components/DashboardFilter'
 import { PCC_CENTERS } from '@/lib/types'
+import { SummaryLdsClient } from './SummaryLdsClient'
 
 export default async function SummaryLDSPage(props: {
   searchParams: Promise<{ year?: string; month?: string; center?: string }>
@@ -18,144 +18,83 @@ export default async function SummaryLDSPage(props: {
 
   let query = supabase
     .from('mfp_data')
-    .select('beneficiaries, milk_packs, milk_cost, total_funds_transferred, funded_by, year, center, region, province, municipality, date_started')
+    .select(`
+      year, 
+      beneficiaries, 
+      milk_packs, 
+      milk_cost, 
+      total_funds_transferred, 
+      funded_by, 
+      center, 
+      region, 
+      province, 
+      municipality, 
+      date_started,
+      feeding_days,
+      mode_of_procurement,
+      supplier_id,
+      milk_type,
+      raw_milk_liters,
+      cooperatives!supplier_id (
+        name
+      )
+    `)
     .eq('funded_by', 'LDS')
     .range(0, 49999)
 
-  if (centerFilter) query = query.eq('center', centerFilter)
-  if (sp.year)      query = query.eq('year', parseInt(sp.year))
+  if (centerFilter && centerFilter !== '__ALL_CENTERS__') {
+    query = query.eq('center', centerFilter === 'NHQGP (NIZ)' ? 'NIZ' : centerFilter)
+  }
+  
+  // Notice we no longer filter year at the database level if we want ALL years for the matrix columns
+  // But wait, if sp.year is present, we still want to show ALL years for the columns? The prompt says: "When All Years is selected: show all available LDS years... When a specific year is selected: Overview shows the matching school-year column... retain the first label column... hide unrelated year columns."
+  // So we pass all data, but only pass the `years` array with the selected year if one is selected, or all years if not.
+  // Actually, wait, it's better to fetch all years' data so we don't have to worry.
+  // But if the query limit is hit, we might have issues. 50k should be enough.
 
   let { data: rows } = await query
 
-  if (sp.month && rows) {
+  if (sp.month && rows && sp.month !== '__ALL_MONTHS__') {
     const m = parseInt(sp.month)
     rows = rows.filter(r => r.date_started && (new Date(r.date_started).getMonth() + 1) === m)
   }
 
   rows = rows ?? []
 
-  const totalBene    = rows.reduce((s, r) => s + (r.beneficiaries || 0), 0)
-  const totalPacks   = rows.reduce((s, r) => s + (r.milk_packs || 0), 0)
-  const totalFunds   = rows.reduce((s, r) => s + (r.total_funds_transferred || 0), 0)
-  const totalCost    = rows.reduce((s, r) => s + (r.milk_cost || 0), 0)
-  const totalRecords = rows.length
+  // Extract distinct years from data if All Years, otherwise just the selected year
+  let years = Array.from(new Set(rows.map(r => r.year))).sort((a,b) => a - b)
+  if (sp.year && sp.year !== '__ALL_YEARS__') {
+    const y = parseInt(sp.year)
+    if (years.includes(y)) {
+      years = [y]
+    } else {
+      years = [y] // User selected a year with no data, let's still show the column
+    }
+  }
 
-  const regionMap: Record<string, { bene: number; packs: number; cost: number; records: number }> = {}
-  rows.forEach(r => {
-    const k = r.region || 'Unknown'
-    if (!regionMap[k]) regionMap[k] = { bene: 0, packs: 0, cost: 0, records: 0 }
-    regionMap[k].bene    += r.beneficiaries || 0
-    regionMap[k].packs   += r.milk_packs || 0
-    regionMap[k].cost    += r.milk_cost || 0
-    regionMap[k].records += 1
-  })
-  const regionRows = Object.entries(regionMap)
-    .map(([region, v]) => ({ region, ...v }))
-    .sort((a, b) => b.bene - a.bene)
-
-  const centerMap: Record<string, { bene: number; packs: number; cost: number; records: number }> = {}
-  rows.forEach(r => {
-    const k = r.center || 'Unknown'
-    if (!centerMap[k]) centerMap[k] = { bene: 0, packs: 0, cost: 0, records: 0 }
-    centerMap[k].bene    += r.beneficiaries || 0
-    centerMap[k].packs   += r.milk_packs || 0
-    centerMap[k].cost    += r.milk_cost || 0
-    centerMap[k].records += 1
-  })
-  const centerRows = Object.entries(centerMap)
-    .map(([center, v]) => ({ center, ...v }))
-    .sort((a, b) => b.bene - a.bene)
-
-  const maxBene = Math.max(...regionRows.map(r => r.bene), 1)
-  const LDS_COLOR = '#b45309'
-  const LDS_BG    = '#fef3c7'
+  const mappedRows = rows.map(r => ({
+    ...r,
+    supplier_name: (r.cooperatives as any)?.name || r.supplier_id || ''
+  }))
 
   return (
     <div>
       <div className="page-header">
         <div>
-          <h1 className="page-title" style={{ color: LDS_COLOR }}>⛪ Summary — LDS</h1>
+          <h1 className="page-title" style={{ color: '#b45309' }}>⛪ Summary — LDS</h1>
           <p className="page-subtitle">Latter Day Saints Supplementary Feeding Program</p>
         </div>
         <DashboardFilter centers={PCC_CENTERS} isEncoder={isEncoder} />
       </div>
 
-      {/* KPI Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
-        {[
-          { label: 'Total Beneficiaries', value: formatNumber(totalBene),   color: LDS_COLOR },
-          { label: 'Milk Packs',          value: formatNumber(totalPacks),  color: '#0369a1' },
-          { label: 'Gross Income (₱)',    value: formatCurrency(totalCost), color: '#15803d' },
-          { label: 'Total Records',       value: formatNumber(totalRecords), color: '#7c3aed' },
-        ].map(s => (
-          <div key={s.label} className="stat-card">
-            <div style={{ fontWeight: 800, fontSize: '1.5rem', color: s.color }}>{s.value}</div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--gray-600)', marginTop: '0.25rem' }}>{s.label}</div>
-          </div>
-        ))}
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
-        {/* By Region */}
-        <div className="card" style={{ padding: '1.5rem' }}>
-          <h3 style={{ fontWeight: 700, color: LDS_COLOR, marginBottom: '1.25rem', fontSize: '1rem' }}>
-            Beneficiaries by Region
-          </h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', maxHeight: 380, overflowY: 'auto' }}>
-            {regionRows.map(r => {
-              const pct = (r.bene / maxBene) * 100
-              return (
-                <div key={r.region}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: '0.2rem' }}>
-                    <span style={{ fontWeight: 600, color: 'var(--navy)' }}>Region {r.region}</span>
-                    <span style={{ color: LDS_COLOR, fontWeight: 700 }}>{formatNumber(r.bene)}</span>
-                  </div>
-                  <div style={{ height: 7, background: 'var(--gray-100)', borderRadius: 4 }}>
-                    <div style={{ height: '100%', width: `${pct}%`, background: LDS_COLOR, borderRadius: 4 }} />
-                  </div>
-                  <div style={{ fontSize: '0.68rem', color: 'var(--gray-600)' }}>{formatNumber(r.packs)} packs · {formatCurrency(r.cost)}</div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* By Center Table */}
-        <div className="card" style={{ padding: '1.5rem' }}>
-          <h3 style={{ fontWeight: 700, color: LDS_COLOR, marginBottom: '1.25rem', fontSize: '1rem' }}>
-            Summary by Center
-          </h3>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
-              <thead>
-                <tr style={{ background: LDS_BG }}>
-                  {['Center', 'Beneficiaries', 'Milk Packs', 'Gross Income', 'Records'].map(h => (
-                    <th key={h} style={{ padding: '0.5rem 0.75rem', textAlign: h === 'Center' ? 'left' : 'right', color: LDS_COLOR, fontWeight: 700 }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {centerRows.map((c, i) => (
-                  <tr key={c.center} style={{ background: i % 2 === 0 ? 'white' : 'var(--gray-50)' }}>
-                    <td style={{ padding: '0.5rem 0.75rem', fontWeight: 600 }}>{c.center}</td>
-                    <td style={{ padding: '0.5rem 0.75rem', textAlign: 'right' }}>{formatNumber(c.bene)}</td>
-                    <td style={{ padding: '0.5rem 0.75rem', textAlign: 'right' }}>{formatNumber(c.packs)}</td>
-                    <td style={{ padding: '0.5rem 0.75rem', textAlign: 'right' }}>{formatCurrency(c.cost)}</td>
-                    <td style={{ padding: '0.5rem 0.75rem', textAlign: 'right' }}>{c.records}</td>
-                  </tr>
-                ))}
-                <tr style={{ background: LDS_BG, fontWeight: 700 }}>
-                  <td style={{ padding: '0.5rem 0.75rem' }}>TOTAL</td>
-                  <td style={{ padding: '0.5rem 0.75rem', textAlign: 'right' }}>{formatNumber(totalBene)}</td>
-                  <td style={{ padding: '0.5rem 0.75rem', textAlign: 'right' }}>{formatNumber(totalPacks)}</td>
-                  <td style={{ padding: '0.5rem 0.75rem', textAlign: 'right' }}>{formatCurrency(totalCost)}</td>
-                  <td style={{ padding: '0.5rem 0.75rem', textAlign: 'right' }}>{totalRecords}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
+      <SummaryLdsClient 
+        rows={mappedRows as any}
+        years={years}
+        centerFilter={centerFilter}
+        yearFilter={sp.year}
+        monthFilter={sp.month}
+      />
     </div>
   )
 }
+
