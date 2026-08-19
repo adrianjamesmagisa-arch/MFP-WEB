@@ -5,12 +5,12 @@ import { createClient } from '@/lib/supabase/client'
 import { PCC_CENTERS } from '@/lib/types'
 import { Download, Filter, Printer, ZoomIn, ZoomOut, Maximize2, AlignCenter } from 'lucide-react'
 
-const NAVY      = '#0b2b53' 
-const HDR_NAVY  = '#0f3c5f'
-const HDR_LOGO  = '#16547c'
-const CHART_BG  = '#ffffff'
+const NAVY      = '#002C65'
+const HDR_NAVY  = '#12476A'
+const HDR_LOGO  = '#13547E'
+const CHART_BG  = '#F3FBFE'
 const WHITE     = '#FFFFFF'
-const BGD_GRAD  = 'linear-gradient(160deg, #d8edf8 0%, #ffffff 40%, #ffffff 100%)'
+const BGD_GRAD  = 'linear-gradient(to bottom, #d6eaf8 0%, #ffffff 40%, #ffffff 70%, #d5e5ec 100%)'
 
 const ARTBOARD_WIDTH  = 1414
 const ARTBOARD_HEIGHT = 2000
@@ -47,7 +47,7 @@ interface Stats {
   provinceCount: number; schoolCount: number
 }
 
-function FittedText({ text, maxWidth, maxSize = 62, minSize = 30, weight = 900, color = WHITE }: {
+function FittedText({ text, maxWidth, maxSize = 62, minSize = 44, weight = 900, color = WHITE }: {
   text: string; maxWidth: number; maxSize?: number; minSize?: number; weight?: number; color?: string
 }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -62,7 +62,10 @@ function FittedText({ text, maxWidth, maxSize = 62, minSize = 30, weight = 900, 
     }
   }, [text, maxWidth, maxSize, minSize])
   return (
-    <div ref={ref} className="pimd-fitted-val" style={{ width: maxWidth, fontWeight: weight, color, whiteSpace: 'nowrap', lineHeight: 1, letterSpacing: '-1px', textAlign: 'center', overflow: 'visible', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    // overflow:visible is critical — html2canvas clips glyphs (₱, tall numerals, descenders)
+    // that extend outside an overflow:hidden box even though the screen looks fine.
+    // The fitting loop uses scrollWidth vs clientWidth (horizontal) so visible doesn't break it.
+    <div ref={ref} style={{ width: maxWidth, fontWeight: weight, color, whiteSpace: 'nowrap', lineHeight: 1.05, letterSpacing: '-1px', textAlign: 'center', overflow: 'visible', margin: '0 auto', paddingBottom: '3px' }}>
       {text}
     </div>
   )
@@ -75,21 +78,21 @@ function BarChart({ data }: { data: Record<string, number> }) {
   const mag = Math.pow(10, Math.floor(Math.log10(maxVal || 1)))
   const yMax = Math.ceil((maxVal || 1) / mag) * mag
   const steps = 4
-  const vW = 622, vH = 342, PL = 70, PB = 40, PT = 80, PR = 20
+  const vW = 622, vH = 342, PL = 70, PB = 40, PT = 60, PR = 20
   const cW = vW - PL - PR, cH = vH - PT - PB
   const bGap = cW / entries.length
-  const bW = Math.min(bGap * 0.7, 80)
+  const bW = bGap * 0.6
   const fmt = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 })
   return (
     <svg viewBox={`0 0 ${vW} ${vH}`} width="100%" height="100%" style={{ position: 'absolute', top: 0, left: 0 }}>
-      <text x={vW / 2} y={45} textAnchor="middle" fontSize={26} fontWeight="900" fill={NAVY}>MILK UTILIZED</text>
+      <text x={vW / 2} y={35} textAnchor="middle" fontSize={24} fontWeight="900" fill={HDR_NAVY}>MILK UTILIZED</text>
       {Array.from({ length: steps + 1 }, (_, i) => {
         const val = (yMax / steps) * i
         const y = PT + cH - (val / yMax) * cH
         return (
           <g key={i}>
-            <line x1={PL} y1={y} x2={vW - PR} y2={y} stroke="#e5e7eb" strokeWidth={1} />
-            <text x={PL - 10} y={y + 5} textAnchor="end" fontSize={11} fill="#6b7280">{fmt.format(val)}</text>
+            <line x1={PL} y1={y} x2={vW - PR} y2={y} stroke="#d1d5db" strokeWidth={1} />
+            <text x={PL - 10} y={y + 5} textAnchor="end" fontSize={12} fill="#4b5563">{fmt.format(val)}</text>
           </g>
         )
       })}
@@ -102,7 +105,7 @@ function BarChart({ data }: { data: Record<string, number> }) {
           <g key={type}>
             <rect x={x} y={y} width={bW} height={bH} fill={NAVY} />
             <text x={x + bW / 2} y={y - 8} textAnchor="middle" fontSize={11} fontWeight="bold" fill={NAVY}>{formatCount(val)}</text>
-            <text x={x + bW / 2} y={PT + cH + 20} textAnchor="middle" fontSize={11} fill="#4b5563" fontWeight="600">{label}</text>
+            <text x={x + bW / 2} y={PT + cH + 20} textAnchor="middle" fontSize={12} fill="#374151" fontWeight="600">{label}</text>
           </g>
         )
       })}
@@ -116,21 +119,21 @@ function HBar({ data }: { data: Record<string, number> }) {
   const maxVal = Math.max(...entries.map(([, v]) => v), 1)
   const mag = Math.pow(10, Math.floor(Math.log10(maxVal || 1)))
   const yMax = Math.ceil((maxVal || 1) / mag) * mag
-  const vW = 644, vH = 342, rowH = 46, labelW = 160, numW = 60, PR = 30, PT = 80
+  const vW = 644, vH = 355, rowH = 50, labelW = 160, numW = 60, PR = 30, PT = 60
   const barAreaW = vW - labelW - numW - PR
   const fmt = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 })
   return (
     <svg viewBox={`0 0 ${vW} ${vH}`} width="100%" height="100%" style={{ position: 'absolute', top: 0, left: 0 }}>
-      <text x={vW / 2} y={45} textAnchor="middle" fontSize={26} fontWeight="900" fill={WHITE}>PACKAGING AND SIZE</text>
+      <text x={vW / 2} y={35} textAnchor="middle" fontSize={24} fontWeight="900" fill={WHITE}>PACKAGING AND SIZE</text>
       {entries.map(([type, val], i) => {
         const bW = (val / yMax) * barAreaW
         const y = PT + i * rowH + 5
         const label = (MILK_LABEL[type] ?? type).toUpperCase()
         return (
           <g key={type}>
-            <text x={labelW - 15} y={y + 20} textAnchor="end" fontSize={11} fill={WHITE} fontWeight="600">{label}</text>
-            <rect x={labelW} y={y} width={Math.max(bW, 2)} height={26} fill={WHITE} />
-            <text x={labelW + Math.max(bW, 2) + 10} y={y + 18} fontSize={11} fill={WHITE} fontWeight="600">{formatCount(val)}</text>
+            <text x={labelW - 15} y={y + 20} textAnchor="end" fontSize={13} fill={WHITE} fontWeight="600">{label}</text>
+            <rect x={labelW} y={y} width={Math.max(bW, 2)} height={30} fill={WHITE} />
+            <text x={labelW + Math.max(bW, 2) + 10} y={y + 20} fontSize={13} fill={WHITE} fontWeight="600">{formatCount(val)}</text>
           </g>
         )
       })}
@@ -141,145 +144,11 @@ function HBar({ data }: { data: Record<string, number> }) {
         return (
           <g key={i}>
             <line x1={x} y1={PT + entries.length * rowH + 10} x2={x} y2={PT + entries.length * rowH + 15} stroke="rgba(255,255,255,0.5)" strokeWidth={1.5} />
-            <text x={x + 10} y={PT + entries.length * rowH + 25} fontSize={9} fill="rgba(255,255,255,0.9)" transform={`rotate(-45 ${x + 10} ${PT + entries.length * rowH + 25})`} textAnchor="end" fontWeight="500">{fmt.format(v)}</text>
+            <text x={x + 15} y={PT + entries.length * rowH + 25} fontSize={11} fill="rgba(255,255,255,0.9)" transform={`rotate(-45 ${x + 15} ${PT + entries.length * rowH + 25})`} textAnchor="end" fontWeight="500">{fmt.format(v)}</text>
           </g>
         )
       })}
     </svg>
-  )
-}
-
-function PimdFactsheet({ stats, eff, showReference }: { stats: Stats; eff: string; showReference: boolean }) {
-  return (
-    <section className="pimd-artboard" style={{ width: ARTBOARD_WIDTH, height: ARTBOARD_HEIGHT, background: BGD_GRAD }}>
-      {showReference && <img className="pimd-reference-overlay" src="/__pimd_reference__/inforgraphic-template.png" alt="" style={{ width: ARTBOARD_WIDTH, height: ARTBOARD_HEIGHT }} data-html2canvas-ignore="true" />}
-
-      {/* HEADER */}
-      <div style={{ position: 'absolute', left: 14, top: 73, width: 1084, height: 215, background: HDR_NAVY, zIndex: 1 }} />
-      <div style={{ position: 'absolute', left: 1098, top: 93, width: 295, height: 195, background: HDR_LOGO, zIndex: 1 }} />
-      <div style={{ position: 'absolute', left: 49, top: 110, zIndex: 2 }}>
-        <h1 style={{ margin: 0, padding: 0, fontSize: 62, fontWeight: 900, lineHeight: 1.05, letterSpacing: '-1px', color: WHITE }}>
-          <span style={{ display: 'block' }}>MILK FEEDING PROGRAM</span>
-          <span style={{ display: 'block' }}>FACTSHEET</span>
-        </h1>
-        <div style={{ width: 868, height: 2, background: WHITE, marginTop: 12 }} />
-        <div style={{ marginTop: 14, fontSize: 28, fontWeight: 500, color: WHITE, letterSpacing: '1px' }}>{eff}</div>
-      </div>
-      <div className="pimd-asset-wrapper" style={{ left: 1113, top: 135, width: 115, height: 115, zIndex: 2 }}>
-        <img src="/assets/pimd-infographic/06_DA_PCC_LOGO_TRANSPARENT.png" alt="DA Logo" className="pimd-transparent-asset" />
-      </div>
-      <div className="pimd-asset-wrapper" style={{ left: 1245, top: 125, width: 125, height: 125, zIndex: 2 }}>
-        <img src="/assets/pimd-infographic/04_BAGONG_PILIPINAS_TRANSPARENT.png" alt="Bagong Pilipinas" className="pimd-transparent-asset" />
-      </div>
-
-      {/* ROW 1: GROSS INCOME / REVENUE */}
-      <div className="abs-card" style={{ left: 66, top: 326, width: 928, height: 138, background: NAVY }}>
-        <div className="box-title" style={{ fontSize: 24, fontWeight: 500, marginBottom: 8, letterSpacing: '1px' }}>GROSS INCOME FROM THE RAW MILK</div>
-        <FittedText text={cur(stats.grossIncome)} maxWidth={840} maxSize={72} minSize={44} />
-      </div>
-      <div className="abs-card" style={{ left: 1022, top: 326, width: 325, height: 138, background: NAVY }}>
-        <div className="box-title" style={{ fontSize: 18, lineHeight: 1.2, fontWeight: 500, marginBottom: 8, letterSpacing: '0.5px' }}>MILK FEEDING PROGRAM<br />ACCOMPLISHMENT</div>
-        <div className="box-val" style={{ fontSize: 68 }}>00%</div>
-      </div>
-
-      <div className="abs-card" style={{ left: 66, top: 486, width: 928, height: 138, background: NAVY }}>
-        <div className="box-title" style={{ fontSize: 24, fontWeight: 500, marginBottom: 8, letterSpacing: '1px' }}>GROSS REVENUE EARNED (COOPERATIVE)</div>
-        <FittedText text={cur(stats.grossRevenue)} maxWidth={840} maxSize={72} minSize={44} />
-      </div>
-      <div className="abs-card" style={{ left: 1022, top: 486, width: 325, height: 138, background: NAVY }}>
-        <div className="box-title" style={{ fontSize: 16, lineHeight: 1.2, fontWeight: 500, marginBottom: 8, padding: '0 20px', letterSpacing: '0.5px' }}>NO. OF CHILD DEVELOPMENT<br />CENTERS UNDER DSWD</div>
-        <div className="box-val" style={{ fontSize: 68 }}>{formatCount(stats.dswdCenters)}</div>
-        <img src="/assets/pimd-infographic/01_DSWD_LOGO_TRANSPARENT.png" alt="DSWD" style={{ position: 'absolute', right: 20, bottom: 20, objectFit: 'contain', width: 44, height: 44, zIndex: 5 }} />
-      </div>
-
-      {/* ROW 2: BENEFICIARIES */}
-      <div style={{ position: 'absolute', left: 100, top: 660, width: 1214, height: 280, border: `6px solid ${NAVY}`, borderRadius: 40, zIndex: 1 }} />
-      
-      {/* Total Beneficiaries Inner Card */}
-      <div className="abs-card" style={{ left: 110, top: 670, width: 590, height: 140, background: WHITE, borderRadius: 34, zIndex: 2, border: `4px solid ${NAVY}` }}>
-        <div className="box-title" style={{ fontSize: 18, fontWeight: 600, color: NAVY, marginBottom: 8 }}>TOTAL NUMBER OF CHILDREN BENEFICIARIES</div>
-        <FittedText text={formatCount(stats.totalBene)} maxWidth={400} maxSize={68} minSize={40} color={NAVY} />
-      </div>
-      <div className="pimd-asset-wrapper" style={{ left: 108, top: 730, width: 110, height: 80, zIndex: 3 }}>
-        <img src="/assets/pimd-infographic/03_TWO_CHILDREN_TRANSPARENT.png" alt="Children" className="pimd-transparent-asset" />
-      </div>
-
-      {/* Milk Packs Inner Card */}
-      <div className="abs-card" style={{ left: 714, top: 670, width: 590, height: 140, background: NAVY, borderRadius: 34, zIndex: 2 }}>
-        <div className="box-title" style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>MILK PACKS DISTRIBUTED TO CHILDREN BENEFICIARIES</div>
-        <FittedText text={formatCount(stats.totalPacks)} maxWidth={400} maxSize={68} minSize={40} />
-      </div>
-      <div className="pimd-asset-wrapper" style={{ left: 1190, top: 730, width: 110, height: 80, zIndex: 3 }}>
-        <img src="/assets/pimd-infographic/05_THREE_CHILDREN_ILLUSTRATION_TRANSPARENT.png" alt="Children" className="pimd-transparent-asset" />
-      </div>
-
-      {/* Breakdown */}
-      <div style={{ position: 'absolute', left: 110, top: 820, width: 590, height: 100, zIndex: 2, display: 'flex', justifyContent: 'space-evenly', alignItems: 'center' }}>
-        {['DSWD','DEPED','LGU','OTHERS'].map(f => (
-          <div key={f} style={{ textAlign: 'center', width: '25%' }}>
-            <div style={{ color: NAVY, fontWeight: 900, fontSize: 32, lineHeight: 1 }}><FittedText text={formatCount(stats.beneByFunder[f] || 0)} maxWidth={130} maxSize={32} minSize={16} color={NAVY} /></div>
-            <div style={{ color: NAVY, fontWeight: 800, fontSize: 18, marginTop: 4 }}>{f}</div>
-          </div>
-        ))}
-      </div>
-      
-      <div style={{ position: 'absolute', left: 707, top: 830, width: 4, height: 80, background: NAVY, zIndex: 2 }} />
-
-      <div style={{ position: 'absolute', left: 714, top: 820, width: 590, height: 100, zIndex: 2, display: 'flex', justifyContent: 'space-evenly', alignItems: 'center' }}>
-        {['DSWD','DEPED','LGU','OTHERS'].map(f => (
-          <div key={f} style={{ textAlign: 'center', width: '25%' }}>
-            <div style={{ color: NAVY, fontWeight: 900, fontSize: 32, lineHeight: 1 }}><FittedText text={formatCount(stats.packsByFunder[f] || 0)} maxWidth={130} maxSize={32} minSize={16} color={NAVY} /></div>
-            <div style={{ color: NAVY, fontWeight: 800, fontSize: 18, marginTop: 4 }}>{f}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* ROW 3: CHARTS */}
-      <div style={{ position: 'absolute', left: 66, top: 980, width: 622, height: 342, background: CHART_BG, borderRadius: 32, zIndex: 1, border: `2px solid #e5e7eb` }}>
-        <BarChart data={stats.volumeByType} />
-      </div>
-      <div style={{ position: 'absolute', left: 714, top: 980, width: 644, height: 342, background: NAVY, borderRadius: 32, zIndex: 1 }}>
-        <HBar data={stats.packsBySize} />
-      </div>
-
-      {/* ROW 4: BOTTOM GRID & IMAGE */}
-      <div className="pimd-asset-wrapper" style={{ left: 0, top: 1260, width: 800, height: 740, zIndex: 10 }}>
-        <img src="/assets/pimd-infographic/08_THREE_CHILDREN_DRINKING_MILK_TRANSPARENT.png" alt="Children drinking" className="pimd-transparent-asset" style={{ objectPosition: 'bottom left', pointerEvents: 'none' }} />
-      </div>
-
-      {/* Milky Boy */}
-      <div className="pimd-asset-wrapper" style={{ left: 714, top: 1230, width: 50, height: 90, zIndex: 2 }}>
-        <img src="/assets/pimd-infographic/02_MILKY_BOY_TRANSPARENT.png" alt="Milky Boy" className="pimd-transparent-asset" />
-      </div>
-
-      <div className="abs-card" style={{ left: 450, top: 1360, width: 256, height: 135, background: NAVY, zIndex: 1 }}>
-        <div className="box-title" style={{ fontSize: 16, lineHeight: 1.2 }}>NO. OF COOPERATIVE<br />MILK SUPPLIERS</div>
-        <div style={{ marginTop: 12 }}><FittedText text={formatCount(stats.coopCount)} maxWidth={200} maxSize={60} minSize={40} /></div>
-      </div>
-
-      <div className="abs-card" style={{ left: 716, top: 1360, width: 639, height: 75, background: NAVY, zIndex: 1, flexDirection: 'row', justifyContent: 'space-between', padding: '0 40px' }}>
-        <div className="box-title" style={{ fontSize: 24, margin: 0 }}>NO. OF DISTRICTS SUPPLIED</div>
-        <div className="box-val" style={{ fontSize: 56, margin: 0 }}>{formatCount(stats.districtCount)}</div>
-      </div>
-
-      <div className="abs-card" style={{ left: 716, top: 1445, width: 345, height: 330, background: NAVY, zIndex: 1 }}>
-        <div className="box-title" style={{ fontSize: 22, lineHeight: 1.2, marginBottom: 20 }}>NO. OF SCHOOL<br />DIVISION OFFICE</div>
-        <FittedText text={formatCount(stats.divisionCount)} maxWidth={260} maxSize={110} minSize={60} />
-      </div>
-      <div className="pimd-asset-wrapper" style={{ left: 835, top: 1680, width: 108, height: 60, zIndex: 2, pointerEvents: 'auto' }}>
-        <img src="/assets/pimd-infographic/07_DEPED_LOGO_TRANSPARENT.png" alt="DepEd" className="pimd-transparent-asset" />
-      </div>
-
-      <div className="abs-card" style={{ left: 1070, top: 1445, width: 285, height: 160, background: NAVY, zIndex: 1 }}>
-        <div className="box-title" style={{ fontSize: 18, lineHeight: 1.2 }}>NO. OF PROVINCES<br />SUPPLIED</div>
-        <div style={{ marginTop: 12 }}><FittedText text={formatCount(stats.provinceCount)} maxWidth={240} maxSize={64} minSize={40} /></div>
-      </div>
-
-      <div className="abs-card" style={{ left: 1070, top: 1615, width: 285, height: 160, background: NAVY, zIndex: 1 }}>
-        <div className="box-title" style={{ fontSize: 18, lineHeight: 1.2 }}>NO. OF SCHOOLS<br />SUPPLIED</div>
-        <div style={{ marginTop: 12 }}><FittedText text={formatCount(stats.schoolCount)} maxWidth={240} maxSize={64} minSize={40} /></div>
-      </div>
-    </section>
   )
 }
 
@@ -299,6 +168,7 @@ export default function PIMDReportPage() {
   const [customScale, setCustomScale] = useState(1)
   const [displayScale, setDisplayScale] = useState(0.5)
   const [isCapturing, setIsCapturing] = useState(false)
+  // Preview modal state
   const [previewSrc, setPreviewSrc] = useState<string | null>(null)
   const [previewBlob, setPreviewBlob] = useState<Blob | null>(null)
 
@@ -421,14 +291,9 @@ export default function PIMDReportPage() {
   const zoomOut = () => { const n = Math.max(displayScale - ZOOM_STEP, MIN_ZOOM); setCustomScale(n); setZoomMode('custom') }
   const set100  = () => { setCustomScale(1); setZoomMode('custom') }
 
-  async function capturePimdCanonicalSnapshot(): Promise<{ blob: Blob; objectUrl: string; logicalWidth: 1414; logicalHeight: 2000; pixelWidth: number; pixelHeight: number }> {
-    const el = document.getElementById('pimd-capture-host')
-    if (!el) throw new Error('Capture host not found')
-    const captureArtboard = el.querySelector('.pimd-artboard') as HTMLElement
-    if (!captureArtboard) throw new Error('Artboard not found inside capture host')
-
+  async function waitForAssets() {
     await document.fonts.ready
-    const images = Array.from(el.querySelectorAll<HTMLImageElement>('img'))
+    const images = Array.from(document.querySelectorAll<HTMLImageElement>('#pimd-factsheet img'))
     await Promise.all(images.map(async img => {
       if (!img.complete) await new Promise<void>(res => {
         img.addEventListener('load', () => res(), { once: true })
@@ -436,66 +301,41 @@ export default function PIMDReportPage() {
       })
       try { await img.decode() } catch { /* ok */ }
     }))
-    
-    // wait for 2 frames
     await new Promise<void>(res => requestAnimationFrame(() => requestAnimationFrame(() => res())))
-
-    const h2c = (await import('html2canvas')).default
-    
-    // Un-scale the artboard if it was scaled somehow, but it shouldn't be inside the capture host
-    captureArtboard.style.transform = 'none'
-    captureArtboard.style.transformOrigin = 'top left'
-    captureArtboard.style.width = '1414px'
-    captureArtboard.style.height = '2000px'
-
-    const canvas = await h2c(captureArtboard, {
-      scale: 2, useCORS: true, allowTaint: false, backgroundColor: null,
-      logging: false,
-      width: ARTBOARD_WIDTH, height: ARTBOARD_HEIGHT,
-      windowWidth: ARTBOARD_WIDTH, windowHeight: ARTBOARD_HEIGHT,
-      scrollX: 0, scrollY: 0,
-      onclone: (doc) => {
-        const clonedHost = doc.getElementById('pimd-capture-host')
-        if (clonedHost) {
-          clonedHost.style.position = 'relative'
-          clonedHost.style.left = '0'
-          clonedHost.style.top = '0'
-        }
-        const cl = doc.querySelector('#pimd-capture-host .pimd-artboard') as HTMLElement
-        if (cl) {
-          cl.style.transform = 'none'
-          cl.style.transformOrigin = 'top left'
-          cl.style.width = '1414px'
-          cl.style.height = '2000px'
-          cl.style.position = 'relative'
-          cl.style.left = '0'
-          cl.style.top = '0'
-          cl.style.overflow = 'hidden' // Root boundary clip
-
-          cl.querySelectorAll<HTMLElement>('.pimd-fitted-val').forEach(n => {
-            n.style.overflow = 'visible'
-          })
-          
-          const ov = doc.querySelector('.pimd-reference-overlay')
-          if (ov) (ov as HTMLElement).style.display = 'none'
-        }
-      }
-    })
-
-    const blob = await new Promise<Blob>(res => canvas.toBlob(b => res(b!), 'image/png'))
-    const objectUrl = URL.createObjectURL(blob)
-    return {
-      blob, objectUrl, logicalWidth: 1414, logicalHeight: 2000, pixelWidth: canvas.width, pixelHeight: canvas.height
-    }
   }
 
+  // ─── Shared capture: opens the preview modal ────────────────────────────
   const openPreviewModal = async () => {
     if (isCapturing || !stats) return
     setIsCapturing(true)
     try {
-      const snapshot = await capturePimdCanonicalSnapshot()
-      setPreviewBlob(snapshot.blob)
-      setPreviewSrc(snapshot.objectUrl)
+      await waitForAssets()
+      const root = document.getElementById('pimd-visible-capture-root') as HTMLElement
+      if (!root) throw new Error('PIMD visible capture root was not found.')
+
+      const h2c = (await import('html2canvas')).default
+      const canvas = await h2c(root, {
+        scale: Math.max(4, Math.ceil(window.devicePixelRatio * 2)),
+        useCORS: true,
+        allowTaint: false,
+        backgroundColor: null,
+        logging: false,
+        removeContainer: true,
+      })
+
+      const blob = await new Promise<Blob>(resolve =>
+        canvas.toBlob(b => resolve(b!), 'image/png')
+      )
+      const src = URL.createObjectURL(blob)
+      
+      // Mandatory Debug PNG download
+      const a = document.createElement('a')
+      a.href = src
+      a.download = 'pimd-exact-visible-capture-debug.png'
+      a.click()
+
+      setPreviewBlob(blob)
+      setPreviewSrc(src)
     } catch (err) {
       console.error(err)
       alert('Capture failed. Please try again.')
@@ -516,30 +356,33 @@ export default function PIMDReportPage() {
         reader.onload = () => resolve(reader.result as string)
         reader.readAsDataURL(previewBlob)
       })
+      
       const img = new Image()
       img.src = dataUrl
       await new Promise<void>(res => { img.onload = () => res() })
+      
       const { jsPDF } = await import('jspdf')
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true })
       
       const pageWidth = pdf.internal.pageSize.getWidth()
       const pageHeight = pdf.internal.pageSize.getHeight()
       const margin = 1
+      
       const availableWidth = pageWidth - margin * 2
       const availableHeight = pageHeight - margin * 2
+      const imageRatio = img.width / img.height
       
-      const snapshotRatio = img.width / img.height
       let imageWidth = availableWidth
-      let imageHeight = imageWidth / snapshotRatio
-
+      let imageHeight = imageWidth / imageRatio
+      
       if (imageHeight > availableHeight) {
         imageHeight = availableHeight
-        imageWidth = imageHeight * snapshotRatio
+        imageWidth = imageHeight * imageRatio
       }
-
+      
       const x = (pageWidth - imageWidth) / 2
       const y = (pageHeight - imageHeight) / 2
-
+      
       pdf.addImage(dataUrl, 'PNG', x, y, imageWidth, imageHeight, undefined, 'FAST')
       pdf.save(getFilename())
     } catch (err) {
@@ -548,51 +391,40 @@ export default function PIMDReportPage() {
     }
   }
 
-  const handlePrintFromModal = () => {
+  const handlePrint = () => {
     if (!previewSrc) return
-    const style = document.getElementById('pimd-print-style')
-    if (style) style.remove()
-    const s = document.createElement('style')
-    s.id = 'pimd-print-style'
-    s.textContent = `
-      @media print {
-        @page { size: A4 portrait; margin: 0; }
-        body > *:not(#pimd-print-frame) { display: none !important; }
-        #pimd-print-frame {
-          position: fixed !important; inset: 0 !important;
-          width: 210mm !important; height: 297mm !important;
-          margin: 0 !important; padding: 1mm !important;
-          display: flex !important; align-items: center !important;
-          justify-content: center !important; background: white !important;
-          z-index: 999999 !important; overflow: hidden !important;
-        }
-        #pimd-print-frame img {
-          display: block !important; width: 100% !important; height: 100% !important;
-          object-fit: contain !important; object-position: center !important;
-          -webkit-print-color-adjust: exact !important;
-          print-color-adjust: exact !important;
-        }
+    const pw = window.open('', '_blank')
+    if (!pw) { alert('Please allow popups for this site.'); return }
+
+    pw.document.write(`<!doctype html>
+<html>
+<head>
+  <style>
+    @page { size: A4 portrait; margin: 0; }
+    html, body { width: 210mm; height: 297mm; margin: 0; padding: 0; overflow: hidden; background: white; }
+    .page { width: 210mm; height: 297mm; box-sizing: border-box; padding: 1mm; display: flex; justify-content: center; align-items: center; overflow: hidden; }
+    .page img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: center; }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <img id="pimd-image" />
+  </div>
+</body>
+</html>`)
+    pw.document.close()
+
+    const pImg = pw.document.getElementById('pimd-image') as HTMLImageElement | null
+    if (pImg) {
+      pImg.onload = () => {
+        pw.focus()
+        pw.print()
+        setTimeout(() => pw.close(), 500)
       }
-    `
-    document.head.appendChild(s)
-    let frame = document.getElementById('pimd-print-frame')
-    if (!frame) {
-      frame = document.createElement('div')
-      frame.id = 'pimd-print-frame'
-      frame.style.cssText = 'position:fixed;inset:0;width:210mm;height:297mm;display:flex;align-items:center;justify-content:center;background:white;z-index:999999;pointer-events:none;opacity:0'
-      document.body.appendChild(frame)
-    }
-    const pImg = document.createElement('img')
-    pImg.src = previewSrc
-    pImg.style.cssText = 'width:100%;height:100%;object-fit:contain;display:block'
-    frame.innerHTML = ''
-    frame.appendChild(pImg)
-    pImg.onload = () => {
-      window.print()
-      setTimeout(() => {
-        frame?.remove()
-        s.remove()
-      }, 3000)
+      pImg.src = previewSrc
+    } else {
+      setTimeout(() => { pw.focus(); pw.print(); pw.close() }, 800)
     }
   }
 
@@ -614,18 +446,35 @@ export default function PIMDReportPage() {
     .pimd-transparent-asset{display:block;max-width:100%;width:100%;height:100%;object-fit:contain;background:transparent!important;border:0;box-shadow:none}
     .pimd-asset-wrapper{position:absolute;background:transparent!important;border:0;box-shadow:none;overflow:visible}
     .pimd-reference-overlay{position:absolute;left:0;top:0;object-fit:fill;pointer-events:none;opacity:0.5;z-index:9999}
-    .box-title{color:white;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;text-align:center}
-    .box-val{color:white;font-weight:900;letter-spacing:-1px;line-height:1;text-align:center}
+    .box-title{color:white;font-size:25px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px}
+    .box-val{color:white;font-size:68px;font-weight:900;letter-spacing:-1px;line-height:1}
     .abs-card{position:absolute;border-radius:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+    .pimd-header-main{position:absolute;left:0;top:86px;width:1089px;height:270px;padding:0;display:block}
+    .pimd-header-logos{position:absolute;left:1090px;top:114px;width:324px;height:213px}
+    .pimd-gross-income{position:absolute;left:67px;top:424px;width:928px;height:151px;padding:0 40px}
+    .pimd-accomplishment{position:absolute;left:1022px;top:424px;width:325px;height:151px}
+    .pimd-gross-revenue{position:absolute;left:71px;top:594px;width:927px;height:150px;padding:0 40px}
+    .pimd-dswd-centers{position:absolute;left:1023px;top:594px;width:321px;height:148px;border-radius:20px;overflow:hidden}
+    .pimd-beneficiary-frame{position:absolute;left:67px;top:779px;width:1280px;height:293px;background:transparent;border:7px solid rgb(0,83,123);border-radius:64px}
+    .pimd-beneficiary-total-card{position:absolute;left:102px;top:813px;width:596px;height:136px;border-radius:18px;padding:0}
+    .pimd-milk-packs-card{position:absolute;left:716px;top:813px;width:597px;height:136px;border-radius:18px;padding:0}
+    .pimd-milk-utilized-panel{position:absolute;left:63px;top:1129px;width:622px;height:342px;border-radius:40px;box-shadow:0 7px 28px rgba(0,0,0,0.05)}
+    .pimd-packaging-panel{position:absolute;left:714px;top:1122px;width:644px;height:355px;border-radius:40px}
+    .pimd-bottom-left-blue-block{position:absolute;left:0;top:1524px;width:435px;height:135px;z-index:2}
+    .pimd-cooperative-suppliers{position:absolute;left:451px;top:1524px;width:256px;height:135px;padding:0 20px;z-index:4}
+    .pimd-districts{position:absolute;left:719px;top:1523px;width:639px;height:73px;flex-direction:row;justify-content:space-between;padding:0 40px;z-index:4}
+    .pimd-sdo-card-background{position:absolute;left:719px;top:1606px;width:343px;height:312px;z-index:20}
+    .pimd-sdo-card-content{position:absolute;left:719px;top:1606px;width:343px;height:312px;padding:0 30px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;z-index:40;pointer-events:none}
+    .pimd-provinces{position:absolute;left:1073px;top:1605px;width:285px;height:150px;padding:0 20px;z-index:4}
+    .pimd-schools{position:absolute;left:1073px;top:1765px;width:285px;height:151px;padding:0 20px;z-index:4}
     .ztbtn:hover{background:#e2e8f0!important}
     @media print{.no-print{display:none!important}body{background:white!important;margin:0!important}}
-    
-    .pimd-preview-modal{width:min(900px, 96vw);height:min(96vh, 1080px);display:grid;grid-template-rows:auto minmax(0,1fr) auto;overflow:hidden;background:white;border-radius:16px;box-shadow:0 32px 80px rgba(0,0,0,0.5)}
-    .pimd-preview-body{min-width:0;min-height:0;display:grid;place-items:center;overflow:hidden;padding:12px;background:#f8fafc}
-    .pimd-preview-image{display:block;width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain;object-position:center;border-radius:4px;box-shadow:0 4px 24px rgba(0,0,0,0.18)}
-    
-    #pimd-capture-host{position:fixed;left:-20000px;top:0;width:1414px;height:2000px;opacity:1;visibility:visible;pointer-events:none}
-    #pimd-capture-host .pimd-artboard{width:1414px;height:2000px;transform:none!important;transform-origin:top left;zoom:1}
+    .pimd-modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:10000;display:flex;align-items:center;justify-content:center;padding:24px;backdrop-filter:blur(4px)}
+    .pimd-modal-box{background:white;border-radius:16px;box-shadow:0 32px 80px rgba(0,0,0,0.5);display:flex;flex-direction:column;max-width:680px;width:100%;max-height:calc(100vh - 48px);overflow:hidden}
+    .pimd-modal-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1.5px solid #e2e8f0;flex-shrink:0}
+    .pimd-modal-preview{flex:1;overflow:auto;background:#f8fafc;display:flex;align-items:flex-start;justify-content:center;padding:16px}
+    .pimd-modal-preview img{display:block;max-width:100%;height:auto;border-radius:4px;box-shadow:0 4px 24px rgba(0,0,0,0.18)}
+    .pimd-modal-footer{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:14px 20px;border-top:1.5px solid #e2e8f0;flex-shrink:0}
   `
 
   const viewerTop = viewerRef.current ? Math.round(viewerRef.current.getBoundingClientRect().top) : 220
@@ -680,51 +529,196 @@ export default function PIMDReportPage() {
       </div>
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '5rem', color: '#64748b' }}>⏳ Loading data…</div>
+        <div style={{ textAlign: 'center', padding: '5rem', color: '#64748b' }}>â³ Loading dataâ€¦</div>
       ) : stats ? (
-        <>
-          {/* SCREEN VIEWER */}
-          <div ref={viewerRef}
-            className={`pimd-viewer no-print${zoomMode === 'fit-page' ? ' fp' : ''}`}
-            style={{ height: zoomMode === 'fit-page' ? `calc(100vh - ${viewerTop}px - 16px)` : 'auto', minHeight: '300px' }}>
-            <div className="pimd-scaled-slot"
-              style={{ width: `${ARTBOARD_WIDTH * displayScale}px`, height: `${ARTBOARD_HEIGHT * displayScale}px` }}>
-              <div style={{ position: 'absolute', transform: `scale(${displayScale})`, transformOrigin: 'top left' }}>
-                <PimdFactsheet stats={stats} eff={eff} showReference={showReference} />
-              </div>
-            </div>
-          </div>
+        <div ref={viewerRef}
+          className={`pimd-viewer no-print${zoomMode === 'fit-page' ? ' fp' : ''}`}
+          style={{ height: zoomMode === 'fit-page' ? `calc(100vh - ${viewerTop}px - 16px)` : 'auto', minHeight: '300px' }}>
+          <div id="pimd-visible-capture-root" className="pimd-scaled-slot"
+            style={{ width: `${ARTBOARD_WIDTH * displayScale}px`, height: `${ARTBOARD_HEIGHT * displayScale}px` }}>
+            <section id="pimd-factsheet" className="pimd-artboard"
+              style={{ width: ARTBOARD_WIDTH, height: ARTBOARD_HEIGHT, minWidth: ARTBOARD_WIDTH, minHeight: ARTBOARD_HEIGHT, background: BGD_GRAD, transform: `scale(${displayScale})` }}>
 
-          {/* OFFSCREEN CAPTURE HOST */}
-          <div id="pimd-capture-host" aria-hidden="true" className="no-print">
-            <PimdFactsheet stats={stats} eff={eff} showReference={showReference} />
+              {showReference && <img className="pimd-reference-overlay" src="/__pimd_reference__/inforgraphic-template.png" alt="" style={{ width: ARTBOARD_WIDTH, height: ARTBOARD_HEIGHT }} data-html2canvas-ignore="true" />}
+
+              <div className="pimd-header-main" style={{ background: HDR_NAVY }}>
+                <h1 style={{ position: 'absolute', margin: 0, padding: 0, fontSize: '64px', fontWeight: 900, lineHeight: 1, letterSpacing: '-1px', color: WHITE, left: '52px', top: '44px', textAlign: 'left' }}>
+                  <span style={{ display: 'block' }}>MILK FEEDING PROGRAM</span>
+                  <span style={{ display: 'block' }}>FACTSHEET</span>
+                </h1>
+                <div style={{ position: 'absolute', left: '49px', top: '172px', width: '868px', height: '2px', background: WHITE }} />
+                <div style={{ position: 'absolute', left: '52px', top: '201px', fontSize: '24px', fontWeight: 500, color: WHITE, letterSpacing: '1px' }}>{eff}</div>
+              </div>
+
+              <div className="pimd-header-logos" style={{ background: HDR_LOGO }}>
+                <div className="pimd-asset-wrapper" style={{ left: '40px', top: '53px', width: '124px', height: '108px' }}>
+                  <img src="/assets/pimd-infographic/06_DA_PCC_LOGO_TRANSPARENT.png" alt="DA Logo" className="pimd-transparent-asset" />
+                </div>
+                <div className="pimd-asset-wrapper" style={{ left: '164px', top: '40px', width: '123px', height: '129px' }}>
+                  <img src="/assets/pimd-infographic/04_BAGONG_PILIPINAS_TRANSPARENT.png" alt="Bagong Pilipinas" className="pimd-transparent-asset" />
+                </div>
+              </div>
+
+              <div className="abs-card pimd-gross-income" style={{ background: NAVY }}>
+                <div className="box-title" style={{ marginBottom: '10px' }}>GROSS INCOME FROM THE RAW MILK</div>
+                <FittedText text={cur(stats.grossIncome)} maxWidth={840} maxSize={62} minSize={44} />
+              </div>
+
+              <div className="abs-card pimd-accomplishment" style={{ background: NAVY }}>
+                <div className="box-title" style={{ fontSize: '19px' }}>MILK FEEDING PROGRAM<br />ACCOMPLISHMENT</div>
+                <div className="box-val" style={{ fontSize: '70px', marginTop: '14px' }}>00%</div>
+              </div>
+
+              <div className="abs-card pimd-gross-revenue" style={{ background: NAVY }}>
+                <div className="box-title" style={{ marginBottom: '10px' }}>GROSS REVENUE EARNED (COOPERATIVE)</div>
+                <FittedText text={cur(stats.grossRevenue)} maxWidth={840} maxSize={62} minSize={44} />
+              </div>
+
+              <div className="pimd-dswd-centers" style={{ background: NAVY }}>
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+                  <div className="box-title" style={{ fontSize: '18px', lineHeight: 1.15, padding: '0 48px', width: '100%', textAlign: 'center' }}>NO. OF CHILD<br />DEVELOPMENT<br />CENTERS UNDER DSWD</div>
+                  <div style={{ width: '100%', marginTop: '4px', textAlign: 'center' }}><FittedText text={formatCount(stats.dswdCenters)} maxWidth={200} maxSize={64} minSize={44} /></div>
+                </div>
+                <img src="/assets/pimd-infographic/01_DSWD_LOGO_TRANSPARENT.png" alt="DSWD" style={{ position: 'absolute', right: '16px', bottom: '16px', objectFit: 'contain', background: 'transparent', width: '41px', height: '36px', zIndex: 5 }} />
+              </div>
+
+              <div className="pimd-beneficiary-frame">
+                <div style={{ position: 'absolute', top: '190px', left: 0, width: '640px', display: 'flex', justifyContent: 'space-evenly', alignItems: 'center' }}>
+                  {['DSWD','DEPED','LGU','OTHERS'].map(f => (
+                    <div key={f} style={{ textAlign: 'center', width: '25%' }}>
+                      <div style={{ color: NAVY, fontWeight: 900, fontSize: '40px', lineHeight: 1 }}><FittedText text={formatCount(stats.beneByFunder[f] || 0)} maxWidth={130} maxSize={40} minSize={20} color={NAVY} /></div>
+                      <div style={{ color: NAVY, fontWeight: 700, fontSize: '20px' }}>{f}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ position: 'absolute', top: '178px', left: '636px', width: '8px', height: '75px', background: NAVY }} />
+                <div style={{ position: 'absolute', top: '190px', left: '644px', width: '636px', display: 'flex', justifyContent: 'space-evenly', alignItems: 'center' }}>
+                  {['DSWD','DEPED','LGU','OTHERS'].map(f => (
+                    <div key={f} style={{ textAlign: 'center', width: '25%' }}>
+                      <div style={{ color: NAVY, fontWeight: 900, fontSize: '40px', lineHeight: 1 }}><FittedText text={formatCount(stats.packsByFunder[f] || 0)} maxWidth={130} maxSize={40} minSize={20} color={NAVY} /></div>
+                      <div style={{ color: NAVY, fontWeight: 700, fontSize: '20px' }}>{f}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pimd-beneficiary-total-card" style={{ background: NAVY, overflow: 'visible' }}>
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', paddingTop: '14px', pointerEvents: 'none' }}>
+                  <div className="box-title" style={{ width: '100%', padding: '0 12px', textAlign: 'center', fontWeight: 800, lineHeight: 1.05, fontSize: '21px' }}>TOTAL NUMBER OF CHILDREN BENEFICIARIES</div>
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
+                    <FittedText text={formatCount(stats.totalBene)} maxWidth={346} maxSize={50} minSize={42} />
+                  </div>
+                </div>
+              </div>
+              <div className="pimd-asset-wrapper" style={{ left: '100px', top: '878px', width: '105px', height: '72px', zIndex: 5 }}>
+                <img src="/assets/pimd-infographic/03_TWO_CHILDREN_TRANSPARENT.png" alt="Children" className="pimd-transparent-asset" />
+              </div>
+
+              <div className="pimd-milk-packs-card" style={{ background: NAVY, overflow: 'visible' }}>
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', paddingTop: '14px', pointerEvents: 'none' }}>
+                  <div className="box-title" style={{ width: '100%', padding: '0 12px', textAlign: 'center', fontWeight: 800, lineHeight: 1.05, fontSize: '19px' }}>MILK PACKS DISTRIBUTED TO CHILDREN<br />BENEFICIARIES</div>
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
+                    <FittedText text={formatCount(stats.totalPacks)} maxWidth={346} maxSize={48} minSize={42} />
+                  </div>
+                </div>
+              </div>
+              <div className="pimd-asset-wrapper" style={{ left: '1206px', top: '871px', width: '104px', height: '78px', zIndex: 5 }}>
+                <img src="/assets/pimd-infographic/05_THREE_CHILDREN_ILLUSTRATION_TRANSPARENT.png" alt="Children" className="pimd-transparent-asset" />
+              </div>
+
+              <div className="pimd-milk-utilized-panel" style={{ background: CHART_BG }}><BarChart data={stats.volumeByType} /></div>
+              <div className="pimd-packaging-panel" style={{ background: NAVY }}><HBar data={stats.packsBySize} /></div>
+              <div className="pimd-asset-wrapper" style={{ left: '727px', top: '1409px', width: '66px', height: '76px', zIndex: 5 }}>
+                <img src="/assets/pimd-infographic/02_MILKY_BOY_TRANSPARENT.png" alt="Milky Boy" className="pimd-transparent-asset" />
+              </div>
+
+              <div className="pimd-bottom-left-blue-block" style={{ background: NAVY }} />
+              <div className="pimd-asset-wrapper" style={{ left: '33px', top: '1465px', width: '788px', height: '534px', zIndex: 30 }}>
+                <img src="/assets/pimd-infographic/08_THREE_CHILDREN_DRINKING_MILK_TRANSPARENT.png" alt="Children drinking" className="pimd-transparent-asset" style={{ objectPosition: 'bottom left', pointerEvents: 'none' }} />
+              </div>
+
+              <div className="abs-card pimd-cooperative-suppliers" style={{ background: NAVY }}>
+                <div className="box-title" style={{ fontSize: '18px' }}>NO. OF COOPERATIVE<br />MILK SUPPLIERS</div>
+                <div style={{ marginTop: '15px' }}><FittedText text={formatCount(stats.coopCount)} maxWidth={200} maxSize={64} minSize={44} /></div>
+              </div>
+
+              <div className="abs-card pimd-districts" style={{ background: NAVY, flexDirection: 'row', justifyContent: 'space-between', padding: '0 40px' }}>
+                <div className="box-title" style={{ fontSize: '22px', margin: 0 }}>NO. OF DISTRICTS SUPPLIED</div>
+                <div className="box-val" style={{ fontSize: '56px', margin: 0, paddingBottom: '4px' }}>{formatCount(stats.districtCount)}</div>
+              </div>
+
+              <div className="pimd-sdo-card-background" style={{ background: NAVY }} />
+              <div className="pimd-sdo-card-content">
+                <div className="box-title" style={{ fontSize: '24px', marginBottom: '28px', pointerEvents: 'auto' }}>NO. OF SCHOOL<br />DIVISION OFFICE</div>
+                <div style={{ pointerEvents: 'auto' }}><FittedText text={formatCount(stats.divisionCount)} maxWidth={250} maxSize={110} minSize={44} /></div>
+              </div>
+              <div className="pimd-asset-wrapper" style={{ left: '838px', top: '1843px', width: '98px', height: '51px', zIndex: 41, pointerEvents: 'auto' }}>
+                <img src="/assets/pimd-infographic/07_DEPED_LOGO_TRANSPARENT.png" alt="DepEd" className="pimd-transparent-asset" />
+              </div>
+
+              <div className="abs-card pimd-provinces" style={{ background: NAVY }}>
+                <div className="box-title" style={{ fontSize: '19px' }}>NO. OF PROVINCES<br />SUPPLIED</div>
+                <div style={{ marginTop: '15px' }}><FittedText text={formatCount(stats.provinceCount)} maxWidth={240} maxSize={70} minSize={44} /></div>
+              </div>
+
+              <div className="abs-card pimd-schools" style={{ background: NAVY }}>
+                <div className="box-title" style={{ fontSize: '19px' }}>NO. OF SCHOOLS<br />SUPPLIED</div>
+                <div style={{ marginTop: '15px' }}><FittedText text={formatCount(stats.schoolCount)} maxWidth={240} maxSize={70} minSize={44} /></div>
+              </div>
+
+            </section>
           </div>
-        </>
+        </div>
       ) : null}
 
       {/* ── Preview Modal ───────────────────────────────────────────────── */}
       {previewSrc && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, backdropFilter: 'blur(4px)' }} className="no-print" onClick={closePreviewModal}>
-          <div className="pimd-preview-modal" onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1.5px solid #e2e8f0' }}>
+        <div className="pimd-modal-backdrop no-print" onClick={closePreviewModal}>
+          <div className="pimd-modal-box" onClick={e => e.stopPropagation()}>
+
+            {/* Header */}
+            <div className="pimd-modal-header">
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{ width: 10, height: 10, borderRadius: '50%', background: NAVY }} />
-                <span style={{ fontWeight: 800, fontSize: '0.95rem', color: NAVY }}>Milk Feeding Program Factsheet</span>
+                <span style={{ fontWeight: 800, fontSize: '0.95rem', color: NAVY }}>
+                  Milk Feeding Program Factsheet
+                </span>
               </div>
-              <button onClick={closePreviewModal} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: '1.4rem', lineHeight: 1, padding: '0 4px' }}>×</button>
+              <button onClick={closePreviewModal}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: '1.4rem', lineHeight: 1, padding: '0 4px' }}
+                aria-label="Close preview">
+                ×
+              </button>
             </div>
-            <div className="pimd-preview-body">
-              <img src={previewSrc} alt="Factsheet preview" className="pimd-preview-image" />
+
+            {/* Preview image */}
+            <div className="pimd-modal-preview">
+              <img src={previewSrc} alt="Factsheet preview" />
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10, padding: '14px 20px', borderTop: '1.5px solid #e2e8f0' }}>
-              <span style={{ marginRight: 'auto', fontSize: '0.78rem', color: '#94a3b8' }}>1 sheet of paper</span>
-              <button onClick={closePreviewModal} style={{ padding: '0.5rem 1.2rem', borderRadius: 8, border: '1.5px solid #e2e8f0', background: 'white', color: '#374151', fontWeight: 600, fontSize: '0.83rem', cursor: 'pointer' }}>Cancel</button>
-              <button onClick={handlePrintFromModal} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0.5rem 1.2rem', borderRadius: 8, border: `1.5px solid ${NAVY}`, background: 'white', color: NAVY, fontWeight: 700, fontSize: '0.83rem', cursor: 'pointer' }}><Printer size={14} /> Print</button>
-              <button onClick={handleDownloadPDF} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0.5rem 1.4rem', borderRadius: 8, border: 'none', background: NAVY, color: WHITE, fontWeight: 700, fontSize: '0.83rem', cursor: 'pointer', boxShadow: '0 2px 8px rgba(15,37,87,0.25)' }}><Download size={14} /> Download PDF</button>
+
+            {/* Footer buttons */}
+            <div className="pimd-modal-footer">
+              <span style={{ marginRight: 'auto', fontSize: '0.78rem', color: '#94a3b8' }}>
+                1 sheet of paper
+              </span>
+              <button onClick={closePreviewModal}
+                style={{ padding: '0.5rem 1.2rem', borderRadius: 8, border: '1.5px solid #e2e8f0', background: 'white', color: '#374151', fontWeight: 600, fontSize: '0.83rem', cursor: 'pointer' }}>
+                Cancel
+              </button>
+              <button onClick={handlePrint}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0.5rem 1.2rem', borderRadius: 8, border: `1.5px solid ${NAVY}`, background: 'white', color: NAVY, fontWeight: 700, fontSize: '0.83rem', cursor: 'pointer' }}>
+                <Printer size={14} /> Print
+              </button>
+              <button onClick={handleDownloadPDF}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0.5rem 1.4rem', borderRadius: 8, border: 'none', background: NAVY, color: WHITE, fontWeight: 700, fontSize: '0.83rem', cursor: 'pointer', boxShadow: '0 2px 8px rgba(15,37,87,0.25)' }}>
+                <Download size={14} /> Download PDF
+              </button>
             </div>
+
           </div>
         </div>
       )}
+
     </div>
   )
 }
