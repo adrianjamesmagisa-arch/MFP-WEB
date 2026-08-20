@@ -267,9 +267,9 @@ export default function PIMDReportPage() {
     const volumeByType: Record<string, number>  = {}
     const packsBySize: Record<string, number>   = {}
     rows.forEach(r => {
-      // Normalize DB values to display keys: DepEd→DEPED, LDS→LGU, DSWD→DSWD
+      // Normalize DB values to display keys: DepEd→DEPED, LDS→LDS, DSWD→DSWD
       const rawF = r.funded_by || ''
-      const f = rawF === 'DepEd' ? 'DEPED' : rawF === 'LDS' ? 'LGU' : rawF === 'DSWD' ? 'DSWD' : rawF ? rawF.toUpperCase() : 'OTHERS'
+      const f = rawF === 'DepEd' ? 'DEPED' : rawF === 'LDS' ? 'LDS' : rawF === 'DSWD' ? 'DSWD' : rawF ? rawF.toUpperCase() : 'OTHERS'
       beneByFunder[f]  = (beneByFunder[f]  || 0) + (r.beneficiaries || 0)
       packsByFunder[f] = (packsByFunder[f] || 0) + (r.milk_packs || 0)
       const t = r.milk_type || 'Unknown'
@@ -668,7 +668,7 @@ export default function PIMDReportPage() {
 
               <div className="pimd-beneficiary-frame">
                 <div style={{ position: 'absolute', top: '190px', left: 0, width: '640px', display: 'flex', alignItems: 'center' }}>
-                  {(['DSWD','DEPED','LGU','OTHERS'] as const).map(f => {
+                  {(['DSWD','DEPED','LDS','OTHERS'] as const).map(f => {
                     const w = (f === 'DSWD' || f === 'DEPED') ? '32%' : '18%'
                     return (
                       <div key={f} style={{ textAlign: 'center', width: w }}>
@@ -680,7 +680,7 @@ export default function PIMDReportPage() {
                 </div>
                 <div style={{ position: 'absolute', top: '178px', left: '636px', width: '8px', height: '75px', background: NAVY }} />
                 <div style={{ position: 'absolute', top: '190px', left: '644px', width: '636px', display: 'flex', alignItems: 'center' }}>
-                  {(['DSWD','DEPED','LGU','OTHERS'] as const).map(f => {
+                  {(['DSWD','DEPED','LDS','OTHERS'] as const).map(f => {
                     const w = (f === 'DSWD' || f === 'DEPED') ? '32%' : '18%'
                     return (
                       <div key={f} style={{ textAlign: 'center', width: w }}>
