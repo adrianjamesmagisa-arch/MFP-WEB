@@ -45,6 +45,7 @@ interface Stats {
   volumeByType: Record<string, number>; packsBySize: Record<string, number>
   coopCount: number; districtCount: number; divisionCount: number
   provinceCount: number; schoolCount: number
+  accomplishment: number
 }
 
 function FittedText({ text, maxWidth, maxSize = 62, minSize = 44, weight = 900, color = WHITE, className = '' }: {
@@ -234,7 +235,7 @@ export default function PIMDReportPage() {
     setStats(null)
     let q = supabase
       .from('mfp_data')
-      .select('beneficiaries,milk_packs,milk_cost,total_funds_transferred,funded_by,center,province,division,municipality,elementary_school,milk_type,total_volume_requirements,supplier_id,date_started')
+      .select('beneficiaries,milk_packs,milk_cost,total_funds_transferred,funded_by,center,province,division,municipality,elementary_school,milk_type,total_volume_requirements,supplier_id,date_started,date_completed')
       .range(0, 49999)
     if (center && center !== ALL_CENTERS_VALUE) q = q.eq('center', center)
     if (year) q = q.eq('year', parseInt(year))
@@ -253,7 +254,9 @@ export default function PIMDReportPage() {
     const volumeByType: Record<string, number>  = {}
     const packsBySize: Record<string, number>   = {}
     rows.forEach(r => {
-      const f = r.funded_by || 'OTHERS'
+      // Normalize DB values to display keys: DepEd→DEPED, LDS→LGU, DSWD→DSWD
+      const rawF = r.funded_by || ''
+      const f = rawF === 'DepEd' ? 'DEPED' : rawF === 'LDS' ? 'LGU' : rawF === 'DSWD' ? 'DSWD' : rawF ? rawF.toUpperCase() : 'OTHERS'
       beneByFunder[f]  = (beneByFunder[f]  || 0) + (r.beneficiaries || 0)
       packsByFunder[f] = (packsByFunder[f] || 0) + (r.milk_packs || 0)
       const t = r.milk_type || 'Unknown'
@@ -274,6 +277,9 @@ export default function PIMDReportPage() {
       }
       packsBySize[size] = (packsBySize[size] || 0) + (r.milk_packs || 0)
     })
+    // Accomplishment = % of records that have a date_completed
+    const completedCount = rows.filter(r => r.date_completed).length
+    const accomplishment = rows.length > 0 ? Math.round((completedCount / rows.length) * 100) : 0
     setStats({
       grossIncome, grossRevenue,
       dswdCenters: new Set(rows.filter(r => r.funded_by === 'DSWD').map(r => r.center)).size,
@@ -283,6 +289,7 @@ export default function PIMDReportPage() {
       divisionCount: new Set(rows.map(r => r.division).filter(Boolean)).size,
       provinceCount: new Set(rows.map(r => r.province).filter(Boolean)).size,
       schoolCount:   new Set(rows.map(r => r.elementary_school).filter(Boolean)).size,
+      accomplishment,
     })
     setLoading(false)
   }
@@ -629,7 +636,7 @@ export default function PIMDReportPage() {
               <div className="abs-card pimd-accomplishment" style={{ background: NAVY, padding: 0 }}>
                 <div className="pimd-accomplishment-content" style={{ position: 'absolute', inset: 0, display: 'grid', gridTemplateRows: 'auto minmax(0, 1fr)', alignItems: 'center', justifyItems: 'center', padding: '12px 10px 10px' }}>
                   <div className="pimd-accomplishment-label pimd-on-navy-text" style={{ margin: 0, textAlign: 'center', lineHeight: 1.08, fontSize: '19px' }}>MILK FEEDING PROGRAM<br />ACCOMPLISHMENT</div>
-                  <div className="pimd-accomplishment-value pimd-on-navy-text" style={{ alignSelf: 'center', display: 'block', margin: 0, padding: '0 0 5px', fontSize: '70px', lineHeight: 1, whiteSpace: 'nowrap', overflow: 'visible', textAlign: 'center' }}>00%</div>
+                  <div className="pimd-accomplishment-value pimd-on-navy-text" style={{ alignSelf: 'center', display: 'block', margin: 0, padding: '0 0 5px', fontSize: '70px', lineHeight: 1, whiteSpace: 'nowrap', overflow: 'visible', textAlign: 'center' }}>{stats.accomplishment.toString().padStart(2, '0')}%</div>
                 </div>
               </div>
 
@@ -650,7 +657,7 @@ export default function PIMDReportPage() {
                 <div style={{ position: 'absolute', top: '190px', left: 0, width: '640px', display: 'flex', justifyContent: 'space-evenly', alignItems: 'center' }}>
                   {['DSWD','DEPED','LGU','OTHERS'].map(f => (
                     <div key={f} style={{ textAlign: 'center', width: '25%' }}>
-                      <div style={{ color: NAVY, fontWeight: 900, fontSize: '40px', lineHeight: 1 }}><FittedText text={formatCount(stats.beneByFunder[f] || 0)} maxWidth={130} maxSize={40} minSize={20} color={NAVY} /></div>
+                      <div style={{ color: NAVY, fontWeight: 900, fontSize: '28px', lineHeight: 1, whiteSpace: 'nowrap', letterSpacing: '-0.5px' }}>{formatCount(stats.beneByFunder[f] || 0)}</div>
                       <div style={{ color: NAVY, fontWeight: 700, fontSize: '20px' }}>{f}</div>
                     </div>
                   ))}
@@ -659,7 +666,7 @@ export default function PIMDReportPage() {
                 <div style={{ position: 'absolute', top: '190px', left: '644px', width: '636px', display: 'flex', justifyContent: 'space-evenly', alignItems: 'center' }}>
                   {['DSWD','DEPED','LGU','OTHERS'].map(f => (
                     <div key={f} style={{ textAlign: 'center', width: '25%' }}>
-                      <div style={{ color: NAVY, fontWeight: 900, fontSize: '40px', lineHeight: 1 }}><FittedText text={formatCount(stats.packsByFunder[f] || 0)} maxWidth={130} maxSize={40} minSize={20} color={NAVY} /></div>
+                      <div style={{ color: NAVY, fontWeight: 900, fontSize: '28px', lineHeight: 1, whiteSpace: 'nowrap', letterSpacing: '-0.5px' }}>{formatCount(stats.packsByFunder[f] || 0)}</div>
                       <div style={{ color: NAVY, fontWeight: 700, fontSize: '20px' }}>{f}</div>
                     </div>
                   ))}
