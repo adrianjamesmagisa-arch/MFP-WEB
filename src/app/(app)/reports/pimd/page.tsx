@@ -233,14 +233,27 @@ export default function PIMDReportPage() {
   async function fetchData() {
     setLoading(true)
     setStats(null)
-    let q = supabase
-      .from('mfp_data')
-      .select('beneficiaries,milk_packs,milk_cost,total_funds_transferred,funded_by,center,province,division,municipality,elementary_school,milk_type,total_volume_requirements,supplier_id,date_started,date_completed')
-      .range(0, 49999)
-    if (center && center !== ALL_CENTERS_VALUE) q = q.eq('center', center)
-    if (year) q = q.eq('year', parseInt(year))
-    let { data: rows } = await q
-    rows = rows ?? []
+    
+    // Fetch ALL rows in paginated batches to avoid Supabase row-limit truncation
+    const PAGE_SIZE = 10000
+    const selectCols = 'beneficiaries,milk_packs,milk_cost,total_funds_transferred,funded_by,center,province,division,municipality,elementary_school,milk_type,total_volume_requirements,supplier_id,date_started,date_completed'
+    let allRows: any[] = []
+    let offset = 0
+    let hasMore = true
+    while (hasMore) {
+      let q = supabase.from('mfp_data').select(selectCols).range(offset, offset + PAGE_SIZE - 1)
+      if (center && center !== ALL_CENTERS_VALUE) q = q.eq('center', center)
+      if (year) q = q.eq('year', parseInt(year))
+      const { data: batch } = await q
+      if (batch && batch.length > 0) {
+        allRows = allRows.concat(batch)
+        offset += batch.length
+        if (batch.length < PAGE_SIZE) hasMore = false
+      } else {
+        hasMore = false
+      }
+    }
+    let rows = allRows
     if (month && rows.length) {
       const m = parseInt(month)
       rows = rows.filter(r => r.date_started && (new Date(r.date_started).getMonth() + 1) === m)
