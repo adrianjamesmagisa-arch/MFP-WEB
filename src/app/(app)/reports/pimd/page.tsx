@@ -654,22 +654,28 @@ export default function PIMDReportPage() {
               </div>
 
               <div className="pimd-beneficiary-frame">
-                <div style={{ position: 'absolute', top: '190px', left: 0, width: '640px', display: 'flex', justifyContent: 'space-evenly', alignItems: 'center' }}>
-                  {['DSWD','DEPED','LGU','OTHERS'].map(f => (
-                    <div key={f} style={{ textAlign: 'center', width: '25%' }}>
-                      <div style={{ color: NAVY, fontWeight: 900, fontSize: '28px', lineHeight: 1, whiteSpace: 'nowrap', letterSpacing: '-0.5px' }}>{formatCount(stats.beneByFunder[f] || 0)}</div>
-                      <div style={{ color: NAVY, fontWeight: 700, fontSize: '20px' }}>{f}</div>
-                    </div>
-                  ))}
+                <div style={{ position: 'absolute', top: '190px', left: 0, width: '640px', display: 'flex', alignItems: 'center' }}>
+                  {(['DSWD','DEPED','LGU','OTHERS'] as const).map(f => {
+                    const w = (f === 'DSWD' || f === 'DEPED') ? '32%' : '18%'
+                    return (
+                      <div key={f} style={{ textAlign: 'center', width: w }}>
+                        <div style={{ color: NAVY, fontWeight: 900, fontSize: '28px', lineHeight: 1, whiteSpace: 'nowrap', letterSpacing: '-0.5px' }}>{formatCount(stats.beneByFunder[f] || 0)}</div>
+                        <div style={{ color: NAVY, fontWeight: 700, fontSize: '20px' }}>{f}</div>
+                      </div>
+                    )
+                  })}
                 </div>
                 <div style={{ position: 'absolute', top: '178px', left: '636px', width: '8px', height: '75px', background: NAVY }} />
-                <div style={{ position: 'absolute', top: '190px', left: '644px', width: '636px', display: 'flex', justifyContent: 'space-evenly', alignItems: 'center' }}>
-                  {['DSWD','DEPED','LGU','OTHERS'].map(f => (
-                    <div key={f} style={{ textAlign: 'center', width: '25%' }}>
-                      <div style={{ color: NAVY, fontWeight: 900, fontSize: '28px', lineHeight: 1, whiteSpace: 'nowrap', letterSpacing: '-0.5px' }}>{formatCount(stats.packsByFunder[f] || 0)}</div>
-                      <div style={{ color: NAVY, fontWeight: 700, fontSize: '20px' }}>{f}</div>
-                    </div>
-                  ))}
+                <div style={{ position: 'absolute', top: '190px', left: '644px', width: '636px', display: 'flex', alignItems: 'center' }}>
+                  {(['DSWD','DEPED','LGU','OTHERS'] as const).map(f => {
+                    const w = (f === 'DSWD' || f === 'DEPED') ? '32%' : '18%'
+                    return (
+                      <div key={f} style={{ textAlign: 'center', width: w }}>
+                        <div style={{ color: NAVY, fontWeight: 900, fontSize: '28px', lineHeight: 1, whiteSpace: 'nowrap', letterSpacing: '-0.5px' }}>{formatCount(stats.packsByFunder[f] || 0)}</div>
+                        <div style={{ color: NAVY, fontWeight: 700, fontSize: '20px' }}>{f}</div>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
 
