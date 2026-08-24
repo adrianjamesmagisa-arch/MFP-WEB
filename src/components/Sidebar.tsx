@@ -7,18 +7,20 @@ import { createClient } from '@/lib/supabase/client'
 import {
   LayoutDashboard, Database, Users,
   Building2, LogOut, ChevronRight, ChevronDown,
-  FileBarChart2, BarChart3, BookOpenCheck, HeartHandshake, Church, Package
+  FileBarChart2, BarChart3, BookOpenCheck, HeartHandshake, Church, Package, Milk
 } from 'lucide-react'
 
 const navItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { href: '/data',      icon: Database,         label: 'MFP Data' },
+  { href: '/sbfp',      icon: Milk,             label: 'SBFP' },
   { href: '/centers',   icon: Building2,         label: 'Centers' },
   { href: '/users',     icon: Users,             label: 'Users' },
 ]
 
 const reportItems = [
   { href: '/reports/pimd',         icon: BarChart3,      label: 'PIMD Report' },
+  { href: '/reports/sbfp-narrative',icon: FileBarChart2, label: 'SBFP Narrative' },
   { href: '/reports/summary-deped',icon: BookOpenCheck,  label: 'Summary DepEd' },
   { href: '/reports/summary-lds',  icon: Church,         label: 'Summary LDS' },
   { href: '/reports/summary-dswd', icon: HeartHandshake, label: 'Summary DSWD' },
@@ -48,9 +50,11 @@ export default function Sidebar({ userRole, userCenter, userName }: {
     if (item.href === '/users'   && userRole !== 'super_admin') return false
     if (item.href === '/centers' && userRole !== 'super_admin') return false
     return true
-  }).map(item => {
     if (item.href === '/data' && userRole === 'encoder' && userCenter) {
-      return { ...item, label: `${userCenter} Masterlist` }
+      return { ...item, label: `${userCenter} MFP Data` }
+    }
+    if (item.href === '/sbfp' && userRole === 'encoder' && userCenter) {
+      return { ...item, href: `/sbfp/center/${encodeURIComponent(userCenter)}`, label: `${userCenter} SBFP` }
     }
     return item
   })

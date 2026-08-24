@@ -39,6 +39,24 @@ export interface MfpRecord {
   cooperatives?: Cooperative
 }
 
+export type ProcurementStatus = 'For Preparation' | 'Ongoing (For Award)' | 'Awarded (For Delivery)' | 'Awarded (Ongoing Delivery)' | 'Ongoing' | 'Completed' | 'Not Started'
+
+export interface SbfpRecord {
+  id: string
+  year: number
+  region: string
+  sdo: string
+  procurement_status: ProcurementStatus
+  packs_to_deliver: number
+  milk_type: string
+  delivery_schedule: string
+  packs_delivered: number
+  center: string
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
 export interface Cooperative {
   id: string
   name: string
