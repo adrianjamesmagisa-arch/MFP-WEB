@@ -1,84 +1,79 @@
-'use client'
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
 
-import { useState, useEffect } from 'react'
-import { createClient } from '@/lib/supabase/client'
+export default async function SbfpActivitiesPage() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
-  'Done':                  { label: 'Done',               color: '#16a34a', bg: '#dcfce7' },
-  'Ongoing Procurement':   { label: 'Ongoing Procurement', color: '#d97706', bg: '#fef3c7' },
-  'Ongoing':               { label: 'Ongoing',            color: '#2563eb', bg: '#dbeafe' },
-  'For Follow-up':         { label: 'For Follow-up',      color: '#dc2626', bg: '#fee2e2' },
-  'Documents prepared':    { label: 'Docs Prepared',      color: '#7c3aed', bg: '#ede9fe' },
-  'Not Started':           { label: 'Not Started',        color: '#64748b', bg: '#f1f5f9' },
-}
+  const { data: rows } = await supabase
+    .from('sbfp_activities')
+    .select('*')
+    .order('sort_order', { ascending: true })
 
-function StatusBadge({ status }: { status: string }) {
-  const cfg = STATUS_CONFIG[status] || { label: status, color: '#64748b', bg: '#f1f5f9' }
-  return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', padding: '2px 10px',
-      borderRadius: 12, fontSize: '0.72rem', fontWeight: 600,
-      color: cfg.color, background: cfg.bg, whiteSpace: 'nowrap'
-    }}>
-      {cfg.label}
-    </span>
-  )
-}
-
-export default function SbfpActivitiesPage() {
-  const [rows, setRows] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const supabase = createClient()
-
-  useEffect(() => {
-    supabase.from('sbfp_activities').select('*').order('sort_order').order('created_at')
-      .then(({ data }) => { setRows(data || []); setLoading(false) })
-  }, [])
-
-  if (loading) return <div className="p-8 text-center text-muted-foreground">Loading...</div>
+  const fmtDate = (d: string) => {
+    if (!d) return ''
+    const dt = new Date(d)
+    if (isNaN(dt.getTime())) return d
+    return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  }
 
   return (
     <div>
-      <h1 className="text-2xl font-bold tracking-tight mb-1">Status of Activities</h1>
-      <p className="text-muted-foreground text-sm mb-6">Program milestones and procurement activities for SBFP FY 2026</p>
-
-      {/* Legend */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        {Object.values(STATUS_CONFIG).map(cfg => (
-          <span key={cfg.label} style={{
-            display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 10px',
-            borderRadius: 12, fontSize: '0.7rem', fontWeight: 600,
-            color: cfg.color, background: cfg.bg
-          }}>
-            {cfg.label}
-          </span>
-        ))}
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Status of Activities</h1>
+          <p className="page-subtitle">Overall milestones and timelines for SBFP FY 2026</p>
+        </div>
       </div>
 
-      <div className="rounded-md border bg-card overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b bg-muted/50">
-              <th className="h-10 px-4 text-left font-semibold" style={{ width: '55%' }}>ACTIVITIES</th>
-              <th className="h-10 px-4 text-center font-semibold" style={{ width: '15%' }}>STATUS</th>
-              <th className="h-10 px-4 text-left font-semibold">REMARKS</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.id} className="border-b hover:bg-muted/30">
-                <td className="px-4 py-2">{r.activity}</td>
-                <td className="px-4 py-2 text-center"><StatusBadge status={r.status || 'Not Started'} /></td>
-                <td className="px-4 py-2 text-muted-foreground text-xs">{r.remarks}</td>
+      <div className="card" style={{ overflow: 'hidden' }}>
+        <div style={{ overflow: 'auto', maxHeight: 'calc(100vh - 220px)' }}>
+          <table className="data-table" style={{ minWidth: 700, fontSize: '0.82rem' }}>
+            <thead>
+              <tr>
+                <th style={{ minWidth: 40, width: 40, textAlign: 'center' }}>#</th>
+                <th style={{ minWidth: 350, whiteSpace: 'normal', lineHeight: 1.2 }}>A — Activity</th>
+                <th style={{ minWidth: 130, whiteSpace: 'normal', lineHeight: 1.2 }}>B — Status</th>
+                <th style={{ minWidth: 150, whiteSpace: 'normal', lineHeight: 1.2 }}>C — Remarks / Dates</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {(rows || []).map((r, idx) => {
+                const s = r.status || ''
+                const isDone = s.toLowerCase() === 'done' || s.toLowerCase() === 'completed'
+                const isOngoing = s.toLowerCase().includes('ongoing')
+                let badgeClass = 'bg-slate-100 text-slate-700'
+                if (isDone) badgeClass = 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400'
+                if (isOngoing) badgeClass = 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
+
+                // Simple date regex test to format remarks if it's a date
+                const isDateStr = /^\d{4}-\d{2}-\d{2}$/.test(r.remarks || '')
+                const displayRemarks = isDateStr ? fmtDate(r.remarks) : r.remarks
+
+                return (
+                  <tr key={r.id}>
+                    <td style={{ textAlign: 'center', color: 'var(--gray-400)' }}>{idx + 1}</td>
+                    <td style={{ fontWeight: 500 }}>{r.activity}</td>
+                    <td>
+                      <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${badgeClass}`}>
+                        {(r.status || 'Not Started').toUpperCase()}
+                      </span>
+                    </td>
+                    <td style={{ color: isDateStr ? '#2563eb' : 'inherit', fontWeight: isDateStr ? 600 : 400 }}>
+                      {displayRemarks || '—'}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      {rows.length === 0 && (
-        <div className="text-center py-12 text-muted-foreground border rounded-md mt-4">
-          No activities data yet. Run the seed script to populate from the Excel file.
+      {(!rows || rows.length === 0) && (
+        <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--gray-400)', background: 'white', borderRadius: 12, border: '1px solid var(--gray-200)', marginTop: '-1rem' }}>
+          No activities found. Run the seed script to populate from the Excel file.
         </div>
       )}
     </div>
