@@ -222,7 +222,7 @@ export default function SbfpNarrativeReport() {
                 <col style={{ width: '16%' }} />
                 <col style={{ width: '16%' }} />
               </colgroup>
-              <thead>
+              <thead className="sticky-header">
                 <tr style={{ background: '#f3f4f6' }}>
                   <th style={{ border: '1px solid #000', padding: '4px 5px', textAlign: 'center', fontWeight: 700 }}>Region</th>
                   <th style={{ border: '1px solid #000', padding: '4px 5px', textAlign: 'center', fontWeight: 700 }}>Schools Division Office (SDO)</th>
@@ -283,6 +283,15 @@ export default function SbfpNarrativeReport() {
           }
           #page-2 { padding: 12mm 14mm !important; }
           @page { size: A4; margin: 0; }
+        }
+        @media screen {
+          .sticky-header th {
+            position: sticky;
+            top: 0;
+            background-color: #f3f4f6;
+            z-index: 10;
+            outline: 1px solid #000; /* to maintain borders when sticky */
+          }
         }
       `}</style>
     </div>
