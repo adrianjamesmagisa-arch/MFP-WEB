@@ -45,26 +45,26 @@ export default async function SbfpSummaryPage() {
               <tr>
                 <th style={{ minWidth: 80, whiteSpace: 'normal', lineHeight: 1.2 }}>CENTER</th>
                 {/* JAN-DEC group */}
-                <th style={{ minWidth: 130, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', background: 'rgba(59,130,246,0.08)' }}>
+                <th style={{ minWidth: 130, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right' }}>
                   A — Target Milk Volume (L)
                 </th>
-                <th style={{ minWidth: 110, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', background: 'rgba(59,130,246,0.08)' }}>
+                <th style={{ minWidth: 110, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right' }}>
                   B — Target Milk Packs
                 </th>
-                <th style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', background: 'rgba(59,130,246,0.08)' }}>
+                <th style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right' }}>
                   C — Equiv. Vol. (Packs/25)
                 </th>
-                <th style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', background: 'rgba(59,130,246,0.08)' }}>
+                <th style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right' }}>
                   D — Shortage / Surplus
                 </th>
                 {/* JUL-DEC group */}
-                <th style={{ minWidth: 130, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', background: 'rgba(16,185,129,0.08)' }}>
+                <th style={{ minWidth: 130, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right' }}>
                   E — Projected Vol. (L)
                 </th>
-                <th style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', background: 'rgba(16,185,129,0.08)' }}>
+                <th style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right' }}>
                   F — Packs Producible
                 </th>
-                <th style={{ minWidth: 130, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', background: 'rgba(16,185,129,0.08)' }}>
+                <th style={{ minWidth: 130, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right' }}>
                   G — Shortage / Surplus (Packs)
                 </th>
               </tr>

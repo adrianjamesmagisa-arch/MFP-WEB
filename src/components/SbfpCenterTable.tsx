@@ -225,7 +225,7 @@ export function SbfpCenterTable({
                 <th style={{ minWidth: 100, whiteSpace: 'normal', lineHeight: 1.2 }}>N — Delivery End</th>
                 <th style={{ minWidth: 110, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right' }}>O — Packs to Deliver</th>
                 {snapDates.map((d, i) => (
-                  <th key={d} style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', background: 'rgba(59,130,246,0.07)' }}>
+                  <th key={d} style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right' }}>
                     {String.fromCharCode(80 + i)} — Delivered as of {d}
                   </th>
                 ))}

@@ -62,7 +62,7 @@ export default async function SbfpBudgetPage() {
                 <th style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right' }}>
                   F — Furniture & Fixtures
                 </th>
-                <th style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', background: 'rgba(59,130,246,0.08)' }}>
+                <th style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right' }}>
                   G — Total (₱)
                 </th>
               </tr>
