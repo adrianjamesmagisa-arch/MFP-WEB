@@ -62,14 +62,10 @@ export default async function SummaryLDSPage(props: {
   rows = rows ?? []
 
   // Extract distinct years from data if All Years, otherwise just the selected year
-  let years = Array.from(new Set(rows.map(r => r.year))).sort((a,b) => a - b)
+  let years = Array.from(new Set(rows.map(r => r.year).filter((y: number) => y >= 2026))).sort((a: number,b: number) => a - b)
   if (sp.year && sp.year !== '__ALL_YEARS__') {
     const y = parseInt(sp.year)
-    if (years.includes(y)) {
-      years = [y]
-    } else {
-      years = [y] // User selected a year with no data, let's still show the column
-    }
+    if (y >= 2026) years = [y]
   }
 
   const mappedRows = rows.map(r => ({

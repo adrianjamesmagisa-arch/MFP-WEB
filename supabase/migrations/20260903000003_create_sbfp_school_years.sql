@@ -18,7 +18,6 @@ CREATE POLICY "Enable delete for authenticated" ON public.sbfp_school_years
   FOR DELETE TO authenticated USING (true);
 
 INSERT INTO public.sbfp_school_years (year, label, is_active) VALUES
-  (2025, '2025-2026', true),
   (2026, '2026-2027', true)
 ON CONFLICT (year) DO UPDATE SET
   label = EXCLUDED.label,

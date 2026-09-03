@@ -4,6 +4,8 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { PCC_CENTERS } from '@/lib/types'
 import { sumGrossIncomeRawMilk } from '@/lib/sbfp-raw-milk'
+import { APP_YEAR_STRINGS } from '@/lib/app-years'
+import { mfpCenterAliases, sbfpCenterAliases, centerDisplayLabel } from '@/lib/center-aliases'
 import { Download, Filter, Printer, ZoomIn, ZoomOut, Maximize2, AlignCenter } from 'lucide-react'
 
 const NAVY      = '#002C65'
@@ -21,7 +23,7 @@ const MAX_ZOOM  = 1.50
 
 type ZoomMode = 'fit-page' | 'fit-width' | 'custom'
 
-const YEARS  = ['2019','2020','2021','2022','2023','2024','2025','2026']
+const YEARS  = APP_YEAR_STRINGS
 const MONTHS = [
   ['1','January'],['2','February'],['3','March'],['4','April'],
   ['5','May'],['6','June'],['7','July'],['8','August'],
@@ -78,16 +80,22 @@ function FittedText({ text, maxWidth, maxSize = 62, minSize = 44, weight = 900, 
 }
 
 function BarChart({ data }: { data: Record<string, number> }) {
-  const entries = Object.entries(data).filter(([, v]) => v >= 0)
-  if (!entries.length) entries.push(['Pasteurized Milk', 0], ['Sterilized Milk', 0], ['Commercial Milk', 0])
+  // Always show core milk types so Sterilized Milk is never dropped when filtered “All”
+  const preferred = ['PM', 'SM', 'SMP', 'Karabao'] as const
+  const entries: [string, number][] = preferred.map(k => [k, Number(data[k]) || 0])
+  for (const [k, v] of Object.entries(data)) {
+    if (!preferred.includes(k as typeof preferred[number]) && (Number(v) || 0) > 0) {
+      entries.push([k, Number(v) || 0])
+    }
+  }
   const maxVal = Math.max(...entries.map(([, v]) => v), 1)
   const mag = Math.pow(10, Math.floor(Math.log10(maxVal || 1)))
   const yMax = Math.ceil((maxVal || 1) / mag) * mag
   const steps = 4
-  const vW = 622, vH = 342, PL = 70, PB = 40, PT = 60, PR = 20
+  const vW = 622, vH = 342, PL = 70, PB = 48, PT = 60, PR = 20
   const cW = vW - PL - PR, cH = vH - PT - PB
   const bGap = cW / entries.length
-  const bW = bGap * 0.6
+  const bW = bGap * 0.55
   const fmt = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 })
   return (
     <svg viewBox={`0 0 ${vW} ${vH}`} width="100%" height="100%" style={{ position: 'absolute', top: 0, left: 0 }}>
@@ -103,15 +111,16 @@ function BarChart({ data }: { data: Record<string, number> }) {
         )
       })}
       {entries.map(([type, val], i) => {
-        const bH = Math.max((val / yMax) * cH, 2)
+        // Keep a visible stub for small types so SM isn’t lost next to huge PM totals
+        const bH = val > 0 ? Math.max((val / yMax) * cH, 8) : 2
         const x = PL + i * bGap + (bGap - bW) / 2
         const y = PT + cH - bH
         const label = MILK_LABEL[type] ?? type
         return (
           <g key={type}>
-            <rect x={x} y={y} width={bW} height={bH} fill={NAVY} />
-            <text x={x + bW / 2} y={y - 8} textAnchor="middle" fontSize={11} fontWeight="bold" fill={NAVY}>{formatCount(val)}</text>
-            <text x={x + bW / 2} y={PT + cH + 20} textAnchor="middle" fontSize={12} fill="#374151" fontWeight="600">{label}</text>
+            <rect x={x} y={y} width={bW} height={bH} fill={NAVY} opacity={val > 0 ? 1 : 0.25} />
+            <text x={x + bW / 2} y={y - 8} textAnchor="middle" fontSize={10} fontWeight="bold" fill={NAVY}>{formatCount(val)}</text>
+            <text x={x + bW / 2} y={PT + cH + 18} textAnchor="middle" fontSize={11} fill="#374151" fontWeight="600">{label}</text>
           </g>
         )
       })}
@@ -160,6 +169,29 @@ function HBar({ data }: { data: Record<string, number> }) {
 
 const ALL_CENTERS_VALUE = '__ALL_CENTERS__'
 
+const FUNDER_OPTIONS: [string, string][] = [
+  ['', 'All Funders'],
+  ['DepEd', 'DepEd'],
+  ['DSWD', 'DSWD'],
+  ['LDS', 'LDS'],
+  ['LGU', 'LGU'],
+]
+
+/** Match DB funded_by values to the filter (DepEd vs DEPED, etc.). */
+function matchesFunderFilter(dbValue: unknown, funder: string): boolean {
+  if (!funder) return true
+  const n = String(dbValue || '').trim().toLowerCase().replace(/\s+/g, '')
+  const f = funder.toLowerCase().replace(/\s+/g, '')
+  if (f === 'deped') return n === 'deped' || n === 'depéd'
+  if (f === 'lgu') return n === 'lgu' || n === 'lgus'
+  return n === f
+}
+
+/** SBFP KPIs are DepEd school feeding — include only for All / DepEd funder filter. */
+function includeSbfpForFunder(funder: string): boolean {
+  return !funder || funder === 'DepEd'
+}
+
 /** Blank until Year is chosen — avoids loading the full “All Centers / All Years” dump on open. */
 function hasActivePimdFilters(_center: string, year: string, _month: string) {
   return Boolean(year)
@@ -170,6 +202,7 @@ export default function PIMDReportPage() {
   const [center, setCenter] = useState(ALL_CENTERS_VALUE)
   const [year, setYear] = useState('')
   const [month, setMonth] = useState('')
+  const [funder, setFunder] = useState('')
   const [stats, setStats] = useState<Stats | null>(null)
   const [loading, setLoading] = useState(false)
   const [isEncoder, setIsEncoder] = useState(false)
@@ -190,8 +223,9 @@ export default function PIMDReportPage() {
     const cLabel = center === ALL_CENTERS_VALUE ? 'All-Centers' : sanitize(center || 'All-Centers')
     const yLabel = year || 'All-Years'
     const mLabel = month ? (MONTHS.find(([v]) => v === month)?.[1] ?? month) : 'All-Months'
-    return `Milk_Feeding_Program_Factsheet_${cLabel}_${yLabel}_${sanitize(mLabel)}.pdf`
-  }, [center, year, month])
+    const fLabel = funder || 'All-Funders'
+    return `Milk_Feeding_Program_Factsheet_${cLabel}_${fLabel}_${yLabel}_${sanitize(mLabel)}.pdf`
+  }, [center, year, month, funder])
 
   const recalcScale = useCallback(() => {
     if (!viewerRef.current) return
@@ -245,22 +279,32 @@ export default function PIMDReportPage() {
       return
     }
     fetchData()
-  }, [center, year, month])
+  }, [center, year, month, funder])
 
   async function fetchData() {
     setLoading(true)
     setStats(null)
     
-    // Fetch ALL rows in paginated batches to avoid Supabase row-limit truncation
-    const PAGE_SIZE = 10000
+    // Fetch ALL rows in paginated batches.
+    // Supabase API max rows per request is typically 1000 — using a larger PAGE_SIZE
+    // previously stopped after the first batch (1000 < 10000) and dropped SM/Karabao rows.
+    const PAGE_SIZE = 1000
     const selectCols = 'beneficiaries,milk_packs,milk_cost,total_funds_transferred,funded_by,center,province,division,municipality,elementary_school,milk_type,total_volume_requirements,supplier_id,date_started,date_completed,target_milk_packs_to_deliver,total_milk_packs_delivered,raw_milk_liters,price'
     let allRows: any[] = []
     let offset = 0
     let hasMore = true
     while (hasMore) {
       let q = supabase.from('mfp_data').select(selectCols).range(offset, offset + PAGE_SIZE - 1)
-      if (center && center !== ALL_CENTERS_VALUE) q = q.eq('center', center)
+      if (center && center !== ALL_CENTERS_VALUE) {
+        const aliases = mfpCenterAliases(center)
+        q = aliases.length === 1 ? q.eq('center', aliases[0]) : q.in('center', aliases)
+      }
       if (year) q = q.eq('year', parseInt(year))
+      // Prefer exact DB spellings; DepEd is stored as "DepEd"
+      if (funder === 'DepEd') q = q.eq('funded_by', 'DepEd')
+      else if (funder === 'DSWD') q = q.eq('funded_by', 'DSWD')
+      else if (funder === 'LDS') q = q.eq('funded_by', 'LDS')
+      else if (funder === 'LGU') q = q.eq('funded_by', 'LGU')
       const { data: batch } = await q
       if (batch && batch.length > 0) {
         allRows = allRows.concat(batch)
@@ -271,6 +315,10 @@ export default function PIMDReportPage() {
       }
     }
     let rows = allRows
+    // Safety net if DB casing differs
+    if (funder) {
+      rows = rows.filter(r => matchesFunderFilter(r.funded_by, funder))
+    }
     if (month && rows.length) {
       const m = parseInt(month)
       rows = rows.filter(r => r.date_started && (new Date(r.date_started).getMonth() + 1) === m)
@@ -318,11 +366,14 @@ export default function PIMDReportPage() {
     }
 
     let sbfpScoped: any[] = []
-    {
+    if (includeSbfpForFunder(funder)) {
       let sq = supabase
         .from('sbfp_data')
         .select('contract_amount,amount,packs_delivered,delivery_start,delivery_end,delivery_snapshots,milk_type,remarks,monthly_packs_delivered,raw_milk_prices')
-      if (center && center !== ALL_CENTERS_VALUE) sq = sq.eq('center', center)
+      if (center && center !== ALL_CENTERS_VALUE) {
+        const aliases = sbfpCenterAliases(center)
+        sq = aliases.length === 1 ? sq.eq('center', aliases[0]) : sq.in('center', aliases)
+      }
       if (year) sq = sq.eq('year', parseInt(year))
       const { data: sbfpRows } = await sq
       if (sbfpRows && sbfpRows.length > 0) {
@@ -384,14 +435,18 @@ export default function PIMDReportPage() {
     // Formula: sum(latest_delivered) / sum(target_packs) * 100
     // DONE rows are stored with latest_delivered = target (100%).
     // FAILED rows are excluded from both sums.
-    const useSbfpMonitoring = !year || year === '2026'
+    // SBFP accomplishment only applies for All / DepEd funder filter.
+    const useSbfpMonitoring = includeSbfpForFunder(funder) && (!year || year === '2026')
     let accomplishment = 0
     if (useSbfpMonitoring) {
       let mq = supabase
         .from('sbfp_monitoring')
         .select('target_packs,latest_delivered,del_aug18,del_aug31,del_sep30,del_oct31,status')
         .eq('year', 2026)
-      if (center && center !== ALL_CENTERS_VALUE) mq = mq.eq('center', center)
+      if (center && center !== ALL_CENTERS_VALUE) {
+        const aliases = sbfpCenterAliases(center)
+        mq = aliases.length === 1 ? mq.eq('center', aliases[0]) : mq.in('center', aliases)
+      }
       const { data: monRows, error: monErr } = await mq
       if (!monErr && monRows?.length) {
         const usable = monRows.filter(r => String(r.status || '').toUpperCase() !== 'FAILED')
@@ -620,7 +675,13 @@ export default function PIMDReportPage() {
     }
   }
 
-  const reportScopeLabel = center === ALL_CENTERS_VALUE ? 'ALL CENTERS' : (center === 'NIZ' ? 'NHQGP (NIZ)' : (center || 'ALL CENTERS').toUpperCase())
+  const reportScopeLabel = (() => {
+    const centerPart = center === ALL_CENTERS_VALUE
+      ? 'ALL CENTERS'
+      : centerDisplayLabel(center || 'ALL CENTERS').toUpperCase()
+    if (!funder) return centerPart
+    return `${centerPart} · ${funder.toUpperCase()}`
+  })()
 
   const tbBtn = (active: boolean) => ({
     background: active ? NAVY : 'transparent', border: 'none', cursor: 'pointer',
@@ -709,6 +770,11 @@ export default function PIMDReportPage() {
           style={{ padding: '0.45rem 0.75rem', borderRadius: 8, border: '1.5px solid #e2e8f0', fontSize: '0.83rem', fontWeight: 600, color: NAVY, cursor: 'pointer' }}>
           <option value="">All Months</option>
           {MONTHS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+        <select value={funder} onChange={e => setFunder(e.target.value)}
+          style={{ padding: '0.45rem 0.75rem', borderRadius: 8, border: '1.5px solid #e2e8f0', fontSize: '0.83rem', fontWeight: 600, color: NAVY, cursor: 'pointer' }}
+          title="Filter by funding agency">
+          {FUNDER_OPTIONS.map(([v, l]) => <option key={v || 'all'} value={v}>{l}</option>)}
         </select>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
           <button onClick={openPreviewModal} disabled={isCapturing || !stats}

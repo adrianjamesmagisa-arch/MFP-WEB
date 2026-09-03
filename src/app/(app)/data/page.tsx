@@ -6,6 +6,7 @@ import { Plus } from 'lucide-react'
 import { DataFilters } from '@/components/DataFilters'
 import { DataTable } from '@/components/DataTable'
 import { REGIONS, PCC_CENTERS } from '@/lib/types'
+import { APP_YEAR_STRINGS, APP_YEARS } from '@/lib/app-years'
 
 export default async function DataPage({
   searchParams
@@ -28,6 +29,7 @@ export default async function DataPage({
   let query = supabase
     .from('mfp_data')
     .select('*, cooperatives(name)')
+    .gte('year', APP_YEARS[0] ?? 2026)
     .order('year', { ascending: false })
     .order('created_at', { ascending: false })
     .limit(300)
@@ -49,7 +51,7 @@ export default async function DataPage({
       const end = new Date(Number(params.year), Number(m), 1).toISOString().split('T')[0]
       query = query.gte('date_started', `${params.year}-${m}-01`).lt('date_started', end)
     } else {
-      const years = [2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026, 2027]
+      const years = APP_YEARS
       const orConditions = years.map(y => `and(date_started.gte.${y}-${m}-01,date_started.lt.${new Date(y, Number(m), 1).toISOString().split('T')[0]})`).join(',')
       query = query.or(orConditions)
     }
@@ -60,7 +62,7 @@ export default async function DataPage({
       const end = new Date(Number(params.year), Number(m), 1).toISOString().split('T')[0]
       query = query.gte('date_completed', `${params.year}-${m}-01`).lt('date_completed', end)
     } else {
-      const years = [2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026, 2027]
+      const years = APP_YEARS
       const orConditions = years.map(y => `and(date_completed.gte.${y}-${m}-01,date_completed.lt.${new Date(y, Number(m), 1).toISOString().split('T')[0]})`).join(',')
       query = query.or(orConditions)
     }
@@ -95,7 +97,7 @@ export default async function DataPage({
     Array.from(new Set(allData?.map(d => d[key as keyof typeof d]).filter(Boolean) as string[])).sort()
 
   const filterOptions = {
-    year: ['2019', '2020', '2021', '2022', '2023', '2024', '2025', '2026', '2027'],
+    year: APP_YEAR_STRINGS,
     funded_by: ['DepEd', 'DSWD', 'LDS'],
     center: PCC_CENTERS,
     region: REGIONS,

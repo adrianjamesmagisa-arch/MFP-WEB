@@ -62,7 +62,7 @@ export default async function SbfpDataPage({
     Array.from(new Set(allData?.map(d => d[key as keyof typeof d]).filter(Boolean) as string[])).sort()
 
   const filterOptions = {
-    year: ['2024', '2025', '2026', '2027'],
+    year: ['2026', '2027'],
     region: REGIONS,
     sdo: getUnique('sdo'),
     procurement_status: ['For Preparation', 'Ongoing (For Award)', 'Awarded (For Delivery)', 'Awarded (Ongoing Delivery)', 'Ongoing', 'Completed', 'Not Started'],

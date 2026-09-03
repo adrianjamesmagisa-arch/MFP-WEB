@@ -1,4 +1,4 @@
-export const FALLBACK_SCHOOL_YEARS = ['2025-2026', '2026-2027'] as const
+export const FALLBACK_SCHOOL_YEARS = ['2026-2027'] as const
 export type SchoolYear = string
 export const DEFAULT_SCHOOL_YEAR: SchoolYear = '2026-2027'
 

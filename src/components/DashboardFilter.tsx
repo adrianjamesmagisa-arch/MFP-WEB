@@ -1,7 +1,6 @@
 'use client'
 
-import { useRouter, useSearchParams } from 'next/navigation'
-import { useCallback } from 'react'
+import { APP_YEAR_STRINGS } from '@/lib/app-years'
 
 const MONTHS = [
   { value: '1', label: 'January' },
@@ -26,12 +25,7 @@ export function DashboardFilter({ centers = [], isEncoder = false }: { centers?:
   const currentMonth = searchParams.get('month') || ''
   const currentCenter = searchParams.get('center') || ''
 
-  // Build a range of years from 2019 to current year + 1
-  const years = []
-  const maxYear = new Date().getFullYear() + 1
-  for (let y = 2019; y <= maxYear; y++) {
-    years.push(y.toString())
-  }
+  const years = APP_YEAR_STRINGS
 
   const updateFilters = useCallback((year: string, month: string, center: string) => {
     const params = new URLSearchParams(searchParams.toString())

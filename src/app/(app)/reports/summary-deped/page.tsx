@@ -41,7 +41,7 @@ export default async function SummaryDepEdPage(props: {
   
   // Year filter: If a specific year is chosen, we ONLY fetch that year.
   // Otherwise, we fetch all years for DepEd.
-  let years = [2019, 2020, 2021, 2022, 2023, 2024, 2025]
+  let years = [2026, 2027]
   if (sp.year && sp.year !== 'All Years') {
     const y = parseInt(sp.year)
     query = query.eq('year', y)

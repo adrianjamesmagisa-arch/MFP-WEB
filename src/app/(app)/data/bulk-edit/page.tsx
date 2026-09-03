@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter, useParams } from 'next/navigation'
 import { PCC_CENTERS, REGIONS, MODES_OF_PROCUREMENT, type Cooperative } from '@/lib/types'
+import { APP_YEAR_STRINGS } from '@/lib/app-years'
 import { Save, X, AlertCircle, CheckCircle2, RotateCcw, PenLine } from 'lucide-react'
 
 // ─── Formula defaults ───────────────────────────────────────────────────────────
@@ -89,7 +90,7 @@ const PROVINCES_BY_REGION: Record<string, string[]> = {
 }
 const FEEDING_DAYS_OPTIONS = ['15','20','30','60','90','100','120','180']
 const BATCH_OPTIONS = ['1','2','3','1 & 2','1, 2 & 3','2 & 3']
-const YEARS = ['2019','2020','2021','2022','2023','2024','2025','2026','2027']
+const YEARS = APP_YEAR_STRINGS
 
 // ─── Calculations ───────────────────────────────────────────────────────────────
 function calcAll(bene: number, days: number, price: number, svc: number, f: typeof DEFAULT_FORMULAS) {
