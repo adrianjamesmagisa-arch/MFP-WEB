@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { recomputeAllSummariesForYear } from '@/lib/sbfp-compute'
 import { loadSchoolYears } from '@/lib/sbfp-school-years'
 import { parseSchoolYear, schoolYearLabel, schoolYearToDbYear } from '@/lib/sbfp-year'
+import { sbfpCenterAliases } from '@/lib/center-aliases'
 
 function fmt(n: number | null | undefined) {
   if (n == null || n === 0) return '—'
@@ -23,13 +24,26 @@ export default async function SbfpSummaryPage({
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role,center')
+    .eq('id', user.id)
+    .single()
+
   await recomputeAllSummariesForYear(supabase, year)
 
-  const { data: rows } = await supabase
+  let q = supabase
     .from('sbfp_summary')
     .select('*')
     .eq('year', year)
     .order('center', { ascending: true })
+
+  if (profile?.role === 'encoder' && profile.center) {
+    const aliases = sbfpCenterAliases(profile.center)
+    q = aliases.length === 1 ? q.eq('center', aliases[0]) : q.in('center', aliases)
+  }
+
+  const { data: rows } = await q
 
   const visible = (rows || []).filter(r =>
     (r.jan_dec_target_milk_volume || 0) > 0 ||
@@ -112,6 +126,7 @@ export default async function SbfpSummaryPage({
                   </tr>
                 )
               })}
+              {visible.length > 1 && (
               <tr style={{ fontWeight: 700, background: 'var(--gray-100, #f8fafc)', borderTop: '2px solid var(--gray-300, #cbd5e1)' }}>
                 <td style={{ fontWeight: 800 }}>TOTAL</td>
                 <td style={{ textAlign: 'right', background: 'rgba(59,130,246,0.06)' }}>{fmt(totals.jan_dec_target_milk_volume)}</td>
@@ -122,6 +137,7 @@ export default async function SbfpSummaryPage({
                 <td style={{ textAlign: 'right', background: 'rgba(16,185,129,0.06)' }}>{fmt(totals.milk_packs_can_produce)}</td>
                 <td style={{ textAlign: 'right', background: 'rgba(16,185,129,0.06)' }}>{fmt(totals.shortage_surplus_packs)}</td>
               </tr>
+              )}
             </tbody>
           </table>
         </div>

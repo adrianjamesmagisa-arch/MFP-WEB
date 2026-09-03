@@ -4,6 +4,7 @@ import { Suspense } from 'react'
 import { SbfpCenterWorkspace } from '@/components/SbfpCenterWorkspace'
 import { loadSchoolYears } from '@/lib/sbfp-school-years'
 import { parseSchoolYear, schoolYearLabel, schoolYearToDbYear } from '@/lib/sbfp-year'
+import { encoderCanAccessSbfpCenter, sbfpNavCenter } from '@/lib/center-aliases'
 
 export default async function SbfpNhqPage({
   searchParams,
@@ -16,7 +17,14 @@ export default async function SbfpNhqPage({
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+  const { data: profile } = await supabase.from('profiles').select('role,center').eq('id', user.id).single()
+
+  if (profile?.role === 'encoder' && profile.center) {
+    if (!encoderCanAccessSbfpCenter(profile.center, 'NHQ')) {
+      const nav = sbfpNavCenter(profile.center) || 'CSU'
+      redirect(`/sbfp/center/${encodeURIComponent(nav)}?sy=${syParam || '2026-2027'}`)
+    }
+  }
 
   const schoolYears = await loadSchoolYears()
   const sy = parseSchoolYear(syParam, schoolYears)

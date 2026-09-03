@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { SbfpCenterTable } from '@/components/SbfpCenterTable'
 import { parseSchoolYear, schoolYearLabel, schoolYearToDbYear } from '@/lib/sbfp-year'
+import { sbfpCenterAliases } from '@/lib/center-aliases'
 
 export default async function SbfpOverallPage({
   searchParams,
@@ -16,7 +17,14 @@ export default async function SbfpOverallPage({
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+  const { data: profile } = await supabase.from('profiles').select('role,center').eq('id', user.id).single()
+
+  // Encoders should use their center page, not the national overall rollup
+  if (profile?.role === 'encoder' && profile.center) {
+    const aliases = sbfpCenterAliases(profile.center)
+    const nav = aliases.includes('NHQ') ? 'NHQ' : aliases[0]
+    redirect(nav === 'NHQ' ? `/sbfp/nhq?sy=${sy}` : `/sbfp/center/${encodeURIComponent(nav)}?sy=${sy}`)
+  }
 
   const { data: records } = await supabase
     .from('sbfp_data')

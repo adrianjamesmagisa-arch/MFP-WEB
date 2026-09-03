@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { parseSchoolYear, schoolYearLabel, schoolYearToDbYear } from '@/lib/sbfp-year'
+import { sbfpNavCenter } from '@/lib/center-aliases'
 
 function fmt(n: number | null | undefined) {
   if (n == null || n === 0) return '—'
@@ -19,6 +20,18 @@ export default async function SbfpBudgetPage({
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role,center')
+    .eq('id', user.id)
+    .single()
+
+  // Budget breakdown is national; encoders use their center budget table instead
+  if (profile?.role === 'encoder' && profile.center) {
+    const nav = sbfpNavCenter(profile.center) || profile.center
+    redirect(nav === 'NHQ' ? `/sbfp/nhq?sy=${sy}` : `/sbfp/center/${encodeURIComponent(nav)}?sy=${sy}`)
+  }
 
   const { data: allRows } = await supabase
     .from('sbfp_budget')

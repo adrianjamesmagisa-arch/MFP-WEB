@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { SbfpActivitiesChecklist } from '@/components/SbfpActivitiesChecklist'
 import { loadSchoolYears } from '@/lib/sbfp-school-years'
 import { parseSchoolYear, schoolYearLabel, schoolYearToDbYear } from '@/lib/sbfp-year'
+import { sbfpNavCenter } from '@/lib/center-aliases'
 
 export default async function SbfpActivitiesPage({
   searchParams,
@@ -18,8 +19,14 @@ export default async function SbfpActivitiesPage({
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+  const { data: profile } = await supabase.from('profiles').select('role,center').eq('id', user.id).single()
   const canEditChecklist = profile?.role === 'super_admin'
+
+  // National activities checklist is admin-only; encoders go to their center
+  if (profile?.role === 'encoder' && profile.center) {
+    const nav = sbfpNavCenter(profile.center) || profile.center
+    redirect(nav === 'NHQ' ? `/sbfp/nhq?sy=${sy}` : `/sbfp/center/${encodeURIComponent(nav)}?sy=${sy}`)
+  }
 
   const [{ data: rows }, { data: sdoRows }] = await Promise.all([
     supabase

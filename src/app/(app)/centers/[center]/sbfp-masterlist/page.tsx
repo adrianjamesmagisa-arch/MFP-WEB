@@ -5,6 +5,8 @@ import { SbfpCenterWorkspace } from '@/components/SbfpCenterWorkspace'
 import { loadSchoolYears } from '@/lib/sbfp-school-years'
 import { parseSchoolYear, schoolYearLabel, schoolYearToDbYear } from '@/lib/sbfp-year'
 
+import { encoderCanAccessSbfpCenter, sbfpNavCenter } from '@/lib/center-aliases'
+
 export default async function CenterSbfpMasterlist({
   params,
   searchParams,
@@ -23,8 +25,11 @@ export default async function CenterSbfpMasterlist({
   const { data: profile } = await supabase
     .from('profiles').select('*').eq('id', user.id).single()
 
-  if (profile?.role === 'encoder' && profile?.center !== decodedCenter) {
-    redirect(`/centers/${encodeURIComponent(profile.center)}/sbfp-masterlist`)
+  if (profile?.role === 'encoder' && profile?.center) {
+    if (!encoderCanAccessSbfpCenter(profile.center, decodedCenter)) {
+      const nav = sbfpNavCenter(profile.center) || profile.center
+      redirect(`/centers/${encodeURIComponent(nav)}/sbfp-masterlist`)
+    }
   }
 
   const schoolYears = await loadSchoolYears()

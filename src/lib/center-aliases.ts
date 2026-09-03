@@ -22,6 +22,27 @@ export function sbfpCenterAliases(center: string): string[] {
   return [center]
 }
 
+/** Canonical SBFP nav slug for a profile center (sidebar / URLs). */
+export function sbfpNavCenter(profileCenter: string | null | undefined): string | null {
+  if (!profileCenter) return null
+  if (isNizFamily(profileCenter)) return 'NHQ'
+  return profileCenter.trim()
+}
+
+/** Whether an encoder may view this SBFP center page / row. */
+export function encoderCanAccessSbfpCenter(
+  profileCenter: string | null | undefined,
+  targetCenter: string
+): boolean {
+  if (!profileCenter) return false
+  const allowed = new Set(
+    [...sbfpCenterAliases(profileCenter), ...mfpCenterAliases(profileCenter)].map(c =>
+      c.toUpperCase()
+    )
+  )
+  return allowed.has(targetCenter.trim().toUpperCase())
+}
+
 /** Display label on reports. */
 export function centerDisplayLabel(center: string): string {
   if (isNizFamily(center)) return 'NHQGP (NIZ)'

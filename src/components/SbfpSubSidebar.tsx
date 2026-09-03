@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
@@ -21,7 +21,14 @@ const reportItems = [
   { href: '/reports/sbfp-narrative', icon: FileText, label: 'SBFP Report' },
 ]
 
-export function SbfpSubSidebar({ schoolYears }: { schoolYears?: string[] }) {
+export function SbfpSubSidebar({
+  schoolYears,
+  encoderCenter = null,
+}: {
+  schoolYears?: string[]
+  /** When set, only this center appears under Centers (encoder lock). */
+  encoderCenter?: string | null
+}) {
   const pathname = usePathname()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -35,6 +42,16 @@ export function SbfpSubSidebar({ schoolYears }: { schoolYears?: string[] }) {
     params.set('sy', next)
     router.push(`${pathname}?${params.toString()}`)
   }
+
+  const centers = encoderCenter
+    ? CENTER_SHEETS.filter(c => c.toUpperCase() === encoderCenter.toUpperCase())
+    : CENTER_SHEETS
+
+  // Encoders: hide national rollups; keep Summary (scoped) + their center + report
+  const navMain = encoderCenter
+    ? mainItems.filter(i => i.href === '/sbfp/summary')
+    : mainItems
+  const navReports = reportItems
 
   return (
     <aside
@@ -76,7 +93,7 @@ export function SbfpSubSidebar({ schoolYears }: { schoolYears?: string[] }) {
       </div>
 
       <nav style={{ padding: '0.5rem 0' }}>
-        {mainItems.map(item => {
+        {navMain.map(item => {
           const Icon = item.icon
           const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
           return (
@@ -109,7 +126,7 @@ export function SbfpSubSidebar({ schoolYears }: { schoolYears?: string[] }) {
         Reports
       </div>
       <nav style={{ padding: '0.125rem 0 0.25rem' }}>
-        {reportItems.map(item => {
+        {navReports.map(item => {
           const Icon = item.icon
           const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
           return (
@@ -135,7 +152,7 @@ export function SbfpSubSidebar({ schoolYears }: { schoolYears?: string[] }) {
       </div>
 
       <nav style={{ padding: '0.125rem 0' }}>
-        {CENTER_SHEETS.map(center => {
+        {centers.map(center => {
           const href = center === 'NHQ' ? '/sbfp/nhq' : `/sbfp/center/${center}`
           const isActive = pathname === href || pathname.startsWith(href + '/')
           return (
