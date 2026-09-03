@@ -98,21 +98,45 @@ export function DataTable({ records }: { records: any[] }) {
     setLocalRecords(records)
   }, [records])
 
-  // Build a map from (year|center|division) -> {target, delivered} 
-  // The Excel stores target/delivered only on the first row per division (merged cell).
-  // We propagate it to all rows in the same group so every row shows the division figure.
-  const divisionTargetMap = useMemo(() => {
-    const map: Record<string, { target: number; delivered: number }> = {}
+  // Build a per-row index for the AD/AE merged-cell display.
+  // Matches Excel's merged cells: value shown once per division group (year+center+division),
+  // spanning all rows in that consecutive group.
+  const divisionRowSpan = useMemo(() => {
+    // index[i] = { firstInGroup: bool, rowspan: number, target: number, delivered: number }
+    const result: { firstInGroup: boolean; rowspan: number; target: number; delivered: number }[] = []
+
+    // Step 1: collect target/delivered per division key (from whichever row has the value)
+    const keyData: Record<string, { target: number; delivered: number }> = {}
     localRecords.forEach(r => {
       const key = `${r.year}|${r.center}|${r.division}`
-      if ((r.target_milk_packs_to_deliver || 0) > 0 || (r.total_milk_packs_delivered || 0) > 0) {
-        map[key] = {
+      if (!keyData[key] && ((r.target_milk_packs_to_deliver || 0) > 0 || (r.total_milk_packs_delivered || 0) > 0)) {
+        keyData[key] = {
           target: r.target_milk_packs_to_deliver || 0,
           delivered: r.total_milk_packs_delivered || 0,
         }
       }
     })
-    return map
+
+    // Step 2: walk the records in order, tracking consecutive groups
+    let i = 0
+    while (i < localRecords.length) {
+      const r = localRecords[i]
+      const key = `${r.year}|${r.center}|${r.division}`
+      // Count how many consecutive rows share the same key
+      let span = 1
+      while (i + span < localRecords.length) {
+        const nr = localRecords[i + span]
+        if (`${nr.year}|${nr.center}|${nr.division}` === key) span++
+        else break
+      }
+      const data = keyData[key] ?? { target: 0, delivered: 0 }
+      result.push({ firstInGroup: true, rowspan: span, ...data })
+      for (let j = 1; j < span; j++) {
+        result.push({ firstInGroup: false, rowspan: 0, ...data })
+      }
+      i += span
+    }
+    return result
   }, [localRecords])
 
   const handleCellSave = (id: string, field: string, oldVal: any, newVal: any) => {
@@ -233,7 +257,7 @@ export function DataTable({ records }: { records: any[] }) {
               </tr>
             </thead>
                         <tbody>
-              {localRecords?.map(r => (
+              {localRecords?.map((r, rIdx) => (
                 <tr key={r.id} style={{ background: selectedIds.has(r.id) ? '#e0e7ff' : undefined }}>
                   <td className="col-check" style={{ textAlign: 'center' }}>
                     <input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => toggleRow(r.id)} style={{ cursor: 'pointer' }} />
@@ -272,31 +296,38 @@ export function DataTable({ records }: { records: any[] }) {
                   <EditableCell onSave={handleCellSave} id={r.id} field="date_started" value={r.date_started} type="date" format={formatDate} />
                   <EditableCell onSave={handleCellSave} id={r.id} field="date_completed" value={r.date_completed} type="date" format={formatDate} />
                   <EditableCell onSave={handleCellSave} id={r.id} field="liquidation" value={r.liquidation} type="date" format={formatDate} />
-                  
-                  {/* AD/AE — Division-level target & delivered (merged cell in Excel) */}
+
+                  {/* AD/AE — merged cell per division group, matching Excel layout */}
                   {(() => {
-                    const key = `${r.year}|${r.center}|${r.division}`
-                    const divData = divisionTargetMap[key]
-                    const target    = divData?.target    ?? 0
-                    const delivered = divData?.delivered ?? 0
+                    const info = divisionRowSpan[rIdx]
+                    if (!info) return null
+                    if (!info.firstInGroup) return null // cell is covered by rowspan above
+                    const { rowspan, target, delivered } = info
                     const pct = target > 0 ? Math.min(Math.round((delivered / target) * 100), 100) : null
                     const pctColor = pct === null ? '#6b7280' : pct >= 100 ? '#16a34a' : pct >= 75 ? '#d97706' : '#dc2626'
+                    const cellStyle: React.CSSProperties = {
+                      textAlign: 'right', fontSize: '0.78rem', verticalAlign: 'middle',
+                      borderLeft: '2px solid #e2e8f0',
+                      background: rowspan > 1 ? '#f8faff' : undefined,
+                    }
                     return (
                       <>
-                        <td title="Target milk packs for this division (shared across all schools in the division)" style={{ textAlign: 'right', fontWeight: 600, color: target > 0 ? 'var(--navy)' : '#9ca3af', fontSize: '0.78rem' }}>
+                        <td rowSpan={rowspan} title="Target milk packs for this division (one value per division, like merged cell in Excel)"
+                          style={{ ...cellStyle, fontWeight: 600, color: target > 0 ? 'var(--navy)' : '#9ca3af' }}>
                           {target > 0 ? formatNumber(target) : 'N/A'}
                         </td>
-                        <td title="Total milk packs delivered for this division" style={{ textAlign: 'right', fontSize: '0.78rem' }}>
+                        <td rowSpan={rowspan} title="Total milk packs delivered for this division"
+                          style={{ ...cellStyle, borderLeft: '1px solid #e2e8f0' }}>
                           {delivered > 0 ? (
                             <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
                               <span style={{ fontWeight: 700, color: 'var(--navy)' }}>{formatNumber(delivered)}</span>
                               {pct !== null && (
-                                <span style={{ fontSize: '0.68rem', fontWeight: 800, color: pctColor, letterSpacing: '0.3px' }}>
+                                <span style={{ fontSize: '0.68rem', fontWeight: 800, color: pctColor }}>
                                   {pct}%
                                 </span>
                               )}
                             </span>
-                          ) : 'N/A'}
+                          ) : <span style={{ color: '#9ca3af' }}>N/A</span>}
                         </td>
                       </>
                     )
