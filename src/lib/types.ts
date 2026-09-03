@@ -59,6 +59,26 @@ export interface SbfpRecord {
   updated_at: string
 }
 
+export interface SbfpMonitoringRecord {
+  id: string
+  year: number
+  center: string
+  sdo: string
+  status: string
+  target_packs: number
+  del_aug18: number
+  del_aug31: number
+  del_sep30: number
+  del_oct31: number
+  latest_delivered: number
+  accomplishment_pct: number
+  amount: number
+  mode_of_procurement: string | null
+  remarks: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface Cooperative {
   id: string
   name: string

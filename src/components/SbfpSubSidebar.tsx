@@ -1,10 +1,10 @@
-'use client'
+﻿'use client'
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   BarChart3, List, DollarSign, CheckSquare,
-  Building, ChevronRight
+  Building, ChevronRight, FileText
 } from 'lucide-react'
 
 const CENTER_SHEETS = ['NHQ', 'UPLB', 'DMMMSU', 'CSU', 'MMSU', 'CLSU', 'LCSF', 'WVSU', 'USF', 'VSU', 'MLPC', 'CMU', 'USM']
@@ -14,6 +14,10 @@ const mainItems = [
   { href: '/sbfp/overall',    icon: List,         label: 'Overall' },
   { href: '/sbfp/budget',     icon: DollarSign,   label: 'Budget Breakdown' },
   { href: '/sbfp/activities', icon: CheckSquare,  label: 'Status of Activities' },
+]
+
+const reportItems = [
+  { href: '/reports/sbfp-narrative', icon: FileText, label: 'SBFP Report' },
 ]
 
 export function SbfpSubSidebar() {
@@ -72,6 +76,32 @@ export function SbfpSubSidebar() {
         })}
       </nav>
 
+      {/* Reports divider */}
+      <div style={{ padding: '0.5rem 1rem', fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#475569', borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: '0.25rem', paddingTop: '0.75rem' }}>
+        Reports
+      </div>
+      <nav style={{ padding: '0.125rem 0 0.25rem' }}>
+        {reportItems.map(item => {
+          const Icon = item.icon
+          const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+          return (
+            <Link key={item.href} href={item.href}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '0.4rem',
+                padding: '0.35rem 1rem 0.35rem 1.25rem', fontSize: '0.74rem',
+                fontWeight: isActive ? 600 : 400,
+                color: isActive ? 'var(--gold, #f59e0b)' : '#94a3b8',
+                background: isActive ? 'rgba(245,158,11,0.1)' : 'transparent',
+                borderLeft: isActive ? '2px solid var(--gold, #f59e0b)' : '2px solid transparent',
+                textDecoration: 'none', transition: 'all 0.15s ease',
+              }}>
+              <Icon size={11} />
+              <span>{item.label}</span>
+              {isActive && <ChevronRight size={11} style={{ marginLeft: 'auto', opacity: 0.5 }} />}
+            </Link>
+          )
+        })}
+      </nav>
       {/* Centers divider */}
       <div style={{ padding: '0.5rem 1rem', fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#475569', borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: '0.25rem', paddingTop: '0.75rem' }}>
         Centers
@@ -109,3 +139,5 @@ export function SbfpSubSidebar() {
     </aside>
   )
 }
+
+

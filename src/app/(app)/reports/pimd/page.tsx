@@ -290,16 +290,47 @@ export default function PIMDReportPage() {
       }
       packsBySize[size] = (packsBySize[size] || 0) + (r.milk_packs || 0)
     })
-    // Accomplishment = (sum of milk packs delivered) / (sum of target milk packs) * 100
-    // Only rows that have a target value (> 0) are considered for this computation.
-    // If delivered > target, cap at 100%.
-    const totalTarget    = rows.reduce((s, r) => s + (r.target_milk_packs_to_deliver || 0), 0)
-    const totalDelivered = rows.reduce((s, r) => s + (r.total_milk_packs_delivered   || 0), 0)
-    const accomplishment = totalTarget > 0
-      ? Math.min(Math.round((totalDelivered / totalTarget) * 100), 100)
-      : (rows.filter(r => r.date_completed).length > 0
-          ? Math.round((rows.filter(r => r.date_completed).length / rows.length) * 100)
-          : 0)
+    // Accomplishment % comes from SBFP FY 2026 Monitoring (sbfp_monitoring),
+    // not from the MFP masterlist AD/AE columns.
+    // Formula: sum(latest_delivered) / sum(target_packs) * 100
+    // DONE rows are stored with latest_delivered = target (100%).
+    // FAILED rows are excluded from both sums.
+    const useSbfpMonitoring = !year || year === '2026'
+    let accomplishment = 0
+    if (useSbfpMonitoring) {
+      let mq = supabase
+        .from('sbfp_monitoring')
+        .select('target_packs,latest_delivered,del_aug18,del_aug31,del_sep30,del_oct31,status')
+        .eq('year', 2026)
+      if (center && center !== ALL_CENTERS_VALUE) mq = mq.eq('center', center)
+      const { data: monRows, error: monErr } = await mq
+      if (!monErr && monRows?.length) {
+        const usable = monRows.filter(r => String(r.status || '').toUpperCase() !== 'FAILED')
+        const totalTarget = usable.reduce((s, r) => s + (r.target_packs || 0), 0)
+        const totalDelivered = usable.reduce((s, r) => {
+          if (!month) return s + (r.latest_delivered || 0)
+          const m = parseInt(month, 10)
+          const snaps = [r.del_aug18 || 0, r.del_aug31 || 0, r.del_sep30 || 0, r.del_oct31 || 0]
+          let latest = 0
+          if (m >= 10) latest = snaps[3] || snaps[2] || snaps[1] || snaps[0]
+          else if (m === 9) latest = snaps[2] || snaps[1] || snaps[0]
+          else if (m === 8) latest = snaps[1] || snaps[0]
+          if (String(r.status || '').toUpperCase() === 'DONE' && latest === 0) {
+            latest = r.target_packs || 0
+          }
+          return s + latest
+        }, 0)
+        accomplishment = totalTarget > 0
+          ? Math.min(Math.round((totalDelivered / totalTarget) * 1000) / 10, 100)
+          : 0
+      }
+    } else {
+      const totalTarget = rows.reduce((s, r) => s + (r.target_milk_packs_to_deliver || 0), 0)
+      const totalDelivered = rows.reduce((s, r) => s + (r.total_milk_packs_delivered || 0), 0)
+      accomplishment = totalTarget > 0
+        ? Math.min(Math.round((totalDelivered / totalTarget) * 1000) / 10, 100)
+        : 0
+    }
     setStats({
       grossIncome, grossRevenue,
       dswdCenters: new Set(rows.filter(r => r.funded_by === 'DSWD').map(r => r.center)).size,
@@ -656,7 +687,7 @@ export default function PIMDReportPage() {
               <div className="abs-card pimd-accomplishment" style={{ background: NAVY, padding: 0 }}>
                 <div className="pimd-accomplishment-content" style={{ position: 'absolute', inset: 0, display: 'grid', gridTemplateRows: 'auto minmax(0, 1fr)', alignItems: 'center', justifyItems: 'center', padding: '12px 10px 10px' }}>
                   <div className="pimd-accomplishment-label pimd-on-navy-text" style={{ margin: 0, textAlign: 'center', lineHeight: 1.08, fontSize: '19px' }}>MILK FEEDING PROGRAM<br />ACCOMPLISHMENT</div>
-                  <div className="pimd-accomplishment-value pimd-on-navy-text" style={{ alignSelf: 'center', display: 'block', margin: 0, padding: '0 0 5px', fontSize: '70px', lineHeight: 1, whiteSpace: 'nowrap', overflow: 'visible', textAlign: 'center' }}>{stats.accomplishment.toString().padStart(2, '0')}%</div>
+                  <div className="pimd-accomplishment-value pimd-on-navy-text" style={{ alignSelf: 'center', display: 'block', margin: 0, padding: '0 0 5px', fontSize: '62px', lineHeight: 1, whiteSpace: 'nowrap', overflow: 'visible', textAlign: 'center' }}>{stats.accomplishment.toFixed(1)}%</div>
                 </div>
               </div>
 
