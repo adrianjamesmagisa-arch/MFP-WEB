@@ -168,7 +168,7 @@ export function DataTable({ records }: { records: any[] }) {
     <>
       <div className="card" style={{ overflow: 'hidden' }}>
         <div style={{ overflow: 'auto', maxHeight: 'calc(100vh - 260px)' }}>
-          <table className="data-table" style={{ minWidth: 2400, fontSize: '0.78rem' }}>
+          <table className="data-table" style={{ minWidth: 2700, fontSize: '0.78rem' }}>
             <thead>
               <tr>
                 {/* CHECKBOX */}
@@ -209,6 +209,9 @@ export function DataTable({ records }: { records: any[] }) {
                 <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 100 }}>AA — Date Started</th>
                 <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 100 }}>AB — Date Completed</th>
                 <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 100 }}>AC — Liquidation</th>
+                {/* AD-AE Delivery tracking */}
+                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 110 }}>AD — Target Milk Packs to Deliver</th>
+                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 110 }}>AE — Total Milk Packs Delivered</th>
                 <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 80 }}>Actions</th>
               </tr>
             </thead>
@@ -252,6 +255,9 @@ export function DataTable({ records }: { records: any[] }) {
                   <EditableCell onSave={handleCellSave} id={r.id} field="date_started" value={r.date_started} type="date" format={formatDate} />
                   <EditableCell onSave={handleCellSave} id={r.id} field="date_completed" value={r.date_completed} type="date" format={formatDate} />
                   <EditableCell onSave={handleCellSave} id={r.id} field="liquidation" value={r.liquidation} type="date" format={formatDate} />
+                  
+                  <EditableCell onSave={handleCellSave} id={r.id} field="target_milk_packs_to_deliver" value={r.target_milk_packs_to_deliver} type="number" format={formatNumber} />
+                  <EditableCell onSave={handleCellSave} id={r.id} field="total_milk_packs_delivered" value={r.total_milk_packs_delivered} type="number" format={formatNumber} />
                   
                   <td>
                     <Link

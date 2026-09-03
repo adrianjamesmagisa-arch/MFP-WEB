@@ -33,6 +33,8 @@ export interface MfpRecord {
   date_started: string | null
   date_completed: string | null
   liquidation: string | null
+  target_milk_packs_to_deliver: number
+  total_milk_packs_delivered: number
   created_by: string
   created_at: string
   updated_at: string
