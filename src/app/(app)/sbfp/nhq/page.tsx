@@ -1,43 +1,61 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { SbfpCenterTable } from '@/components/SbfpCenterTable'
+import { Suspense } from 'react'
+import { SbfpCenterWorkspace } from '@/components/SbfpCenterWorkspace'
+import { loadSchoolYears } from '@/lib/sbfp-school-years'
+import { parseSchoolYear, schoolYearLabel, schoolYearToDbYear } from '@/lib/sbfp-year'
 
-export default async function SbfpNhqPage() {
+export default async function SbfpNhqPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ sy?: string }>
+}) {
+  const { sy: syParam } = await searchParams
+
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
   const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
 
-  const { data: records } = await supabase
-    .from('sbfp_data')
-    .select('*')
-    .eq('center', 'NHQ')
-    .order('region', { ascending: true })
-    .order('sdo', { ascending: true })
+  const schoolYears = await loadSchoolYears()
+  const sy = parseSchoolYear(syParam, schoolYears)
+  const year = schoolYearToDbYear(sy)
 
-  const total = records?.length || 0
-  const totalPacks = (records || []).reduce((sum, r) => sum + (r.packs_to_deliver || 0), 0)
+  const [{ data: records }, { data: budget }, { data: capacity }] = await Promise.all([
+    supabase
+      .from('sbfp_data')
+      .select('*')
+      .eq('center', 'NHQ')
+      .eq('year', year)
+      .order('region', { ascending: true })
+      .order('sdo', { ascending: true }),
+    supabase
+      .from('sbfp_budget')
+      .select('*')
+      .eq('center', 'NHQ')
+      .eq('year', year)
+      .maybeSingle(),
+    supabase
+      .from('sbfp_summary')
+      .select('*')
+      .eq('center', 'NHQ')
+      .eq('year', year)
+      .maybeSingle(),
+  ])
 
   return (
-    <div className="flex flex-col gap-5">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">NHQ Procurement Activities</h1>
-        <p className="text-muted-foreground text-sm mt-1">National Headquarters — SBFP FY 2026 SDO Procurement Monitoring</p>
-      </div>
-
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <div className="rounded-lg border bg-card p-3 text-center">
-          <div className="text-2xl font-bold">{total}</div>
-          <div className="text-xs text-muted-foreground mt-1">Total SDOs</div>
-        </div>
-        <div className="rounded-lg border bg-card p-3 text-center">
-          <div className="text-2xl font-bold">{totalPacks.toLocaleString()}</div>
-          <div className="text-xs text-muted-foreground mt-1">Total Packs to Deliver</div>
-        </div>
-      </div>
-
-      <SbfpCenterTable center="NHQ" initialRecords={records || []} userRole={profile?.role} />
-    </div>
+    <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading…</div>}>
+      <SbfpCenterWorkspace
+        center="NHQ"
+        title="NHQ Procurement Activities"
+        subtitle={`National Headquarters — ${schoolYearLabel(sy)} SDO procurement, budget, and capacity`}
+        schoolYears={schoolYears}
+        records={records || []}
+        budget={budget}
+        capacity={capacity}
+        userRole={profile?.role}
+      />
+    </Suspense>
   )
 }

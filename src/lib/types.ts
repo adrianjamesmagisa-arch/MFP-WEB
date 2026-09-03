@@ -53,6 +53,10 @@ export interface SbfpRecord {
   milk_type: string
   delivery_schedule: string
   packs_delivered: number
+  /** Packs delivered per calendar month. Keys "1".."12". */
+  monthly_packs_delivered?: Record<string, number>
+  /** Raw milk price ₱/L per calendar month. Keys "1".."12". */
+  raw_milk_prices?: Record<string, number>
   center: string
   created_by: string
   created_at: string

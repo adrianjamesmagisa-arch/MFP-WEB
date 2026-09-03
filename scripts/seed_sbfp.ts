@@ -1,4 +1,4 @@
-﻿import { createClient } from "@supabase/supabase-js";
+import { createClient } from "@supabase/supabase-js";
 import xlsx from "xlsx";
 import * as path from "path";
 import * as fs from "fs";
@@ -22,7 +22,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const EXCEL_FILE = "C:/pcc folder/PCC/SIDEBARS/sbfp/SBFP FY 2026_Monitoring.xlsx";
+const EXCEL_FILE = "C:/pcc folder/PCC/Data processing/SBFP FY 2026_Monitoring.xlsx";
 
 function excelDateToISO(serial: any): string | null {
   if (!serial || typeof serial !== "number") return null;

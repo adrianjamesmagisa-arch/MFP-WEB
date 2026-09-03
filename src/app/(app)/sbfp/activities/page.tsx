@@ -1,81 +1,111 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { SbfpActivitiesChecklist } from '@/components/SbfpActivitiesChecklist'
+import { loadSchoolYears } from '@/lib/sbfp-school-years'
+import { parseSchoolYear, schoolYearLabel, schoolYearToDbYear } from '@/lib/sbfp-year'
 
-export default async function SbfpActivitiesPage() {
+export default async function SbfpActivitiesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ sy?: string }>
+}) {
+  const { sy: syParam } = await searchParams
+  const schoolYears = await loadSchoolYears()
+  const sy = parseSchoolYear(syParam, schoolYears)
+  const year = schoolYearToDbYear(sy)
+
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: rows } = await supabase
-    .from('sbfp_activities')
-    .select('*')
-    .order('sort_order', { ascending: true })
+  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+  const canEditChecklist = profile?.role === 'super_admin'
 
-  const fmtDate = (d: string) => {
-    if (!d) return ''
-    const dt = new Date(d)
-    if (isNaN(dt.getTime())) return d
-    return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-  }
+  const [{ data: rows }, { data: sdoRows }] = await Promise.all([
+    supabase
+      .from('sbfp_activities')
+      .select('*')
+      .eq('year', year)
+      .order('sort_order', { ascending: true }),
+    supabase
+      .from('sbfp_data')
+      .select('procurement_status, packs_to_deliver')
+      .eq('year', year),
+  ])
+
+  const total = sdoRows?.length || 0
+  const totalPacks = (sdoRows || []).reduce((s, r) => s + (r.packs_to_deliver || 0), 0)
+  const counts = (sdoRows || []).reduce((acc, r) => {
+    const st = (r.procurement_status || '').toUpperCase()
+    if (st === 'FOR PREPARATION' || st === 'NOT STARTED') acc.prep++
+    else if (st.includes('ONGOING')) acc.ongoing++
+    else if (st.includes('AWARDED')) acc.awarded++
+    else if (st === 'DONE' || st === 'COMPLETED') acc.done++
+    else if (st === 'FAILED') acc.failed++
+    else acc.other++
+    return acc
+  }, { prep: 0, ongoing: 0, awarded: 0, done: 0, failed: 0, other: 0 })
+
+  const pct = (n: number) => (total ? `${((n / total) * 100).toFixed(1)}%` : '0%')
 
   return (
-    <div>
+    <div className="flex flex-col gap-5">
       <div className="page-header">
         <div>
           <h1 className="page-title">Status of Activities</h1>
-          <p className="page-subtitle">Overall milestones and timelines for SBFP FY 2026</p>
+          <p className="page-subtitle">
+            Auto stats from center SDO data plus national checklist — {schoolYearLabel(sy)}
+          </p>
         </div>
       </div>
 
-      <div className="card" style={{ overflow: 'hidden' }}>
-        <div style={{ overflow: 'auto', maxHeight: 'calc(100vh - 220px)' }}>
-          <table className="data-table" style={{ minWidth: 700, fontSize: '0.82rem' }}>
-            <thead>
-              <tr>
-                <th style={{ minWidth: 40, width: 40, textAlign: 'center' }}>#</th>
-                <th style={{ minWidth: 350, whiteSpace: 'normal', lineHeight: 1.2 }}>A — Activity</th>
-                <th style={{ minWidth: 130, whiteSpace: 'normal', lineHeight: 1.2 }}>B — Status</th>
-                <th style={{ minWidth: 150, whiteSpace: 'normal', lineHeight: 1.2 }}>C — Remarks / Dates</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(rows || []).map((r, idx) => {
-                const s = r.status || ''
-                const isDone = s.toLowerCase() === 'done' || s.toLowerCase() === 'completed'
-                const isOngoing = s.toLowerCase().includes('ongoing')
-                let badgeClass = 'bg-slate-100 text-slate-700'
-                if (isDone) badgeClass = 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400'
-                if (isOngoing) badgeClass = 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
+      <section>
+        <h2 className="text-base font-semibold mb-2">Auto stats (from center SDOs)</h2>
+        {total === 0 ? (
+          <div className="rounded-lg border bg-card p-8 text-center text-muted-foreground text-sm">
+            No SDO procurement rows for {schoolYearLabel(sy)} yet.
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            <div className="rounded-lg border bg-card p-3 text-center">
+              <div className="text-2xl font-bold">{total}</div>
+              <div className="text-xs text-muted-foreground mt-1">Total SDO rows</div>
+            </div>
+            <div className="rounded-lg border bg-card p-3 text-center">
+              <div className="text-lg font-bold">{totalPacks.toLocaleString()}</div>
+              <div className="text-xs text-muted-foreground mt-1">Packs to Deliver</div>
+            </div>
+            <div className="rounded-lg border bg-amber-50 dark:bg-amber-900/20 p-3 text-center">
+              <div className="text-2xl font-bold text-amber-700">{counts.prep}</div>
+              <div className="text-xs text-amber-600 mt-1">For Preparation ({pct(counts.prep)})</div>
+            </div>
+            <div className="rounded-lg border bg-blue-50 dark:bg-blue-900/20 p-3 text-center">
+              <div className="text-2xl font-bold text-blue-700">{counts.ongoing}</div>
+              <div className="text-xs text-blue-600 mt-1">Ongoing ({pct(counts.ongoing)})</div>
+            </div>
+            <div className="rounded-lg border bg-purple-50 dark:bg-purple-900/20 p-3 text-center">
+              <div className="text-2xl font-bold text-purple-700">{counts.awarded}</div>
+              <div className="text-xs text-purple-600 mt-1">Awarded ({pct(counts.awarded)})</div>
+            </div>
+            <div className="rounded-lg border bg-emerald-50 dark:bg-emerald-900/20 p-3 text-center">
+              <div className="text-2xl font-bold text-emerald-700">{counts.done}</div>
+              <div className="text-xs text-emerald-600 mt-1">Completed ({pct(counts.done)})</div>
+            </div>
+            <div className="rounded-lg border bg-red-50 dark:bg-red-900/20 p-3 text-center">
+              <div className="text-2xl font-bold text-red-700">{counts.failed}</div>
+              <div className="text-xs text-red-600 mt-1">Failed ({pct(counts.failed)})</div>
+            </div>
+          </div>
+        )}
+      </section>
 
-                // Simple date regex test to format remarks if it's a date
-                const isDateStr = /^\d{4}-\d{2}-\d{2}$/.test(r.remarks || '')
-                const displayRemarks = isDateStr ? fmtDate(r.remarks) : r.remarks
-
-                return (
-                  <tr key={r.id}>
-                    <td style={{ textAlign: 'center', color: 'var(--gray-400)' }}>{idx + 1}</td>
-                    <td style={{ fontWeight: 500 }}>{r.activity}</td>
-                    <td>
-                      <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${badgeClass}`}>
-                        {(r.status || 'Not Started').toUpperCase()}
-                      </span>
-                    </td>
-                    <td style={{ color: isDateStr ? '#2563eb' : 'inherit', fontWeight: isDateStr ? 600 : 400 }}>
-                      {displayRemarks || '—'}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {(!rows || rows.length === 0) && (
-        <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--gray-400)', background: 'white', borderRadius: 12, border: '1px solid var(--gray-200)', marginTop: '-1rem' }}>
-          No activities found. Run the seed script to populate from the Excel file.
-        </div>
-      )}
+      <section>
+        <SbfpActivitiesChecklist
+          year={year}
+          initialRows={(rows || []) as any}
+          canEdit={!!canEditChecklist}
+        />
+      </section>
     </div>
   )
 }

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { PCC_CENTERS } from '@/lib/types'
+import { sumGrossIncomeRawMilk } from '@/lib/sbfp-raw-milk'
 import { Download, Filter, Printer, ZoomIn, ZoomOut, Maximize2, AlignCenter } from 'lucide-react'
 
 const NAVY      = '#002C65'
@@ -33,13 +34,17 @@ const formatCount = (value: unknown): string => {
   return Math.round(number).toLocaleString('en-US')
 }
 function cur(v: number) { return '\u20b1' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
+function curOrBlank(v: number | null | undefined) {
+  if (v == null) return '—'
+  return cur(v)
+}
 
 const MILK_LABEL: Record<string, string> = {
   PM: 'Pasteurized Milk', SM: 'Sterilized Milk', SMP: 'Skim Milk Powder', Karabao: 'Karabao Milk',
 }
 
 interface Stats {
-  grossIncome: number; grossRevenue: number; dswdCenters: number
+  grossIncome: number | null; grossRevenue: number; dswdCenters: number
   totalBene: number; beneByFunder: Record<string, number>
   totalPacks: number; packsByFunder: Record<string, number>
   volumeByType: Record<string, number>; packsBySize: Record<string, number>
@@ -236,7 +241,7 @@ export default function PIMDReportPage() {
     
     // Fetch ALL rows in paginated batches to avoid Supabase row-limit truncation
     const PAGE_SIZE = 10000
-    const selectCols = 'beneficiaries,milk_packs,milk_cost,total_funds_transferred,funded_by,center,province,division,municipality,elementary_school,milk_type,total_volume_requirements,supplier_id,date_started,date_completed,target_milk_packs_to_deliver,total_milk_packs_delivered'
+    const selectCols = 'beneficiaries,milk_packs,milk_cost,total_funds_transferred,funded_by,center,province,division,municipality,elementary_school,milk_type,total_volume_requirements,supplier_id,date_started,date_completed,target_milk_packs_to_deliver,total_milk_packs_delivered,raw_milk_liters,price'
     let allRows: any[] = []
     let offset = 0
     let hasMore = true
@@ -258,8 +263,80 @@ export default function PIMDReportPage() {
       const m = parseInt(month)
       rows = rows.filter(r => r.date_started && (new Date(r.date_started).getMonth() + 1) === m)
     }
-    const grossIncome  = rows.reduce((s, r) => s + (r.milk_cost || 0), 0)
-    const grossRevenue = rows.reduce((s, r) => s + (r.total_funds_transferred || 0), 0)
+
+    // Shared SBFP month helpers (delivery start/end/snapshots)
+    const monthMatches = (value: unknown, m: number, y?: number) => {
+      if (value == null || value === '') return false
+      const d = value instanceof Date ? value : new Date(String(value))
+      if (!Number.isNaN(d.getTime())) {
+        if (d.getMonth() + 1 !== m) return false
+        if (y && d.getFullYear() !== y) return false
+        return true
+      }
+      const s = String(value)
+      const parsed = Date.parse(s.replace(/(\d+)(st|nd|rd|th)/i, '$1'))
+      if (!Number.isNaN(parsed)) {
+        const pd = new Date(parsed)
+        if (pd.getMonth() + 1 !== m) return false
+        if (y && pd.getFullYear() !== y) return false
+        return true
+      }
+      const monthNames = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec']
+      const lower = s.toLowerCase()
+      const mi = monthNames.findIndex(n => lower.includes(n))
+      if (mi < 0 || mi + 1 !== m) return false
+      if (y) {
+        const yr = s.match(/20\d{2}/)
+        if (yr && parseInt(yr[0], 10) !== y) return false
+      }
+      return true
+    }
+    const rowActiveInMonth = (r: any, m: number, y?: number) => {
+      if (monthMatches(r.delivery_start, m, y) || monthMatches(r.delivery_end, m, y)) return true
+      const snaps = Array.isArray(r.delivery_snapshots) ? r.delivery_snapshots : []
+      if (snaps.some((snap: any) =>
+        (Number(snap?.packs) || 0) > 0 && monthMatches(snap?.date, m, y)
+      )) return true
+      const monthly = r.monthly_packs_delivered
+      if (monthly && typeof monthly === 'object' && !Array.isArray(monthly)) {
+        const packs = Number((monthly as Record<string, unknown>)[String(m)]) || 0
+        if (packs > 0) return true
+      }
+      return false
+    }
+
+    let sbfpScoped: any[] = []
+    {
+      let sq = supabase
+        .from('sbfp_data')
+        .select('contract_amount,amount,packs_delivered,delivery_start,delivery_end,delivery_snapshots,milk_type,remarks,monthly_packs_delivered,raw_milk_prices')
+      if (center && center !== ALL_CENTERS_VALUE) sq = sq.eq('center', center)
+      if (year) sq = sq.eq('year', parseInt(year))
+      const { data: sbfpRows } = await sq
+      if (sbfpRows && sbfpRows.length > 0) {
+        sbfpScoped = sbfpRows
+        if (month) {
+          const m = parseInt(month)
+          const yNum = year ? parseInt(year) : undefined
+          sbfpScoped = sbfpRows.filter(r => rowActiveInMonth(r, m, yNum))
+        }
+      }
+    }
+
+    // GROSS REVENUE OF THE MILK FEEDING PROGRAM (client formula):
+    //   = total of SBFP Contract Amount (Excel column L)
+    const grossRevenue = sbfpScoped.reduce((s, r) => {
+      const contract = Number(r.contract_amount) || 0
+      const amount = Number(r.amount) || 0
+      return s + (contract > 0 ? contract : amount)
+    }, 0)
+
+    // GROSS INCOME FROM THE RAW MILK:
+    //   Raw Milk used (L) = (packs for month / 5) × 0.2
+    //   Income = used × raw_milk_prices[month] (encoder-entered ₱/L)
+    const monthNum = month ? parseInt(month, 10) : null
+    const grossIncome = sumGrossIncomeRawMilk(sbfpScoped, monthNum)
+
     const totalBene    = rows.reduce((s, r) => s + (r.beneficiaries || 0), 0)
     const totalPacks   = rows.reduce((s, r) => s + (r.milk_packs || 0), 0)
     const beneByFunder: Record<string, number>  = {}
@@ -681,7 +758,7 @@ export default function PIMDReportPage() {
 
               <div className="abs-card pimd-gross-income" style={{ background: NAVY }}>
                 <div className="box-title pimd-on-navy-text" style={{ marginBottom: '10px' }}>GROSS INCOME FROM THE RAW MILK</div>
-                <FittedText text={cur(stats.grossIncome)} maxWidth={840} maxSize={62} minSize={44} className="pimd-on-navy-text" />
+                <FittedText text={curOrBlank(stats.grossIncome)} maxWidth={840} maxSize={62} minSize={44} className="pimd-on-navy-text" />
               </div>
 
               <div className="abs-card pimd-accomplishment" style={{ background: NAVY, padding: 0 }}>

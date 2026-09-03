@@ -1,20 +1,40 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { parseSchoolYear, schoolYearLabel, schoolYearToDbYear } from '@/lib/sbfp-year'
 
 function fmt(n: number | null | undefined) {
   if (n == null || n === 0) return '—'
   return Number(n).toLocaleString('en-PH')
 }
 
-export default async function SbfpBudgetPage() {
+export default async function SbfpBudgetPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ sy?: string }>
+}) {
+  const { sy: syParam } = await searchParams
+  const sy = parseSchoolYear(syParam)
+  const year = schoolYearToDbYear(sy)
+
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: rows } = await supabase
+  const { data: allRows } = await supabase
     .from('sbfp_budget')
     .select('*')
+    .eq('year', year)
     .order('center', { ascending: true })
+
+  const rows = (allRows || []).filter(r =>
+    (r.total || 0) > 0 ||
+    (r.milk_supplies || 0) > 0 ||
+    (r.office_professional || 0) > 0 ||
+    (r.traveling_expenses || 0) > 0 ||
+    (r.office_supplies || 0) > 0 ||
+    (r.training_expenses || 0) > 0 ||
+    (r.furniture_fixtures || 0) > 0
+  )
 
   const totals = (rows || []).reduce((acc, r) => ({
     milk_supplies:        acc.milk_supplies        + (r.milk_supplies        || 0),
@@ -34,10 +54,11 @@ export default async function SbfpBudgetPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Budget Breakdown</h1>
-          <p className="page-subtitle">Allocation of SBFP FY 2026 funds per PCC center</p>
+          <p className="page-subtitle">Allocation of SBFP funds per PCC center — {schoolYearLabel(sy)}</p>
         </div>
       </div>
 
+      {(rows || []).length > 0 && (
       <div className="card" style={{ overflow: 'hidden' }}>
         <div style={{ overflow: 'auto', maxHeight: 'calc(100vh - 220px)' }}>
           <table className="data-table" style={{ minWidth: 1000, fontSize: '0.78rem' }}>
@@ -82,7 +103,7 @@ export default async function SbfpBudgetPage() {
                   </td>
                 </tr>
               ))}
-              {/* Totals row */}
+              {(rows || []).length > 0 && (
               <tr style={{ fontWeight: 700, background: 'var(--gray-100, #f8fafc)', borderTop: '2px solid var(--gray-300, #cbd5e1)' }}>
                 <td style={{ fontWeight: 800 }}>TOTAL</td>
                 <td style={{ textAlign: 'right' }}>{fmt(totals.milk_supplies)}</td>
@@ -95,14 +116,16 @@ export default async function SbfpBudgetPage() {
                   {fmt(totals.total)}
                 </td>
               </tr>
+              )}
             </tbody>
           </table>
         </div>
       </div>
+      )}
 
       {(!rows || rows.length === 0) && (
-        <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--gray-400)', background: 'white', borderRadius: 12, border: '1px solid var(--gray-200)', marginTop: '-1rem' }}>
-          No budget data yet. Run the seed script to populate from the Excel file.
+        <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--gray-400)', background: 'white', borderRadius: 12, border: '1px solid var(--gray-200)' }}>
+          No budget data for {schoolYearLabel(sy)}. Centers enter A–F on their center page (table 2); this tab sums those rows.
         </div>
       )}
     </div>

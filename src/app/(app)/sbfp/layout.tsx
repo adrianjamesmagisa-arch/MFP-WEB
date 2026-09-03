@@ -1,9 +1,15 @@
+import { Suspense } from 'react'
 import { SbfpSubSidebar } from '@/components/SbfpSubSidebar'
+import { loadSchoolYears } from '@/lib/sbfp-school-years'
 
-export default function SbfpLayout({ children }: { children: React.ReactNode }) {
+export default async function SbfpLayout({ children }: { children: React.ReactNode }) {
+  const schoolYears = await loadSchoolYears()
+
   return (
     <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
-      <SbfpSubSidebar />
+      <Suspense fallback={<aside style={{ width: 200, flexShrink: 0 }} />}>
+        <SbfpSubSidebar schoolYears={schoolYears} />
+      </Suspense>
       <main style={{ flex: 1, overflowY: 'auto', padding: '1.5rem' }}>
         {children}
       </main>

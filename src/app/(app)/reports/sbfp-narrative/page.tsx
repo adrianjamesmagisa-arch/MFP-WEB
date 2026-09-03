@@ -316,7 +316,9 @@ export default function SbfpSpreadsheetReport() {
               <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>Year</div>
               <select value={year} onChange={e => setYear(e.target.value)}
                 style={{ height: 34, padding: '0 0.75rem', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: '0.85rem', background: '#fff', fontWeight: 600 }}>
-                {['2024','2025','2026','2027'].map(y => <option key={y} value={y}>{y}</option>)}
+                {['2024','2025','2026','2027'].map(y => (
+                  <option key={y} value={y}>SY {y}-{Number(y) + 1}</option>
+                ))}
               </select>
             </div>
 

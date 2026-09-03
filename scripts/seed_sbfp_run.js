@@ -1,4 +1,4 @@
-﻿// Plain JS seed script — no TypeScript, no ESM issues
+// Plain JS seed script — no TypeScript, no ESM issues
 const xlsx = require("xlsx");
 const path = require("path");
 const fs   = require("fs");
@@ -17,7 +17,7 @@ if (fs.existsSync(envFile)) {
 }
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-const EXCEL = "C:/pcc folder/PCC/SIDEBARS/sbfp/SBFP FY 2026_Monitoring.xlsx";
+const EXCEL = "C:/pcc folder/PCC/Data processing/SBFP FY 2026_Monitoring.xlsx";
 
 function excelDateToISO(serial) {
   if (!serial || typeof serial !== "number") return null;

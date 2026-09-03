@@ -1,8 +1,15 @@
-﻿'use client'
+'use client'
 
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Trash2 } from 'lucide-react'
+import { Trash2, Plus } from 'lucide-react'
+import { recomputeCenterSummary } from '@/lib/sbfp-compute'
+import {
+  SBFP_RAW_MILK_MONTHS,
+  readMonthlyMap,
+  rawMilkUtilizedLiters,
+  rawMilkIncome,
+} from '@/lib/sbfp-raw-milk'
 
 // ─────────────────────────────────────────────
 // Status badge — PDF-exact values
@@ -145,22 +152,113 @@ function EditableCell({
   )
 }
 
+/** Editable one month key inside a JSONB number map (monthly_packs / raw_milk_prices). */
+function MonthlyMapCell({
+  id, field, monthKey, map, align = 'right', format, onSave,
+}: {
+  id: string
+  field: 'monthly_packs_delivered' | 'raw_milk_prices'
+  monthKey: string
+  map: Record<string, number>
+  align?: 'left' | 'right' | 'center'
+  format?: (v: any) => any
+  onSave: (id: string, f: string, oldV: any, newV: any) => void
+}) {
+  const current = map?.[monthKey]
+  const display = current == null || current === 0 ? '' : current
+  const [editing, setEditing] = useState(false)
+  const [val, setVal] = useState<string | number>(display)
+  const [saving, setSaving] = useState(false)
+  const ref = useRef<HTMLInputElement>(null)
+  const supabase = createClient()
+
+  useEffect(() => { setVal(display) }, [display])
+  useEffect(() => { if (editing) ref.current?.focus() }, [editing])
+
+  const save = async () => {
+    const nextNum = val === '' || val == null ? null : Number(val)
+    const oldMap = { ...(map || {}) }
+    const newMap = { ...oldMap }
+    if (nextNum == null || !Number.isFinite(nextNum)) delete newMap[monthKey]
+    else newMap[monthKey] = nextNum
+    const same =
+      (oldMap[monthKey] == null && newMap[monthKey] == null) ||
+      Number(oldMap[monthKey]) === Number(newMap[monthKey])
+    if (same) { setEditing(false); return }
+    setSaving(true)
+    const { error } = await supabase.from('sbfp_data').update({ [field]: newMap }).eq('id', id)
+    if (!error) onSave(id, field, oldMap, newMap)
+    else setVal(display)
+    setSaving(false)
+    setEditing(false)
+  }
+
+  if (editing) {
+    return (
+      <td style={{ padding: 2, background: '#fff', textAlign: align }}>
+        <input
+          ref={ref}
+          type="number"
+          value={val}
+          onChange={e => setVal(e.target.value)}
+          onBlur={save}
+          onKeyDown={e => {
+            if (e.key === 'Enter') save()
+            if (e.key === 'Escape') { setVal(display); setEditing(false) }
+          }}
+          style={{
+            width: '100%', border: '1px solid #3b82f6', outline: 'none',
+            padding: '2px 4px', fontSize: 'inherit', textAlign: align, boxSizing: 'border-box',
+          }}
+        />
+      </td>
+    )
+  }
+
+  return (
+    <td
+      onClick={() => setEditing(true)}
+      title="Click to edit"
+      style={{
+        textAlign: align, cursor: 'pointer', opacity: saving ? 0.5 : 1,
+        background: field === 'raw_milk_prices' ? 'rgba(16,185,129,0.06)' : 'rgba(59,130,246,0.04)',
+      }}
+    >
+      {current != null && current !== 0
+        ? (format ? format(current) : Number(current).toLocaleString())
+        : '—'}
+    </td>
+  )
+}
+
 // ─────────────────────────────────────────────
 // Main table
 // ─────────────────────────────────────────────
 export function SbfpCenterTable({
-  center, initialRecords, userRole
+  center, initialRecords, userRole, year, allowAdd = false,
 }: {
-  center: string; initialRecords: any[]; userRole?: string
+  center: string
+  initialRecords: any[]
+  userRole?: string | null
+  year?: number
+  allowAdd?: boolean
 }) {
   const supabase                  = createClient()
   const [rows, setRows]           = useState(initialRecords)
   const [selected, setSelected]   = useState<Set<string>>(new Set())
   const [undoStack, setUndoStack] = useState<any[]>([])
   const [redoStack, setRedoStack] = useState<any[]>([])
+  const [adding, setAdding]       = useState(false)
   const editable                  = userRole !== 'viewer'
+  const dbYear                    = year ?? (initialRecords[0]?.year as number | undefined)
 
   useEffect(() => { setRows(initialRecords) }, [initialRecords])
+
+  const maybeRecompute = async (field?: string) => {
+    if (!dbYear || center === 'OVERALL') return
+    if (field && field !== 'packs_to_deliver') return
+    await recomputeCenterSummary(supabase, center, dbYear)
+  }
 
   // Ctrl+Z / Ctrl+Y undo-redo
   useEffect(() => {
@@ -174,6 +272,7 @@ export function SbfpCenterTable({
         await supabase.from('sbfp_data').update({ [action.field]: action.oldV }).eq('id', action.id)
         setRows(p => p.map(r => r.id === action.id ? { ...r, [action.field]: action.oldV } : r))
         setRedoStack(p => [...p, action])
+        await maybeRecompute(action.field)
       }
       if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) {
         e.preventDefault()
@@ -183,22 +282,57 @@ export function SbfpCenterTable({
         await supabase.from('sbfp_data').update({ [action.field]: action.newV }).eq('id', action.id)
         setRows(p => p.map(r => r.id === action.id ? { ...r, [action.field]: action.newV } : r))
         setUndoStack(p => [...p, action])
+        await maybeRecompute(action.field)
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [undoStack, redoStack])
+  }, [undoStack, redoStack, dbYear, center])
 
-  const handleSave = (id: string, field: string, oldV: any, newV: any) => {
+  const handleSave = async (id: string, field: string, oldV: any, newV: any) => {
     setRows(p => p.map(r => r.id === id ? { ...r, [field]: newV } : r))
     setUndoStack(p => [...p, { id, field, oldV, newV }])
     setRedoStack([])
+    await maybeRecompute(field)
   }
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this record?')) return
     await supabase.from('sbfp_data').delete().eq('id', id)
     setRows(p => p.filter(r => r.id !== id))
+    await maybeRecompute('packs_to_deliver')
+  }
+
+  const handleAdd = async () => {
+    if (!editable || !dbYear || center === 'OVERALL') return
+    setAdding(true)
+    const payload = {
+      year: dbYear,
+      center,
+      region: '',
+      sdo: 'New SDO',
+      procurement_status: 'For Preparation',
+      include_in_report: true,
+      packs_to_deliver: 0,
+      packs_delivered: 0,
+      milk_type: 'PM',
+      delivery_schedule: `FY ${dbYear}`,
+      amount: 0,
+      mode_of_procurement: 'Sagip Saka',
+      beneficiaries_pm: 0,
+      contract_amount: 0,
+      delivery_snapshots: [],
+      monthly_packs_delivered: {},
+      raw_milk_prices: {},
+    }
+    const { data, error } = await supabase.from('sbfp_data').insert(payload).select().maybeSingle()
+    setAdding(false)
+    if (!error && data) {
+      setRows(p => [...p, data])
+      await maybeRecompute('packs_to_deliver')
+    } else if (error) {
+      alert(error.message)
+    }
   }
 
   const toggleAll = () => setSelected(
@@ -221,6 +355,19 @@ export function SbfpCenterTable({
 
   return (
     <>
+      {allowAdd && editable && center !== 'OVERALL' && dbYear && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.5rem' }}>
+          <button
+            type="button"
+            onClick={handleAdd}
+            disabled={adding}
+            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          >
+            <Plus size={14} />
+            {adding ? 'Adding…' : 'Add SDO'}
+          </button>
+        </div>
+      )}
       <div className="card" style={{ overflow: 'hidden' }}>
         <div style={{ overflow: 'auto', maxHeight: 'calc(100vh - 280px)' }}>
           <table className="data-table" style={{ minWidth: 2200, fontSize: '0.78rem' }}>
@@ -252,6 +399,33 @@ export function SbfpCenterTable({
                     {String.fromCharCode(80 + i)} — Delivered as of {d}
                   </th>
                 ))}
+                {SBFP_RAW_MILK_MONTHS.map(m => (
+                  <th
+                    key={`packs-${m.key}`}
+                    style={{ minWidth: 110, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', background: 'rgba(59,130,246,0.08)' }}
+                    title={`Packs delivered for ${m.label}`}
+                  >
+                    Packs — {m.short}
+                  </th>
+                ))}
+                {SBFP_RAW_MILK_MONTHS.map(m => (
+                  <th
+                    key={`price-${m.key}`}
+                    style={{ minWidth: 100, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', background: 'rgba(16,185,129,0.1)' }}
+                    title={`Raw milk price ₱/L for ${m.label} (encoder input)`}
+                  >
+                    Raw ₱/L — {m.short}
+                  </th>
+                ))}
+                {SBFP_RAW_MILK_MONTHS.map(m => (
+                  <th
+                    key={`inc-${m.key}`}
+                    style={{ minWidth: 115, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', background: 'rgba(245,158,11,0.1)' }}
+                    title={`Auto: (packs÷5)×0.2 × price — ${m.label}`}
+                  >
+                    Income — {m.short}
+                  </th>
+                ))}
                 <th style={{ minWidth: 140, whiteSpace: 'normal', lineHeight: 1.2 }}>— Payment Status</th>
                 <th style={{ minWidth: 185, whiteSpace: 'normal', lineHeight: 1.2 }}>— Remarks</th>
                 {editable && <th style={{ minWidth: 70 }}>Actions</th>}
@@ -260,7 +434,7 @@ export function SbfpCenterTable({
             <tbody>
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={22} style={{ textAlign: 'center', padding: '3rem', color: 'var(--gray-400)' }}>
+                  <td colSpan={40} style={{ textAlign: 'center', padding: '3rem', color: 'var(--gray-400)' }}>
                     No records for {center}.
                   </td>
                 </tr>
@@ -365,6 +539,60 @@ export function SbfpCenterTable({
                     {Array.from({ length: Math.max(0, snapDates.length - (r.delivery_snapshots?.length || 0)) }).map((_, i) => (
                       <td key={`empty-${i}`} style={{ textAlign: 'right', background: 'rgba(59,130,246,0.04)' }}>N/A</td>
                     ))}
+                    {/* Monthly packs delivered (Aug–Dec) */}
+                    {(() => {
+                      const packsMap = readMonthlyMap(r.monthly_packs_delivered)
+                      const priceMap = readMonthlyMap(r.raw_milk_prices)
+                      return (
+                        <>
+                          {SBFP_RAW_MILK_MONTHS.map(m => (
+                            editable
+                              ? <MonthlyMapCell
+                                  key={`p-${r.id}-${m.key}`}
+                                  id={r.id}
+                                  field="monthly_packs_delivered"
+                                  monthKey={m.key}
+                                  map={packsMap}
+                                  format={fmtNum}
+                                  onSave={handleSave}
+                                />
+                              : <td key={`p-${r.id}-${m.key}`} style={{ textAlign: 'right', background: 'rgba(59,130,246,0.04)' }}>
+                                  {packsMap[m.key] ? Number(packsMap[m.key]).toLocaleString() : '—'}
+                                </td>
+                          ))}
+                          {SBFP_RAW_MILK_MONTHS.map(m => (
+                            editable
+                              ? <MonthlyMapCell
+                                  key={`pr-${r.id}-${m.key}`}
+                                  id={r.id}
+                                  field="raw_milk_prices"
+                                  monthKey={m.key}
+                                  map={priceMap}
+                                  format={v => `₱${Number(v).toLocaleString()}`}
+                                  onSave={handleSave}
+                                />
+                              : <td key={`pr-${r.id}-${m.key}`} style={{ textAlign: 'right', background: 'rgba(16,185,129,0.06)' }}>
+                                  {priceMap[m.key] ? `₱${Number(priceMap[m.key]).toLocaleString()}` : '—'}
+                                </td>
+                          ))}
+                          {SBFP_RAW_MILK_MONTHS.map(m => {
+                            const packs = Number(packsMap[m.key]) || 0
+                            const price = Number(priceMap[m.key]) || 0
+                            const income = rawMilkIncome(packs, price)
+                            const liters = rawMilkUtilizedLiters(packs)
+                            return (
+                              <td
+                                key={`inc-${r.id}-${m.key}`}
+                                style={{ textAlign: 'right', background: 'rgba(245,158,11,0.06)', color: income ? '#92400e' : undefined }}
+                                title={packs && price ? `Raw milk ${liters.toLocaleString()} L × ₱${price}` : 'Enter packs + raw milk ₱/L'}
+                              >
+                                {income ? `₱${income.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : '—'}
+                              </td>
+                            )
+                          })}
+                        </>
+                      )
+                    })()}
                     {/* Payment Status */}
                     {editable
                       ? <EditableCell id={r.id} field="status_of_payment" value={r.status_of_payment} onSave={handleSave} />
@@ -407,7 +635,11 @@ export function SbfpCenterTable({
           <button onClick={() => {
             if (!confirm(`Delete ${selected.size} selected records?`)) return
             Promise.all(Array.from(selected).map(id => supabase.from('sbfp_data').delete().eq('id', id)))
-              .then(() => { setRows(p => p.filter(r => !selected.has(r.id))); setSelected(new Set()) })
+              .then(async () => {
+                setRows(p => p.filter(r => !selected.has(r.id)))
+                setSelected(new Set())
+                await maybeRecompute('packs_to_deliver')
+              })
           }} className="btn btn-gold" style={{ padding: '0.5rem 1rem', borderRadius: 50, background: '#ef4444', border: 'none' }}>
             <Trash2 size={14} /> Delete Selected
           </button>

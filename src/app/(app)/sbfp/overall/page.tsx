@@ -1,8 +1,17 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { SbfpCenterTable } from '@/components/SbfpCenterTable'
+import { parseSchoolYear, schoolYearLabel, schoolYearToDbYear } from '@/lib/sbfp-year'
 
-export default async function SbfpOverallPage() {
+export default async function SbfpOverallPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ sy?: string }>
+}) {
+  const { sy: syParam } = await searchParams
+  const sy = parseSchoolYear(syParam)
+  const year = schoolYearToDbYear(sy)
+
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -12,6 +21,7 @@ export default async function SbfpOverallPage() {
   const { data: records } = await supabase
     .from('sbfp_data')
     .select('*')
+    .eq('year', year)
     .order('center', { ascending: true })
     .order('region', { ascending: true })
     .order('sdo', { ascending: true })
@@ -25,14 +35,15 @@ export default async function SbfpOverallPage() {
     else if (s.includes('ONGOING')) acc.ongoing++
     else if (s.includes('AWARDED')) acc.awarded++
     else if (s === 'DONE' || s === 'COMPLETED') acc.done++
+    else if (s === 'FAILED') acc.failed++
     return acc
-  }, { prep: 0, ongoing: 0, awarded: 0, done: 0 })
+  }, { prep: 0, ongoing: 0, awarded: 0, done: 0, failed: 0 })
 
   return (
     <div className="flex flex-col gap-5">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Overall Monitoring</h1>
-        <p className="text-muted-foreground text-sm mt-1">All centers — SBFP FY 2026 consolidated SDO procurement status</p>
+        <p className="text-muted-foreground text-sm mt-1">All centers — {schoolYearLabel(sy)} consolidated SDO procurement status</p>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -42,7 +53,7 @@ export default async function SbfpOverallPage() {
         </div>
         <div className="rounded-lg border bg-card p-3 text-center">
           <div className="text-lg font-bold">{totalPacks.toLocaleString()}</div>
-          <div className="text-xs text-muted-foreground mt-1">Total Packs</div>
+          <div className="text-xs text-muted-foreground mt-1">Packs to Deliver</div>
         </div>
         <div className="rounded-lg border bg-amber-50 dark:bg-amber-900/20 p-3 text-center">
           <div className="text-2xl font-bold text-amber-700 dark:text-amber-400">{statusCounts.prep}</div>
@@ -60,9 +71,13 @@ export default async function SbfpOverallPage() {
           <div className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">{statusCounts.done}</div>
           <div className="text-xs text-emerald-600 mt-1">Completed</div>
         </div>
+        <div className="rounded-lg border bg-red-50 dark:bg-red-900/20 p-3 text-center">
+          <div className="text-2xl font-bold text-red-700 dark:text-red-400">{statusCounts.failed}</div>
+          <div className="text-xs text-red-600 mt-1">Failed</div>
+        </div>
       </div>
 
-      <SbfpCenterTable center="OVERALL" initialRecords={records || []} userRole={profile?.role} />
+      <SbfpCenterTable center="OVERALL" initialRecords={records || []} userRole={profile?.role} year={year} />
     </div>
   )
 }

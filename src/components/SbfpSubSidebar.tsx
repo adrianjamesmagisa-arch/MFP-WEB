@@ -1,11 +1,12 @@
-﻿'use client'
+'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
   BarChart3, List, DollarSign, CheckSquare,
   Building, ChevronRight, FileText
 } from 'lucide-react'
+import { DEFAULT_SCHOOL_YEAR, parseSchoolYear, schoolYearLabel, FALLBACK_SCHOOL_YEARS } from '@/lib/sbfp-year'
 
 const CENTER_SHEETS = ['NHQ', 'UPLB', 'DMMMSU', 'CSU', 'MMSU', 'CLSU', 'LCSF', 'WVSU', 'USF', 'VSU', 'MLPC', 'CMU', 'USM']
 
@@ -20,8 +21,20 @@ const reportItems = [
   { href: '/reports/sbfp-narrative', icon: FileText, label: 'SBFP Report' },
 ]
 
-export function SbfpSubSidebar() {
+export function SbfpSubSidebar({ schoolYears }: { schoolYears?: string[] }) {
   const pathname = usePathname()
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const years = schoolYears && schoolYears.length > 0 ? schoolYears : [...FALLBACK_SCHOOL_YEARS]
+  const sy = parseSchoolYear(searchParams.get('sy') || DEFAULT_SCHOOL_YEAR, years)
+
+  const withSy = (href: string) => `${href}?sy=${sy}`
+
+  const onSyChange = (next: string) => {
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('sy', next)
+    router.push(`${pathname}?${params.toString()}`)
+  }
 
   return (
     <aside
@@ -35,17 +48,33 @@ export function SbfpSubSidebar() {
         padding: '1rem 0',
       }}
     >
-      {/* Section Header */}
       <div style={{ padding: '0 1rem 0.75rem', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
         <div style={{ fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#64748b' }}>
           SBFP Monitoring
         </div>
-        <div style={{ fontSize: '0.7rem', color: '#475569', marginTop: 2 }}>
-          FY 2026
-        </div>
+        <label style={{ display: 'block', fontSize: '0.62rem', color: '#64748b', marginTop: 8, marginBottom: 4 }}>
+          School Year
+        </label>
+        <select
+          value={sy}
+          onChange={e => onSyChange(e.target.value)}
+          style={{
+            width: '100%',
+            fontSize: '0.75rem',
+            fontWeight: 600,
+            color: '#e2e8f0',
+            background: 'rgba(15,23,42,0.8)',
+            border: '1px solid rgba(255,255,255,0.12)',
+            borderRadius: 6,
+            padding: '0.35rem 0.4rem',
+          }}
+        >
+          {years.map(y => (
+            <option key={y} value={y}>{schoolYearLabel(y)}</option>
+          ))}
+        </select>
       </div>
 
-      {/* Main items */}
       <nav style={{ padding: '0.5rem 0' }}>
         {mainItems.map(item => {
           const Icon = item.icon
@@ -53,7 +82,7 @@ export function SbfpSubSidebar() {
           return (
             <Link
               key={item.href}
-              href={item.href}
+              href={withSy(item.href)}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -76,7 +105,6 @@ export function SbfpSubSidebar() {
         })}
       </nav>
 
-      {/* Reports divider */}
       <div style={{ padding: '0.5rem 1rem', fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#475569', borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: '0.25rem', paddingTop: '0.75rem' }}>
         Reports
       </div>
@@ -85,7 +113,7 @@ export function SbfpSubSidebar() {
           const Icon = item.icon
           const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
           return (
-            <Link key={item.href} href={item.href}
+            <Link key={item.href} href={withSy(item.href)}
               style={{
                 display: 'flex', alignItems: 'center', gap: '0.4rem',
                 padding: '0.35rem 1rem 0.35rem 1.25rem', fontSize: '0.74rem',
@@ -102,12 +130,10 @@ export function SbfpSubSidebar() {
           )
         })}
       </nav>
-      {/* Centers divider */}
       <div style={{ padding: '0.5rem 1rem', fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#475569', borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: '0.25rem', paddingTop: '0.75rem' }}>
         Centers
       </div>
 
-      {/* Center links */}
       <nav style={{ padding: '0.125rem 0' }}>
         {CENTER_SHEETS.map(center => {
           const href = center === 'NHQ' ? '/sbfp/nhq' : `/sbfp/center/${center}`
@@ -115,7 +141,7 @@ export function SbfpSubSidebar() {
           return (
             <Link
               key={center}
-              href={href}
+              href={withSy(href)}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -139,5 +165,3 @@ export function SbfpSubSidebar() {
     </aside>
   )
 }
-
-
