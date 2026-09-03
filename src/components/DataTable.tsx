@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -97,6 +97,23 @@ export function DataTable({ records }: { records: any[] }) {
   useEffect(() => {
     setLocalRecords(records)
   }, [records])
+
+  // Build a map from (year|center|division) -> {target, delivered} 
+  // The Excel stores target/delivered only on the first row per division (merged cell).
+  // We propagate it to all rows in the same group so every row shows the division figure.
+  const divisionTargetMap = useMemo(() => {
+    const map: Record<string, { target: number; delivered: number }> = {}
+    localRecords.forEach(r => {
+      const key = `${r.year}|${r.center}|${r.division}`
+      if ((r.target_milk_packs_to_deliver || 0) > 0 || (r.total_milk_packs_delivered || 0) > 0) {
+        map[key] = {
+          target: r.target_milk_packs_to_deliver || 0,
+          delivered: r.total_milk_packs_delivered || 0,
+        }
+      }
+    })
+    return map
+  }, [localRecords])
 
   const handleCellSave = (id: string, field: string, oldVal: any, newVal: any) => {
     setLocalRecords(prev => prev.map(r => r.id === id ? { ...r, [field]: newVal } : r))
@@ -256,8 +273,34 @@ export function DataTable({ records }: { records: any[] }) {
                   <EditableCell onSave={handleCellSave} id={r.id} field="date_completed" value={r.date_completed} type="date" format={formatDate} />
                   <EditableCell onSave={handleCellSave} id={r.id} field="liquidation" value={r.liquidation} type="date" format={formatDate} />
                   
-                  <EditableCell onSave={handleCellSave} id={r.id} field="target_milk_packs_to_deliver" value={r.target_milk_packs_to_deliver} type="number" format={formatNumber} />
-                  <EditableCell onSave={handleCellSave} id={r.id} field="total_milk_packs_delivered" value={r.total_milk_packs_delivered} type="number" format={formatNumber} />
+                  {/* AD/AE — Division-level target & delivered (merged cell in Excel) */}
+                  {(() => {
+                    const key = `${r.year}|${r.center}|${r.division}`
+                    const divData = divisionTargetMap[key]
+                    const target    = divData?.target    ?? 0
+                    const delivered = divData?.delivered ?? 0
+                    const pct = target > 0 ? Math.min(Math.round((delivered / target) * 100), 100) : null
+                    const pctColor = pct === null ? '#6b7280' : pct >= 100 ? '#16a34a' : pct >= 75 ? '#d97706' : '#dc2626'
+                    return (
+                      <>
+                        <td title="Target milk packs for this division (shared across all schools in the division)" style={{ textAlign: 'right', fontWeight: 600, color: target > 0 ? 'var(--navy)' : '#9ca3af', fontSize: '0.78rem' }}>
+                          {target > 0 ? formatNumber(target) : 'N/A'}
+                        </td>
+                        <td title="Total milk packs delivered for this division" style={{ textAlign: 'right', fontSize: '0.78rem' }}>
+                          {delivered > 0 ? (
+                            <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
+                              <span style={{ fontWeight: 700, color: 'var(--navy)' }}>{formatNumber(delivered)}</span>
+                              {pct !== null && (
+                                <span style={{ fontSize: '0.68rem', fontWeight: 800, color: pctColor, letterSpacing: '0.3px' }}>
+                                  {pct}%
+                                </span>
+                              )}
+                            </span>
+                          ) : 'N/A'}
+                        </td>
+                      </>
+                    )
+                  })()}
                   
                   <td>
                     <Link

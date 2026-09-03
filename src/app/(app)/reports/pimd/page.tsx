@@ -236,7 +236,7 @@ export default function PIMDReportPage() {
     
     // Fetch ALL rows in paginated batches to avoid Supabase row-limit truncation
     const PAGE_SIZE = 10000
-    const selectCols = 'beneficiaries,milk_packs,milk_cost,total_funds_transferred,funded_by,center,province,division,municipality,elementary_school,milk_type,total_volume_requirements,supplier_id,date_started,date_completed'
+    const selectCols = 'beneficiaries,milk_packs,milk_cost,total_funds_transferred,funded_by,center,province,division,municipality,elementary_school,milk_type,total_volume_requirements,supplier_id,date_started,date_completed,target_milk_packs_to_deliver,total_milk_packs_delivered'
     let allRows: any[] = []
     let offset = 0
     let hasMore = true
@@ -290,9 +290,16 @@ export default function PIMDReportPage() {
       }
       packsBySize[size] = (packsBySize[size] || 0) + (r.milk_packs || 0)
     })
-    // Accomplishment = % of records that have a date_completed
-    const completedCount = rows.filter(r => r.date_completed).length
-    const accomplishment = rows.length > 0 ? Math.round((completedCount / rows.length) * 100) : 0
+    // Accomplishment = (sum of milk packs delivered) / (sum of target milk packs) * 100
+    // Only rows that have a target value (> 0) are considered for this computation.
+    // If delivered > target, cap at 100%.
+    const totalTarget    = rows.reduce((s, r) => s + (r.target_milk_packs_to_deliver || 0), 0)
+    const totalDelivered = rows.reduce((s, r) => s + (r.total_milk_packs_delivered   || 0), 0)
+    const accomplishment = totalTarget > 0
+      ? Math.min(Math.round((totalDelivered / totalTarget) * 100), 100)
+      : (rows.filter(r => r.date_completed).length > 0
+          ? Math.round((rows.filter(r => r.date_completed).length / rows.length) * 100)
+          : 0)
     setStats({
       grossIncome, grossRevenue,
       dswdCenters: new Set(rows.filter(r => r.funded_by === 'DSWD').map(r => r.center)).size,
