@@ -160,13 +160,18 @@ function HBar({ data }: { data: Record<string, number> }) {
 
 const ALL_CENTERS_VALUE = '__ALL_CENTERS__'
 
+/** Blank until Year is chosen — avoids loading the full “All Centers / All Years” dump on open. */
+function hasActivePimdFilters(_center: string, year: string, _month: string) {
+  return Boolean(year)
+}
+
 export default function PIMDReportPage() {
   const supabase = createClient()
   const [center, setCenter] = useState(ALL_CENTERS_VALUE)
   const [year, setYear] = useState('')
   const [month, setMonth] = useState('')
   const [stats, setStats] = useState<Stats | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [isEncoder, setIsEncoder] = useState(false)
   const [showReference, setShowReference] = useState(false)
 
@@ -233,7 +238,14 @@ export default function PIMDReportPage() {
     })
   }, [])
 
-  useEffect(() => { fetchData() }, [center, year, month])
+  useEffect(() => {
+    if (!hasActivePimdFilters(center, year, month)) {
+      setStats(null)
+      setLoading(false)
+      return
+    }
+    fetchData()
+  }, [center, year, month])
 
   async function fetchData() {
     setLoading(true)
@@ -722,8 +734,20 @@ export default function PIMDReportPage() {
       </div>
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '5rem', color: '#64748b' }}>â³ Loading dataâ€¦</div>
-      ) : stats ? (
+        <div style={{ textAlign: 'center', padding: '5rem', color: '#64748b' }}>Loading data…</div>
+      ) : !stats ? (
+        <div style={{
+          textAlign: 'center', padding: '5rem 2rem', color: '#64748b',
+          background: 'white', border: '1.5px dashed #cbd5e1', borderRadius: 12,
+        }}>
+          <div style={{ fontWeight: 700, color: NAVY, fontSize: '1.05rem', marginBottom: 8 }}>
+            Select filters to generate the factsheet
+          </div>
+          <div style={{ fontSize: '0.9rem', maxWidth: 420, margin: '0 auto', lineHeight: 1.45 }}>
+            Choose a year above to load the report. Center and month are optional refinements.
+          </div>
+        </div>
+      ) : (
         <div ref={viewerRef}
           className={`pimd-viewer no-print${zoomMode === 'fit-page' ? ' fp' : ''}`}
           style={{ height: zoomMode === 'fit-page' ? `calc(100vh - ${viewerTop}px - 16px)` : 'auto', minHeight: '300px' }}>
@@ -875,7 +899,7 @@ export default function PIMDReportPage() {
             </section>
           </div>
         </div>
-      ) : null}
+      )}
 
       {/* ── Preview Modal ───────────────────────────────────────────────── */}
       {previewSrc && (
