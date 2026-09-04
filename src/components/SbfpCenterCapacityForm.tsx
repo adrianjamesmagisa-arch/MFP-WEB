@@ -17,6 +17,9 @@ export type CapacityRow = {
   shortage_surplus_packs?: number
 }
 
+const fmt = (n: number) =>
+  Number(n || 0).toLocaleString('en-PH', { maximumFractionDigits: 2 })
+
 export function SbfpCenterCapacityForm({
   center,
   year,
@@ -51,11 +54,9 @@ export function SbfpCenterCapacityForm({
     const payload = {
       year,
       center,
-      ...computed,
       jan_dec_target_milk_volume: janDec,
       jul_dec_projected_volume: julDec || (janDec > 0 ? Math.round(janDec / 2) : 0),
     }
-    // recompute with finalized julDec default
     const final = computeSummaryFields(
       {
         jan_dec_target_milk_volume: payload.jan_dec_target_milk_volume,
@@ -74,17 +75,31 @@ export function SbfpCenterCapacityForm({
     }
   }
 
-  const fmt = (n: number) => Number(n || 0).toLocaleString('en-PH', { maximumFractionDigits: 2 })
+  const rows: {
+    letter: string
+    label: string
+    value: number
+    input?: 'jan' | 'jul'
+    tone?: 'ok' | 'bad' | 'auto'
+  }[] = [
+    { letter: 'A', label: 'Jan–Dec Target Milk Volume (L) CBED', value: janDec, input: 'jan' },
+    { letter: 'B', label: 'Target Milk Packs (from SDO packs to deliver)', value: computed.target_milk_packs, tone: 'auto' },
+    { letter: 'C', label: 'Equivalent Volume (packs ÷ 25)', value: computed.equivalent_volume, tone: 'auto' },
+    { letter: 'D', label: 'Shortage / Surplus (L)', value: computed.shortage_surplus, tone: computed.shortage_surplus >= 0 ? 'ok' : 'bad' },
+    { letter: 'E', label: 'Jul–Dec Projected Volume (L)', value: julDec, input: 'jul' },
+    { letter: 'F', label: 'Packs Producible (E × 25)', value: computed.milk_packs_can_produce, tone: 'auto' },
+    { letter: 'G', label: 'Shortage / Surplus Packs', value: computed.shortage_surplus_packs, tone: computed.shortage_surplus_packs >= 0 ? 'ok' : 'bad' },
+  ]
 
   return (
-    <div className="rounded-lg border bg-card p-4">
-      <div className="flex items-center justify-between gap-3 mb-3">
-        <div>
-          <h2 className="text-base font-semibold">Milk Capacity (for Summary)</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Enter CBED production capacity. Target packs and shortage fields auto-compute from this center&apos;s SDO packs to deliver.
-          </p>
-        </div>
+    <div className="card" style={{ overflow: 'hidden' }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+        padding: '0.75rem 1rem', borderBottom: '1px solid #e2e8f0', background: '#f8fafc',
+      }}>
+        <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b' }}>
+          A and E come from Excel CBED capacity. B–D and F–G auto-compute from this center&apos;s SDO packs to deliver.
+        </p>
         {editable && (
           <button
             type="button"
@@ -97,57 +112,45 @@ export function SbfpCenterCapacityForm({
         )}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-        <label className="text-sm">
-          <span className="block text-xs font-semibold text-muted-foreground mb-1">A — Jan–Dec Target Milk Volume (L) CBED</span>
-          <input
-            type="number"
-            disabled={!editable}
-            value={janDec}
-            onChange={e => setJanDec(Number(e.target.value) || 0)}
-            className="w-full border rounded px-3 py-2 text-sm"
-          />
-        </label>
-        <label className="text-sm">
-          <span className="block text-xs font-semibold text-muted-foreground mb-1">E — Jul–Dec Projected Volume (L)</span>
-          <input
-            type="number"
-            disabled={!editable}
-            value={julDec}
-            onChange={e => setJulDec(Number(e.target.value) || 0)}
-            className="w-full border rounded px-3 py-2 text-sm"
-            placeholder="Defaults to A ÷ 2 if blank"
-          />
-        </label>
-      </div>
-
-      <div className="overflow-auto">
-        <table className="data-table w-full text-sm" style={{ minWidth: 800 }}>
+      <div style={{ overflow: 'auto' }}>
+        <table className="data-table" style={{ width: '100%', minWidth: 560 }}>
           <thead>
             <tr>
-              <th style={{ textAlign: 'right' }}>B — Target Milk Packs (auto)</th>
-              <th style={{ textAlign: 'right' }}>C — Equiv. Vol. B/25 (auto)</th>
-              <th style={{ textAlign: 'right' }}>D — Shortage/Surplus L (auto)</th>
-              <th style={{ textAlign: 'right' }}>F — Packs Producible (auto)</th>
-              <th style={{ textAlign: 'right' }}>G — Shortage/Surplus Packs (auto)</th>
+              <th style={{ width: 56 }}>#</th>
+              <th style={{ textAlign: 'left' }}>Particulars</th>
+              <th style={{ textAlign: 'right', minWidth: 180 }}>Value</th>
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(computed.target_milk_packs)}</td>
-              <td style={{ textAlign: 'right' }}>{fmt(computed.equivalent_volume)}</td>
-              <td style={{ textAlign: 'right', color: computed.shortage_surplus >= 0 ? '#059669' : '#dc2626', fontWeight: 600 }}>
-                {fmt(computed.shortage_surplus)}
-              </td>
-              <td style={{ textAlign: 'right' }}>{fmt(computed.milk_packs_can_produce)}</td>
-              <td style={{ textAlign: 'right', color: computed.shortage_surplus_packs >= 0 ? '#059669' : '#dc2626', fontWeight: 600 }}>
-                {fmt(computed.shortage_surplus_packs)}
-              </td>
-            </tr>
+            {rows.map(r => {
+              const color = r.tone === 'ok' ? '#059669' : r.tone === 'bad' ? '#dc2626' : undefined
+              return (
+                <tr key={r.letter} style={r.tone === 'auto' ? { background: 'rgba(59,130,246,0.04)' } : undefined}>
+                  <td style={{ fontWeight: 700, textAlign: 'center' }}>{r.letter}</td>
+                  <td style={{ textAlign: 'left' }}>{r.label}</td>
+                  <td style={{ textAlign: 'right' }}>
+                    {editable && r.input ? (
+                      <input
+                        type="number"
+                        value={r.input === 'jan' ? janDec : julDec}
+                        onChange={e => {
+                          const v = Number(e.target.value) || 0
+                          if (r.input === 'jan') setJanDec(v)
+                          else setJulDec(v)
+                        }}
+                        className="w-full border rounded px-2 py-1.5 text-right text-sm tabular-nums"
+                      />
+                    ) : (
+                      <span className="tabular-nums font-semibold" style={{ color }}>{fmt(r.value)}</span>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>
-      {msg && <p className="text-xs mt-2 text-muted-foreground">{msg}</p>}
+      {msg && <p className="text-xs px-4 py-2 text-muted-foreground">{msg}</p>}
     </div>
   )
 }

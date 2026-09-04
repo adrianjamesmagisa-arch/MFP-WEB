@@ -77,14 +77,17 @@ export async function recomputeCenterSummary(
 ): Promise<{ error: string | null }> {
   const { data: sdoRows, error: sdoErr } = await supabase
     .from('sbfp_data')
-    .select('packs_to_deliver')
+    .select('packs_to_deliver,milk_type')
     .eq('center', center)
     .eq('year', year)
 
   if (sdoErr) return { error: sdoErr.message }
 
   const packsSum = (sdoRows || []).reduce(
-    (sum: number, r: { packs_to_deliver?: number | null }) => sum + (Number(r.packs_to_deliver) || 0),
+    (sum: number, r: { packs_to_deliver?: number | null; milk_type?: string | null }) => {
+      if (r.milk_type === '__PPMP__' || r.milk_type === '__HIRING__') return sum
+      return sum + (Number(r.packs_to_deliver) || 0)
+    },
     0,
   )
 

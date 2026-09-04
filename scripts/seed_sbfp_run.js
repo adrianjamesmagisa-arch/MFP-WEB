@@ -71,7 +71,9 @@ async function seedSummary(wb) {
   const recs = [];
   for (let i=1;i<rows.length;i++) {
     const r=rows[i]; if(!r[0]||String(r[0]).toLowerCase().includes("total")) continue;
-    recs.push({year:2026,center:String(r[0]).trim(),jan_dec_target_milk_volume:Number(r[1])||0,target_milk_packs:Number(r[2])||0,equivalent_volume:Number(r[3])||0,shortage_surplus:Number(r[4])||0,pct_covered:Number(r[5])||0,jul_dec_projected_volume:Number(r[6])||0,milk_packs_can_produce:Number(r[7])||0,shortage_surplus_packs:Number(r[8])||0});
+    const rawCenter = String(r[0]).trim()
+    const center = (rawCenter.toUpperCase() === 'NIZ' || rawCenter.toUpperCase() === 'NHQGP (NIZ)') ? 'NHQ' : rawCenter
+    recs.push({year:2026,center,jan_dec_target_milk_volume:Number(r[1])||0,target_milk_packs:Number(r[2])||0,equivalent_volume:Number(r[3])||0,shortage_surplus:Number(r[4])||0,pct_covered:Number(r[5])||0,jul_dec_projected_volume:Number(r[6])||0,milk_packs_can_produce:Number(r[7])||0,shortage_surplus_packs:Number(r[8])||0});
   }
   await supabase.from("sbfp_summary").delete().eq("year",2026);
   const {error} = await supabase.from("sbfp_summary").insert(recs);
@@ -85,7 +87,9 @@ async function seedBudget(wb) {
   const recs = [];
   for (let i=1;i<rows.length;i++) {
     const r=rows[i]; if(!r[0]||String(r[0]).toUpperCase().includes("TOTAL")) continue;
-    recs.push({year:2026,center:String(r[0]).trim(),milk_supplies:Number(r[1])||0,office_professional:Number(r[2])||0,traveling_expenses:Number(r[3])||0,office_supplies:Number(r[4])||0,training_expenses:Number(r[5])||0,furniture_fixtures:Number(r[6])||0,total:Number(r[7])||0});
+    const rawCenter = String(r[0]).trim()
+    const center = (rawCenter.toUpperCase() === 'NIZ' || rawCenter.toUpperCase() === 'NHQGP (NIZ)') ? 'NHQ' : rawCenter
+    recs.push({year:2026,center,milk_supplies:Number(r[1])||0,office_professional:Number(r[2])||0,traveling_expenses:Number(r[3])||0,office_supplies:Number(r[4])||0,training_expenses:Number(r[5])||0,furniture_fixtures:Number(r[6])||0,total:Number(r[7])||0});
   }
   await supabase.from("sbfp_budget").delete().eq("year",2026);
   const {error} = await supabase.from("sbfp_budget").insert(recs);

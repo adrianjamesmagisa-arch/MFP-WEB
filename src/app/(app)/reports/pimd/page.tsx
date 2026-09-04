@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { PCC_CENTERS } from '@/lib/types'
 import { sumGrossIncomeRawMilk } from '@/lib/sbfp-raw-milk'
+import { excludeAuxSbfp } from '@/lib/sbfp-aux'
 import { APP_YEAR_STRINGS } from '@/lib/app-years'
 import { mfpCenterAliases, sbfpCenterAliases, centerDisplayLabel } from '@/lib/center-aliases'
 import { Download, Filter, Printer, ZoomIn, ZoomOut, Maximize2, AlignCenter } from 'lucide-react'
@@ -369,7 +370,7 @@ export default function PIMDReportPage() {
     if (includeSbfpForFunder(funder)) {
       let sq = supabase
         .from('sbfp_data')
-        .select('contract_amount,amount,packs_delivered,delivery_start,delivery_end,delivery_snapshots,milk_type,remarks,monthly_packs_delivered,raw_milk_prices,raw_milk_month')
+        .select('contract_amount,amount,packs_delivered,delivery_start,delivery_end,delivery_snapshots,milk_type,remarks,monthly_packs_delivered,raw_milk_prices,raw_milk_month,include_in_report')
       if (center && center !== ALL_CENTERS_VALUE) {
         const aliases = sbfpCenterAliases(center)
         sq = aliases.length === 1 ? sq.eq('center', aliases[0]) : sq.in('center', aliases)
@@ -377,11 +378,11 @@ export default function PIMDReportPage() {
       if (year) sq = sq.eq('year', parseInt(year))
       const { data: sbfpRows } = await sq
       if (sbfpRows && sbfpRows.length > 0) {
-        sbfpScoped = sbfpRows
+        sbfpScoped = excludeAuxSbfp(sbfpRows)
         if (month) {
           const m = parseInt(month)
           const yNum = year ? parseInt(year) : undefined
-          sbfpScoped = sbfpRows.filter(r => rowActiveInMonth(r, m, yNum))
+          sbfpScoped = sbfpScoped.filter(r => rowActiveInMonth(r, m, yNum))
         }
       }
     }

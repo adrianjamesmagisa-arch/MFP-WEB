@@ -5,6 +5,7 @@ import { SbfpCenterWorkspace } from '@/components/SbfpCenterWorkspace'
 import { loadSchoolYears } from '@/lib/sbfp-school-years'
 import { parseSchoolYear, schoolYearLabel, schoolYearToDbYear } from '@/lib/sbfp-year'
 import { encoderCanAccessSbfpCenter, sbfpNavCenter } from '@/lib/center-aliases'
+import { excludeAuxSbfp, SBFP_HIRING_TYPE, SBFP_PPMP_TYPE, toHiringRow, toPpmpRow } from '@/lib/sbfp-aux'
 
 export default async function SbfpNhqPage({
   searchParams,
@@ -30,27 +31,32 @@ export default async function SbfpNhqPage({
   const sy = parseSchoolYear(syParam, schoolYears)
   const year = schoolYearToDbYear(sy)
 
-  const [{ data: records }, { data: budget }, { data: capacity }] = await Promise.all([
+  const [{ data: records }, { data: budgetRows }, { data: capacityRows }] = await Promise.all([
     supabase
       .from('sbfp_data')
       .select('*')
       .eq('center', 'NHQ')
       .eq('year', year)
-      .order('region', { ascending: true })
-      .order('sdo', { ascending: true }),
+      .order('created_at', { ascending: true }),
     supabase
       .from('sbfp_budget')
       .select('*')
-      .eq('center', 'NHQ')
-      .eq('year', year)
-      .maybeSingle(),
+      .in('center', ['NHQ', 'NIZ'])
+      .eq('year', year),
     supabase
       .from('sbfp_summary')
       .select('*')
-      .eq('center', 'NHQ')
-      .eq('year', year)
-      .maybeSingle(),
+      .in('center', ['NHQ', 'NIZ'])
+      .eq('year', year),
   ])
+  const all = records || []
+  const sdoRecords = excludeAuxSbfp(all)
+  const ppmpItems = all.filter(r => r.milk_type === SBFP_PPMP_TYPE).map(toPpmpRow)
+  const hiringRows = all.filter(r => r.milk_type === SBFP_HIRING_TYPE).map(toHiringRow)
+  const pickNhq = <T extends { center?: string }>(rows: T[] | null) =>
+    (rows || []).find(r => r.center === 'NHQ') || (rows || []).find(r => r.center === 'NIZ') || null
+  const budget = pickNhq(budgetRows)
+  const capacity = pickNhq(capacityRows)
 
   return (
     <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading…</div>}>
@@ -59,9 +65,11 @@ export default async function SbfpNhqPage({
         title="NHQ Procurement Activities"
         subtitle={`National Headquarters — ${schoolYearLabel(sy)} SDO procurement, budget, and capacity`}
         schoolYears={schoolYears}
-        records={records || []}
+        records={sdoRecords}
         budget={budget}
         capacity={capacity}
+        ppmpItems={ppmpItems}
+        hiringRows={hiringRows}
         userRole={profile?.role}
       />
     </Suspense>

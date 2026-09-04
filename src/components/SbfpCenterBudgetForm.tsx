@@ -17,14 +17,17 @@ export type BudgetRow = {
   total: number
 }
 
-const FIELDS: { key: keyof BudgetRow; label: string }[] = [
-  { key: 'milk_supplies', label: 'A — Food/Milk Supplies' },
-  { key: 'office_professional', label: 'B — Office & Professional' },
-  { key: 'traveling_expenses', label: 'C — Traveling Expenses' },
-  { key: 'office_supplies', label: 'D — Office Supplies' },
-  { key: 'training_expenses', label: 'E — Training Expenses' },
-  { key: 'furniture_fixtures', label: 'F — Furniture & Fixtures' },
+const FIELDS: { key: keyof BudgetRow; letter: string; label: string }[] = [
+  { key: 'milk_supplies', letter: 'A', label: 'Food / Milk Supplies' },
+  { key: 'office_professional', letter: 'B', label: 'Office & Professional' },
+  { key: 'traveling_expenses', letter: 'C', label: 'Traveling Expenses' },
+  { key: 'office_supplies', letter: 'D', label: 'Office Supplies' },
+  { key: 'training_expenses', letter: 'E', label: 'Training Expenses' },
+  { key: 'furniture_fixtures', letter: 'F', label: 'Furniture & Fixtures' },
 ]
+
+const peso = (n: number) =>
+  '₱' + Number(n || 0).toLocaleString('en-PH', { maximumFractionDigits: 0 })
 
 export function SbfpCenterBudgetForm({
   center,
@@ -68,14 +71,14 @@ export function SbfpCenterBudgetForm({
   }
 
   return (
-    <div className="rounded-lg border bg-card p-4">
-      <div className="flex items-center justify-between gap-3 mb-3">
-        <div>
-          <h2 className="text-base font-semibold">Center Budget (A–F)</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Enter this center&apos;s allocation for the selected school year. National Budget Breakdown sums all centers.
-          </p>
-        </div>
+    <div className="card" style={{ overflow: 'hidden' }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+        padding: '0.75rem 1rem', borderBottom: '1px solid #e2e8f0', background: '#f8fafc',
+      }}>
+        <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b' }}>
+          Allocation from SBFP Budget Breakdown. National Budget tab sums all centers.
+        </p>
         {editable && (
           <button
             type="button"
@@ -88,38 +91,43 @@ export function SbfpCenterBudgetForm({
         )}
       </div>
 
-      <div className="overflow-auto">
-        <table className="data-table w-full text-sm" style={{ minWidth: 720 }}>
+      <div style={{ overflow: 'auto' }}>
+        <table className="data-table" style={{ width: '100%', minWidth: 520 }}>
           <thead>
             <tr>
-              {FIELDS.map(f => (
-                <th key={f.key} style={{ textAlign: 'right', whiteSpace: 'normal', lineHeight: 1.2 }}>{f.label}</th>
-              ))}
-              <th style={{ textAlign: 'right' }}>G — Total (₱)</th>
+              <th style={{ width: 56 }}>#</th>
+              <th style={{ textAlign: 'left' }}>Particulars</th>
+              <th style={{ textAlign: 'right', minWidth: 180 }}>Amount (₱)</th>
             </tr>
           </thead>
           <tbody>
-            <tr>
-              {FIELDS.map(f => (
-                <td key={f.key} style={{ textAlign: 'right' }}>
+            {FIELDS.map(f => (
+              <tr key={f.key}>
+                <td style={{ fontWeight: 700, textAlign: 'center' }}>{f.letter}</td>
+                <td style={{ textAlign: 'left' }}>{f.label}</td>
+                <td style={{ textAlign: 'right' }}>
                   {editable ? (
                     <input
                       type="number"
                       value={Number(row[f.key]) || 0}
                       onChange={e => setRow(r => ({ ...r, [f.key]: Number(e.target.value) || 0 }))}
-                      className="w-full max-w-[9rem] ml-auto block border rounded px-2 py-1 text-right text-sm"
+                      className="w-full border rounded px-2 py-1.5 text-right text-sm tabular-nums"
                     />
                   ) : (
-                    Number(row[f.key] || 0).toLocaleString()
+                    <span className="tabular-nums font-semibold">{peso(Number(row[f.key]) || 0)}</span>
                   )}
                 </td>
-              ))}
-              <td style={{ textAlign: 'right', fontWeight: 700 }}>{total.toLocaleString()}</td>
+              </tr>
+            ))}
+            <tr style={{ background: '#eef2ff' }}>
+              <td style={{ fontWeight: 800, textAlign: 'center' }}>G</td>
+              <td style={{ textAlign: 'left', fontWeight: 800 }}>Total</td>
+              <td style={{ textAlign: 'right', fontWeight: 800, fontSize: '1.05rem' }}>{peso(total)}</td>
             </tr>
           </tbody>
         </table>
       </div>
-      {msg && <p className="text-xs mt-2 text-muted-foreground">{msg}</p>}
+      {msg && <p className="text-xs px-4 py-2 text-muted-foreground">{msg}</p>}
     </div>
   )
 }

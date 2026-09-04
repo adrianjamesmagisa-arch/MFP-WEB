@@ -4,6 +4,8 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { SbfpCenterTable } from '@/components/SbfpCenterTable'
 import { SbfpCenterBudgetForm, type BudgetRow } from '@/components/SbfpCenterBudgetForm'
 import { SbfpCenterCapacityForm, type CapacityRow } from '@/components/SbfpCenterCapacityForm'
+import { SbfpExcelPpmpTable, type PpmpRow } from '@/components/SbfpExcelPpmpTable'
+import { SbfpStaffHiringTable, type HiringRow } from '@/components/SbfpStaffHiringTable'
 import { SbfpCreateSchoolYearButton } from '@/components/SbfpCreateSchoolYearButton'
 import { parseSchoolYear, schoolYearLabel, schoolYearToDbYear } from '@/lib/sbfp-year'
 
@@ -15,6 +17,8 @@ export function SbfpCenterWorkspace({
   records,
   budget,
   capacity,
+  ppmpItems = [],
+  hiringRows = [],
   userRole,
   showKpis = true,
 }: {
@@ -25,6 +29,8 @@ export function SbfpCenterWorkspace({
   records: any[]
   budget: BudgetRow | null
   capacity: CapacityRow | null
+  ppmpItems?: PpmpRow[]
+  hiringRows?: HiringRow[]
   userRole?: string | null
   showKpis?: boolean
 }) {
@@ -131,13 +137,58 @@ export function SbfpCenterWorkspace({
         />
       </section>
 
-      <section>
-        <h2 className="text-base font-semibold mb-2">2. Center Budget (A–F)</h2>
+      <section className="flex flex-col gap-2">
+        <SbfpExcelPpmpTable
+          title="OFFICE SUPPLIES TOTAL FUND IN PPMP"
+          itemLabel="Office Supplies"
+          category="office_supplies"
+          center={center}
+          year={year}
+          initialRows={ppmpItems.filter(r => r.category === 'office_supplies')}
+          editable={editable}
+        />
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <SbfpExcelPpmpTable
+          title="FIXTURES TOTAL FUND IN PPMP"
+          itemLabel="ICT Supplies"
+          category="fixtures"
+          center={center}
+          year={year}
+          initialRows={ppmpItems.filter(r => r.category === 'fixtures')}
+          editable={editable}
+        />
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <SbfpExcelPpmpTable
+          title="TRAINING TOTAL FUND IN PPMP"
+          itemLabel="Training Expenses"
+          category="training"
+          center={center}
+          year={year}
+          initialRows={ppmpItems.filter(r => r.category === 'training')}
+          editable={editable}
+        />
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <SbfpStaffHiringTable
+          center={center}
+          year={year}
+          initialRows={hiringRows}
+          editable={editable}
+        />
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <h2 className="text-base font-semibold">2. Center Budget (A–F)</h2>
         <SbfpCenterBudgetForm center={center} year={year} initial={budget} editable={editable} />
       </section>
 
-      <section>
-        <h2 className="text-base font-semibold mb-2">3. Milk Capacity (for Summary)</h2>
+      <section className="flex flex-col gap-2">
+        <h2 className="text-base font-semibold">3. Milk Capacity (for Summary)</h2>
         <SbfpCenterCapacityForm
           center={center}
           year={year}

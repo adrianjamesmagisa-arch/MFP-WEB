@@ -5,6 +5,7 @@ import { SbfpCenterWorkspace } from '@/components/SbfpCenterWorkspace'
 import { loadSchoolYears } from '@/lib/sbfp-school-years'
 import { parseSchoolYear, schoolYearLabel, schoolYearToDbYear } from '@/lib/sbfp-year'
 import { encoderCanAccessSbfpCenter, sbfpNavCenter } from '@/lib/center-aliases'
+import { excludeAuxSbfp, SBFP_HIRING_TYPE, SBFP_PPMP_TYPE, toHiringRow, toPpmpRow } from '@/lib/sbfp-aux'
 
 export default async function SbfpCenterPage({
   params,
@@ -40,8 +41,7 @@ export default async function SbfpCenterPage({
       .select('*')
       .eq('center', decodedCenter)
       .eq('year', year)
-      .order('region', { ascending: true })
-      .order('sdo', { ascending: true }),
+      .order('created_at', { ascending: true }),
     supabase
       .from('sbfp_budget')
       .select('*')
@@ -55,6 +55,10 @@ export default async function SbfpCenterPage({
       .eq('year', year)
       .maybeSingle(),
   ])
+  const all = records || []
+  const sdoRecords = excludeAuxSbfp(all)
+  const ppmpItems = all.filter(r => r.milk_type === SBFP_PPMP_TYPE).map(toPpmpRow)
+  const hiringRows = all.filter(r => r.milk_type === SBFP_HIRING_TYPE).map(toHiringRow)
 
   return (
     <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading…</div>}>
@@ -63,9 +67,11 @@ export default async function SbfpCenterPage({
         title={`${decodedCenter} Procurement`}
         subtitle={`SBFP ${schoolYearLabel(sy)} — SDO procurement, center budget, and milk capacity`}
         schoolYears={schoolYears}
-        records={records || []}
+        records={sdoRecords}
         budget={budget}
         capacity={capacity}
+        ppmpItems={ppmpItems}
+        hiringRows={hiringRows}
         userRole={profile?.role}
       />
     </Suspense>
