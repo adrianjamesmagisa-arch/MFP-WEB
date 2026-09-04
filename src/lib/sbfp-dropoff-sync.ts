@@ -162,10 +162,15 @@ export function buildMasterlistIdentity(
     payload.whole_milk_kg = Number(calc.wholeMilk.toFixed(4))
     payload.skimmed_milk_kg = Number(calc.skimMilk.toFixed(4))
     payload.sugar = Number(calc.sugar.toFixed(4))
-    // Target packs for delivery tracking default to computed packs when blank
-    if (isBlank(existing?.target_milk_packs_to_deliver) || Number(existing?.target_milk_packs_to_deliver) === 0) {
-      payload.target_milk_packs_to_deliver = calc.milkPacks
-    }
+    payload.target_milk_packs_to_deliver = calc.milkPacks
+  } else if (beneficiaries <= 0 || feedingDays <= 0) {
+    payload.milk_packs = 0
+    payload.total_volume_requirements = 0
+    payload.raw_milk_liters = 0
+    payload.whole_milk_kg = 0
+    payload.skimmed_milk_kg = 0
+    payload.sugar = 0
+    payload.target_milk_packs_to_deliver = 0
   }
 
   return payload

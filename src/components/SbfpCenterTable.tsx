@@ -17,7 +17,16 @@ import {
   parseSnapshotDate,
   toDateInputValue,
 } from '@/lib/sbfp-raw-milk'
-import { cascadeSdoFieldSync, cascadeSdoRename, unlinkDropoffFromMasterlist } from '@/lib/sbfp-dropoff-sync'
+async function apiDropoffMasterlist(body: Record<string, unknown>): Promise<string | null> {
+  const res = await fetch('/api/sbfp/sync-dropoff', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const json = await res.json().catch(() => ({} as { error?: string }))
+  if (!res.ok) return json.error || 'Masterlist sync failed'
+  return null
+}
 
 // ─────────────────────────────────────────────
 // Status badge — PDF-exact values
@@ -477,12 +486,23 @@ export function SbfpCenterTable({
       }
     }
     if (nextRow && field === 'sdo' && String(oldV) !== String(newV)) {
-      await cascadeSdoRename(supabase, id, String(newV || ''), nextRow)
+      const err = await apiDropoffMasterlist({
+        action: 'cascade-rename',
+        sbfpDataId: id,
+        newSdoName: String(newV || ''),
+        parent: nextRow,
+      })
+      if (err) alert(err)
     } else if (
       nextRow &&
       (field === 'region' || field === 'milk_type' || field === 'batch' || field === 'feeding_days' || field === 'remarks')
     ) {
-      await cascadeSdoFieldSync(supabase, id, nextRow)
+      const err = await apiDropoffMasterlist({
+        action: 'cascade-fields',
+        sbfpDataId: id,
+        parent: nextRow,
+      })
+      if (err) alert(err)
     }
     await maybeRecompute(field)
   }
@@ -530,7 +550,8 @@ export function SbfpCenterTable({
       .select('id')
       .eq('sbfp_data_id', id)
     for (const child of children || []) {
-      await unlinkDropoffFromMasterlist(supabase, child.id)
+      const err = await apiDropoffMasterlist({ action: 'unlink', dropoffId: child.id })
+      if (err) { alert(err); return }
       await supabase.from('sbfp_dropoff_points').delete().eq('id', child.id)
     }
     await supabase.from('sbfp_data').delete().eq('id', id)
@@ -941,7 +962,8 @@ export function SbfpCenterTable({
                   .select('id')
                   .eq('sbfp_data_id', id)
                 for (const child of children || []) {
-                  await unlinkDropoffFromMasterlist(supabase, child.id)
+                  const err = await apiDropoffMasterlist({ action: 'unlink', dropoffId: child.id })
+                  if (err) { alert(err); return }
                   await supabase.from('sbfp_dropoff_points').delete().eq('id', child.id)
                 }
                 await supabase.from('sbfp_data').delete().eq('id', id)

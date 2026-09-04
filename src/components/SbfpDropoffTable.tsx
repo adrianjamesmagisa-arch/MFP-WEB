@@ -5,20 +5,39 @@ import { createClient } from '@/lib/supabase/client'
 import { Plus, Trash2 } from 'lucide-react'
 import type { SbfpDropoffPoint } from '@/lib/types'
 import {
-  loadParentSdo,
-  syncDropoffToMasterlist,
-  unlinkDropoffFromMasterlist,
   resolveDropoffFeedingDays,
   parseFeedingDaysFromText,
 } from '@/lib/sbfp-dropoff-sync'
-import { calcMilkFormulations, FEEDING_DAYS_OPTIONS } from '@/lib/mfp-formulas'
+import { calcMilkFormulations } from '@/lib/mfp-formulas'
 
 export type DropoffRow = SbfpDropoffPoint
+
+async function apiSyncDropoff(dropoff: DropoffRow): Promise<string | null> {
+  const res = await fetch('/api/sbfp/sync-dropoff', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'sync', dropoff }),
+  })
+  const json = await res.json().catch(() => ({} as { error?: string }))
+  if (!res.ok) return json.error || 'Masterlist sync failed'
+  return null
+}
+
+async function apiUnlinkDropoff(dropoffId: string): Promise<string | null> {
+  const res = await fetch('/api/sbfp/sync-dropoff', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'unlink', dropoffId }),
+  })
+  const json = await res.json().catch(() => ({} as { error?: string }))
+  if (!res.ok) return json.error || 'Masterlist unlink failed'
+  return null
+}
 
 type SdoOption = { id: string; sdo: string; region?: string | null; feeding_days?: number | null; remarks?: string | null }
 
 function EditableText({
-  value, align = 'left', type = 'text', disabled, onCommit, title,
+  value, align = 'left', type = 'text', disabled, onCommit, title, cellStyle,
 }: {
   value: string | number | null | undefined
   align?: 'left' | 'right' | 'center'
@@ -26,6 +45,7 @@ function EditableText({
   disabled?: boolean
   onCommit: (next: string | number | null) => void
   title?: string
+  cellStyle?: CSSProperties
 }) {
   const [editing, setEditing] = useState(false)
   const [val, setVal] = useState<string>(value == null ? '' : String(value))
@@ -46,7 +66,7 @@ function EditableText({
 
   if (disabled) {
     return (
-      <td style={{ textAlign: align }} title={title}>
+      <td style={{ textAlign: align, ...cellStyle }} title={title}>
         {value == null || value === '' ? '—' : type === 'number' ? Number(value).toLocaleString() : String(value)}
       </td>
     )
@@ -54,7 +74,7 @@ function EditableText({
 
   if (editing) {
     return (
-      <td style={{ padding: 2, background: '#fff' }}>
+      <td style={{ padding: 2, background: '#fff', ...cellStyle }}>
         <input
           ref={ref}
           type={type}
@@ -78,7 +98,7 @@ function EditableText({
     <td
       onClick={() => setEditing(true)}
       title={title || 'Click to edit'}
-      style={{ textAlign: align, cursor: 'pointer' }}
+      style={{ textAlign: align, cursor: 'pointer', ...cellStyle }}
     >
       {value == null || value === ''
         ? '—'
@@ -122,9 +142,9 @@ export function SbfpDropoffTable({
   }, [rows, filterSdo])
 
   const syncRow = async (row: DropoffRow) => {
-    const parent = await loadParentSdo(supabase, row.sbfp_data_id)
-    const res = await syncDropoffToMasterlist(supabase, row, parent)
-    if (res.error) setMsg(res.error)
+    // Service-role API — browser RLS often cannot update mfp_data for encoders
+    const err = await apiSyncDropoff(row)
+    if (err) setMsg(err)
   }
 
   const updateField = async (id: string, field: keyof DropoffRow, value: any) => {
@@ -202,7 +222,8 @@ export function SbfpDropoffTable({
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this drop-off school? Linked masterlist row will be removed.')) return
-    await unlinkDropoffFromMasterlist(supabase, id)
+    const unlinkErr = await apiUnlinkDropoff(id)
+    if (unlinkErr) { setMsg(unlinkErr); return }
     const { error } = await supabase.from('sbfp_dropoff_points').delete().eq('id', id)
     if (error) setMsg(error.message)
     else {
@@ -215,7 +236,8 @@ export function SbfpDropoffTable({
     if (!selected.size) return
     if (!confirm(`Delete ${selected.size} drop-off school(s)? Linked masterlist rows will be removed.`)) return
     for (const id of selected) {
-      await unlinkDropoffFromMasterlist(supabase, id)
+      const unlinkErr = await apiUnlinkDropoff(id)
+      if (unlinkErr) { setMsg(unlinkErr); return }
       await supabase.from('sbfp_dropoff_points').delete().eq('id', id)
     }
     setRows(p => p.filter(r => !selected.has(r.id)))
@@ -392,21 +414,15 @@ export function SbfpDropoffTable({
                       disabled={!editable}
                       onCommit={v => updateField(r.id, 'beneficiaries', Number(v) || 0)}
                     />
-                    <td style={{ textAlign: 'right', background: 'rgba(16,185,129,0.06)' }}>
-                      {editable ? (
-                        <select
-                          value={Number(r.feeding_days) > 0 ? String(r.feeding_days) : ''}
-                          onChange={e => updateField(r.id, 'feeding_days', e.target.value ? Number(e.target.value) : 0)}
-                          style={{ width: '100%', border: 0, background: 'transparent', fontSize: 'inherit', textAlign: 'right' }}
-                          title="Select feeding days"
-                        >
-                          <option value="">—</option>
-                          {FEEDING_DAYS_OPTIONS.map(d => (
-                            <option key={d} value={d}>{d}</option>
-                          ))}
-                        </select>
-                      ) : (Number(r.feeding_days) > 0 ? r.feeding_days : '—')}
-                    </td>
+                    <EditableText
+                      value={Number(r.feeding_days) > 0 ? r.feeding_days : ''}
+                      type="number"
+                      align="right"
+                      disabled={!editable}
+                      title="Type feeding days — milk packs = beneficiaries × days (saves to masterlist)"
+                      cellStyle={{ background: 'rgba(16,185,129,0.06)' }}
+                      onCommit={v => updateField(r.id, 'feeding_days', Number(v) > 0 ? Number(v) : 0)}
+                    />
                     <td style={{ textAlign: 'right', background: 'rgba(59,130,246,0.06)', fontWeight: 600 }}>
                       {calc ? calc.milkPacks.toLocaleString() : '—'}
                     </td>
