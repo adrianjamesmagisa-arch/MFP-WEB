@@ -1,4 +1,6 @@
-/** Pack volume (L) used in client raw-milk utilization formula. */
+import { litersPerPackForMilkType } from '@/lib/mfp-formulas'
+
+/** Pack volume (L) for raw-milk utilization — SM=0.18, PM=0.2 (see mfp-formulas). */
 export const RAW_MILK_PACK_LITERS = 0.2
 
 /** Feeding months shown on SBFP center monitoring (Aug–Dec of the SY start year). */
@@ -20,18 +22,23 @@ export type SbfpRawMilkRow = {
   raw_milk_prices?: unknown
   delivery_start?: string | Date | null
   raw_milk_month?: string | number | null
+  /** PM → ×0.2 · SM → ×0.18 in raw milk used (L) */
+  milk_type?: string | null
 }
 
-/** Raw milk utilized (L) = (packs delivered for month / 5) × 0.2 */
-export function rawMilkUtilizedLiters(packs: number): number {
+/**
+ * Raw milk utilized (L) = (packs delivered for month / 5) × liters/pack
+ * SM = 0.18 · PM/CM = 0.2
+ */
+export function rawMilkUtilizedLiters(packs: number, milkType?: unknown): number {
   if (!packs || packs <= 0) return 0
-  return (packs / 5) * RAW_MILK_PACK_LITERS
+  return (packs / 5) * litersPerPackForMilkType(milkType)
 }
 
 /** Income = utilized liters × raw milk price (₱/L) */
-export function rawMilkIncome(packs: number, pricePerLiter: number): number {
+export function rawMilkIncome(packs: number, pricePerLiter: number, milkType?: unknown): number {
   if (!packs || packs <= 0 || !pricePerLiter || pricePerLiter <= 0) return 0
-  return rawMilkUtilizedLiters(packs) * pricePerLiter
+  return rawMilkUtilizedLiters(packs, milkType) * pricePerLiter
 }
 
 export function readMonthlyMap(value: unknown): MonthlyNumberMap {
@@ -216,7 +223,7 @@ export function incomeForMonth(
   const packs = packsForMonth(row, month, opts)
   const price = priceForMonth(row, month)
   if (price == null) return 0
-  return rawMilkIncome(packs, price)
+  return rawMilkIncome(packs, price, row.milk_type)
 }
 
 /** Sum per-month incomes on one row (each month uses only that month’s completed packs). */
@@ -268,7 +275,7 @@ export function sumGrossIncomeRawMilk(
       const price = priceForMonth(r, month)
       if (packs <= 0 || price == null) continue
       any = true
-      income += rawMilkIncome(packs, price)
+      income += rawMilkIncome(packs, price, r.milk_type)
     } else {
       const rowIncome = sumRowIncome(r, opts)
       if (rowIncome > 0) {

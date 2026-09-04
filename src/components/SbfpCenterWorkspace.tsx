@@ -183,6 +183,7 @@ export function SbfpCenterWorkspace({
                 region: r.region,
                 feeding_days: r.feeding_days,
                 remarks: r.remarks,
+                milk_type: r.milk_type,
               }))}
               initialRows={dropoffRows}
               editable={editable && feedingDaysReady}

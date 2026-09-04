@@ -11,7 +11,8 @@ import {
   baseSdoName,
   pickPreferredSdoVariant,
 } from '@/lib/sbfp-dropoff-sync'
-import { calcMilkFormulations } from '@/lib/mfp-formulas'
+import { calcMilkFormulations, litersPerPackForMilkType } from '@/lib/mfp-formulas'
+import { inferSbfpMilkType, normalizeSbfpMilkType } from '@/lib/sbfp-pack-price'
 
 export type DropoffRow = SbfpDropoffPoint
 
@@ -37,7 +38,14 @@ async function apiUnlinkDropoff(dropoffId: string): Promise<string | null> {
   return null
 }
 
-type SdoOption = { id: string; sdo: string; region?: string | null; feeding_days?: number | null; remarks?: string | null }
+type SdoOption = {
+  id: string
+  sdo: string
+  region?: string | null
+  feeding_days?: number | null
+  remarks?: string | null
+  milk_type?: string | null
+}
 
 function EditableText({
   value, align = 'left', type = 'text', disabled, onCommit, title, cellStyle,
@@ -364,7 +372,10 @@ export function SbfpDropoffTable({
                 <th style={{ minWidth: 110, textAlign: 'right', background: '#1e3a5f' }} title="= Beneficiaries × Feeding days">
                   Milk Packs
                 </th>
-                <th style={{ minWidth: 110, textAlign: 'right', background: '#1e3a5f' }} title="= Packs × 0.18">
+                <th
+                  style={{ minWidth: 110, textAlign: 'right', background: '#1e3a5f' }}
+                  title="SM: Packs × 0.18 L (180 ml) · PM: Packs × 0.20 L (200 ml)"
+                >
                   Total Vol.
                 </th>
                 <th style={{ minWidth: 100, textAlign: 'right', background: '#1e3a5f' }} title="= Vol × 0.20">
@@ -402,14 +413,19 @@ export function SbfpDropoffTable({
                   (r.sdo && normalizeSdoName(o.sdo) === normalizeSdoName(r.sdo)),
                 )
                 const selectValue = parentOpt?.id || ''
+                const milkType =
+                  inferSbfpMilkType(parentOpt?.sdo, parentOpt?.remarks, r.sdo) ||
+                  normalizeSbfpMilkType(parentOpt?.milk_type) ||
+                  'PM'
                 const days = resolveDropoffFeedingDays(r, parentOpt ? {
                   feeding_days: parentOpt.feeding_days,
                   sdo: parentOpt.sdo,
                   remarks: parentOpt.remarks,
                 } : null)
-                const calc = calcMilkFormulations(Number(r.beneficiaries) || 0, days)
+                const calc = calcMilkFormulations(Number(r.beneficiaries) || 0, days, milkType)
                 const fmt4 = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 4 })
                 const displaySdo = baseSdoName(r.sdo || '') || r.sdo || '—'
+                const volFactor = litersPerPackForMilkType(milkType)
                 return (
                   <tr key={r.id} style={{ background: bg }}>
                     <td style={{ textAlign: 'center', ...stickyTd(0, 36, bg) }}>
@@ -472,7 +488,10 @@ export function SbfpDropoffTable({
                     <td style={{ textAlign: 'right', background: 'rgba(59,130,246,0.06)', fontWeight: 600 }}>
                       {calc ? calc.milkPacks.toLocaleString() : '—'}
                     </td>
-                    <td style={{ textAlign: 'right', background: 'rgba(59,130,246,0.04)' }}>
+                    <td
+                      style={{ textAlign: 'right', background: 'rgba(59,130,246,0.04)' }}
+                      title={calc ? `Packs × ${volFactor} (${milkType === 'SM' ? '180 ml SM' : '200 ml PM'})` : undefined}
+                    >
                       {calc ? fmt4(calc.totalVol) : '—'}
                     </td>
                     <td style={{ textAlign: 'right', background: 'rgba(59,130,246,0.04)' }}>

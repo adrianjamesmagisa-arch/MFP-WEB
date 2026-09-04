@@ -6,7 +6,7 @@ import { PCC_CENTERS } from '@/lib/types'
 import { parseSnapshotDate, sumGrossIncomeRawMilk } from '@/lib/sbfp-raw-milk'
 import { excludeAuxSbfp } from '@/lib/sbfp-aux'
 import { normalizeSdoName } from '@/lib/sbfp-dropoff-sync'
-import { calcMilkFormulations } from '@/lib/mfp-formulas'
+import { calcMilkFormulations, litersPerPackForMilkType, packagingSizeForMilkType, normalizeMilkTypeCode } from '@/lib/mfp-formulas'
 import { APP_YEAR_STRINGS } from '@/lib/app-years'
 import { mfpCenterAliases, sbfpCenterAliases, centerDisplayLabel } from '@/lib/center-aliases'
 import { Download, Filter, Printer, ZoomIn, ZoomOut, Maximize2, AlignCenter } from 'lucide-react'
@@ -432,7 +432,11 @@ export default function PIMDReportPage() {
     const rowPacks = (r: any) => {
       const direct = Number(r.milk_packs) || 0
       if (direct > 0) return direct
-      const calc = calcMilkFormulations(Number(r.beneficiaries) || 0, Number(r.feeding_days) || 0)
+      const calc = calcMilkFormulations(
+        Number(r.beneficiaries) || 0,
+        Number(r.feeding_days) || 0,
+        r.milk_type || 'PM',
+      )
       return calc?.milkPacks || 0
     }
 
@@ -448,23 +452,15 @@ export default function PIMDReportPage() {
       const packs = rowPacks(r)
       beneByFunder[f] = (beneByFunder[f] || 0) + (r.beneficiaries || 0)
       packsByFunder[f] = (packsByFunder[f] || 0) + packs
-      const t = r.milk_type || 'Unknown'
-      const vol = Number(r.total_volume_requirements) || (packs > 0 ? packs * 0.18 : 0)
+      const t = normalizeMilkTypeCode(r.milk_type || 'PM')
+      const litersPerPack = litersPerPackForMilkType(t)
+      // Prefer stored volume when it matches milk-type factor; else recompute packs × L/pack
+      const storedVol = Number(r.total_volume_requirements) || 0
+      const expectedVol = packs > 0 ? packs * litersPerPack : 0
+      const vol = expectedVol > 0 ? expectedVol : storedVol
       volumeByType[t] = (volumeByType[t] || 0) + vol
-      let size = 'OTHER'
-      if (packs > 0 && vol > 0) {
-        const ml = (vol / packs) * 1000
-        if (Math.abs(ml - 180) < 10) size = '180 ML CAN/POUCH'
-        else if (Math.abs(ml - 200) < 10) size = '200 POUCH'
-        else if (Math.abs(ml - 500) < 10) size = '500 ML'
-        else if (Math.abs(ml - 1000) < 10) size = '1 LITER BOTTLE'
-        else size = `${Math.round(ml)} ML`
-      } else {
-        if (t === 'PM') size = '180 ML CAN/POUCH'
-        else if (t === 'Karabao') size = '200 POUCH'
-        else if (t === 'SM') size = '500 ML'
-        else if (t === 'SMP') size = '1 LITER BOTTLE'
-      }
+      // SM always 180 ml; PM/CM → 200 pouch
+      const size = packagingSizeForMilkType(t)
       packsBySize[size] = (packsBySize[size] || 0) + packs
     })
     // Accomplishment % comes from SBFP FY 2026 Monitoring (sbfp_monitoring),

@@ -25,6 +25,7 @@ import {
   fixedPackPriceForMilkType,
   inferSbfpMilkType,
 } from '@/lib/sbfp-pack-price'
+import { litersPerPackForMilkType } from '@/lib/mfp-formulas'
 async function apiDropoffMasterlist(body: Record<string, unknown>): Promise<string | null> {
   const res = await fetch('/api/sbfp/sync-dropoff', {
     method: 'POST',
@@ -931,7 +932,7 @@ export function SbfpCenterTable({
                   <Fragment key={`sub-${m.key}`}>
                     <th
                       style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.15, textAlign: 'right', background: '#1e40af' }}
-                      title={`Raw Milk used for the month of ${m.label} ${dbYear || ''} (L) = (packs ÷ 5) × 0.2`}
+                      title={`Raw Milk used (L) = (packs ÷ 5) × L/pack · SM ×0.18 · PM ×0.2`}
                     >
                       Raw milk used (L)
                     </th>
@@ -1101,7 +1102,8 @@ export function SbfpCenterTable({
                       const packs = packsForMonth(r, monthNum, { year: dbYear })
                       const price = Number(priceMap[m.key]) || 0
                       const income = incomeForMonth(r, monthNum, { year: dbYear })
-                      const liters = rawMilkUtilizedLiters(packs)
+                      const liters = rawMilkUtilizedLiters(packs, r.milk_type)
+                      const packL = litersPerPackForMilkType(normalizeSbfpMilkType(r.milk_type) || r.milk_type || 'PM')
                       return (
                         <Fragment key={`${r.id}-m-${m.key}`}>
                           <td
@@ -1112,7 +1114,7 @@ export function SbfpCenterTable({
                               color: liters ? '#1e40af' : undefined,
                             }}
                             title={packs
-                              ? `Raw Milk used for the month of ${m.label} ${dbYear || ''} (L)\n${packs.toLocaleString()} packs → (${packs.toLocaleString()} ÷ 5) × 0.2 = ${liters.toLocaleString(undefined, { maximumFractionDigits: 4 })} L`
+                              ? `Raw Milk used for the month of ${m.label} ${dbYear || ''} (L)\n${packs.toLocaleString()} packs → (${packs.toLocaleString()} ÷ 5) × ${packL} (${normalizeSbfpMilkType(r.milk_type) || r.milk_type || 'PM'}) = ${liters.toLocaleString(undefined, { maximumFractionDigits: 4 })} L`
                               : `Enter packs in Delivered-as-of columns to compute raw milk used for ${m.label}`}
                           >
                             {liters

@@ -202,7 +202,7 @@ export function buildMasterlistIdentity(
     payload.date_completed = end || null
   }
 
-  const calc = calcMilkFormulations(beneficiaries, feedingDays)
+  const calc = calcMilkFormulations(beneficiaries, feedingDays, milkType || 'PM')
   if (calc) {
     // Encoder-driven volume columns — always refresh from drop-off formula
     payload.milk_packs = calc.milkPacks
