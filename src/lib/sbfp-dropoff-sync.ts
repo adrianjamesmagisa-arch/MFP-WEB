@@ -7,6 +7,7 @@
 
 import { calcMilkFormulations } from '@/lib/mfp-formulas'
 import { toDateInputValue } from '@/lib/sbfp-raw-milk'
+import { inferSbfpMilkType, normalizeSbfpMilkType } from '@/lib/sbfp-pack-price'
 
 export type SbfpDropoffRow = {
   id: string
@@ -77,16 +78,49 @@ type SupabaseLike = {
   from: (table: string) => any
 }
 
-/** Normalize SDO labels from Excel for fuzzy match. */
-export function normalizeSdoName(value: string): string {
+/**
+ * Display / count name for an SDO — strips milk-type tags.
+ * "Nueva Ecija (PM)" and "Nueva Ecija (SM)" → "Nueva Ecija"
+ * "Zambales - PM" → "Zambales"
+ */
+export function baseSdoName(value: string): string {
   return String(value || '')
     .replace(/^\d+\.\s*/g, '')
-    .replace(/\s*\((PM|SM|SMP|CM)[^)]*\)\s*/gi, ' ')
+    .replace(/^sdo\s+/i, '')
+    .replace(/\s*\((PM|SM|SMP|CM|SPM|Sterilized|Pasteurized|Commercial)[^)]*\)\s*/gi, ' ')
+    .replace(/\s*[-–—]\s*(PM|SM|SMP|CM|SPM)\b/gi, ' ')
     .replace(/\s*[-–—]?\s*\d+\s*Feeding\s*Days?/gi, ' ')
-    .replace(/[-–—]+$/g, '')
     .replace(/\s+/g, ' ')
     .trim()
+    .replace(/[-–—]+$/g, '')
+    .trim()
+}
+
+/** Normalize SDO labels from Excel for fuzzy match / unique counting. */
+export function normalizeSdoName(value: string): string {
+  return baseSdoName(value)
     .toLowerCase()
+    // common spelling variants
+    .replace(/\bozamis\b/g, 'ozamiz')
+    .replace(/\bciity\b/g, 'city')
+}
+
+/** Prefer PM over SM/CM when several procurement rows are the same geographic SDO. */
+export function pickPreferredSdoVariant<T extends { sdo?: string | null; milk_type?: string | null }>(
+  variants: T[],
+): T | null {
+  if (!variants.length) return null
+  const rank = (row: T) => {
+    const tag =
+      inferSbfpMilkType(row.sdo) ||
+      normalizeSbfpMilkType(row.milk_type) ||
+      ''
+    if (tag === 'PM') return 0
+    if (tag === 'SM') return 1
+    if (tag === 'CM') return 2
+    return 3
+  }
+  return [...variants].sort((a, b) => rank(a) - rank(b) || String(a.sdo).localeCompare(String(b.sdo)))[0]
 }
 
 export function parseFeedingDaysFromText(...parts: Array<string | null | undefined>): number | null {
@@ -124,7 +158,9 @@ export function buildMasterlistIdentity(
   parent?: SbfpParentSdo | null,
   existing?: MfpMasterRow | null,
 ): Record<string, unknown> {
-  const division = (parent?.sdo || dropoff.sdo || existing?.division || '').trim()
+  const rawDivision = (parent?.sdo || dropoff.sdo || existing?.division || '').trim()
+  // One geographic SDO even when procurement has PM/SM/CM variants
+  const division = baseSdoName(rawDivision) || rawDivision
   const region = (dropoff.region || parent?.region || existing?.region || '').trim()
   const province = (dropoff.province || existing?.province || '').trim()
   const municipality = (
@@ -151,10 +187,11 @@ export function buildMasterlistIdentity(
     municipality,
   }
 
-  const milkType = parent?.milk_type && !String(parent.milk_type).startsWith('__')
-    ? parent.milk_type
-    : null
-  if (isBlank(existing?.milk_type) && milkType) payload.milk_type = milkType
+  // Auto milk type from "(PM)/(SM)/(CM)" on the SDO label, else parent.milk_type
+  const milkFromLabel = inferSbfpMilkType(parent?.sdo, parent?.remarks, dropoff.sdo)
+  const milkFromParent = normalizeSbfpMilkType(parent?.milk_type)
+  const milkType = milkFromLabel || milkFromParent
+  if (milkType) payload.milk_type = milkType
   if (isBlank(existing?.batch) && parent?.batch) payload.batch = parent.batch
 
   // SDO Delivery Start/End → masterlist Date Started / Date Completed (all drop-offs under that SDO)

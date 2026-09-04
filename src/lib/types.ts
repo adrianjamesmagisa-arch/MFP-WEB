@@ -1,5 +1,5 @@
 export type FundedBy = 'DepEd' | 'DSWD' | 'LDS'
-export type MilkType = 'PM' | 'SMP' | 'SM' | 'Karabao'
+export type MilkType = 'PM' | 'SM' | 'CM' | 'SMP' | 'Karabao'
 export type UserRole = 'super_admin' | 'encoder' | 'viewer'
 
 export interface MfpRecord {
@@ -72,7 +72,10 @@ export interface SbfpRecord {
   sdo: string
   procurement_status: ProcurementStatus
   packs_to_deliver: number
+  /** PM | SM | CM (SBFP). */
   milk_type: string
+  /** ₱/pack for CM; ignored for PM (25) and SM (30). */
+  pack_unit_price?: number | null
   delivery_schedule: string
   packs_delivered: number
   /** Packs delivered per calendar month (increment, not running total). Keys "1".."12". */

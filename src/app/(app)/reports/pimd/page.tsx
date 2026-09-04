@@ -524,7 +524,7 @@ export default function PIMDReportPage() {
       packsBySize,
       coopCount: new Set(qtyRows.map(r => r.supplier_id).filter(Boolean)).size,
       districtCount: new Set(qtyRows.map(r => r.municipality).filter(Boolean)).size,
-      divisionCount: new Set(qtyRows.map(r => r.division).filter(Boolean)).size,
+      divisionCount: new Set(qtyRows.map(r => normalizeSdoName(r.division || '')).filter(Boolean)).size,
       provinceCount: new Set(qtyRows.map(r => r.province).filter(Boolean)).size,
       schoolCount: new Set(qtyRows.map(r => r.elementary_school).filter(Boolean)).size,
       accomplishment,

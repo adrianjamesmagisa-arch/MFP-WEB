@@ -10,6 +10,7 @@ import { SbfpDropoffTable, type DropoffRow } from '@/components/SbfpDropoffTable
 import { SbfpCreateSchoolYearButton } from '@/components/SbfpCreateSchoolYearButton'
 import { parseSchoolYear, schoolYearLabel, schoolYearToDbYear } from '@/lib/sbfp-year'
 import { totalPacksDelivered } from '@/lib/sbfp-raw-milk'
+import { normalizeSdoName } from '@/lib/sbfp-dropoff-sync'
 
 export function SbfpCenterWorkspace({
   center,
@@ -48,7 +49,8 @@ export function SbfpCenterWorkspace({
   const year = schoolYearToDbYear(sy)
   const editable = userRole !== 'viewer'
 
-  const total = records.length
+  // Nueva Ecija (PM)+(SM) count as one geographic SDO
+  const total = new Set(records.map(r => normalizeSdoName(r.sdo || '')).filter(Boolean)).size
   const totalPacks = records.reduce((s, r) => s + (r.packs_to_deliver || 0), 0)
   const totalDelivered = records.reduce((s, r) => s + totalPacksDelivered(r), 0)
   const statCounts = records.reduce((acc, r) => {
@@ -133,7 +135,7 @@ export function SbfpCenterWorkspace({
       <section className="flex flex-col gap-2">
         <h2 className="text-base font-semibold">1. SDO Procurement</h2>
         <p className="text-xs text-muted-foreground">
-          Add <strong>Delivered as of</strong> dates (encoder-chosen). Packs / Raw ₱/L / Income columns appear only for months that have a delivered date (e.g. add a September date to show September). Each month shows <strong>raw milk used (L)</strong> from those packs, then Raw ₱/L and Income. Totals join all months for PIMD.
+          Add <strong>Delivered as of</strong> dates (encoder-chosen). Packs / Raw ₱/L / Income columns appear only for months that have a delivered date. Each month shows <strong>raw milk used (L)</strong>, Raw ₱/L, and Income. <strong>Milk type</strong> drives Packs to Deliver from Amount: PM ÷ ₱25, SM ÷ ₱30, CM ÷ encoder Pack ₱.
           {' '}
           <a href="#dropoff-points" className="underline font-medium text-primary">Jump to Drop-off Points ↓</a>
         </p>

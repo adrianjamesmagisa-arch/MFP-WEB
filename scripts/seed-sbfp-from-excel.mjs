@@ -132,11 +132,27 @@ function mapStatus(raw) {
 
 function inferMilkType(sdo, remarks) {
   const blob = `${sdo} ${remarks}`.toUpperCase()
-  if (/\bSMP\b/.test(blob)) return 'SMP'
-  if (/\bCM\b/.test(blob) || /COMMERCIAL/.test(blob)) return 'CM'
-  if (/\bSM\b/.test(blob) || /STERIL/.test(blob)) return 'SM'
-  if (/\bPM\b/.test(blob) || /PASTEUR/.test(blob)) return 'PM'
-  return 'SM'
+  if (/\(CM\)/.test(blob) || /\bCM\b/.test(blob) || /COMMERCIAL/.test(blob)) return 'CM'
+  if (/\(SM\)/.test(blob) || /\bSM\b/.test(blob) || /STERIL/.test(blob)) return 'SM'
+  if (/\(PM\)/.test(blob) || /\bPM\b/.test(blob) || /PASTEUR/.test(blob)) return 'PM'
+  // Default PM (₱25/pack) — matches historical Amount÷25 when Excel packs were blank
+  return 'PM'
+}
+
+function packUnitPriceForType(milkType) {
+  if (milkType === 'PM') return 25
+  if (milkType === 'SM') return 30
+  return null
+}
+
+function packsFromAmount(amount, milkType, customPrice = null) {
+  const amt = Number(amount) || 0
+  if (amt <= 0) return 0
+  const price = milkType === 'CM'
+    ? (Number(customPrice) > 0 ? Number(customPrice) : null)
+    : packUnitPriceForType(milkType)
+  if (!price) return 0
+  return Math.round(amt / price)
 }
 
 function inferRegion(sdo, center, regionMap) {
@@ -261,9 +277,10 @@ function parseCenterSheet(wb, sheetName, center, regionMap) {
     const amount = safeNum(amountRaw)
     const bene = safeNum(row[cols.beneficiaries])
     const fundUnderNda = /NDA/i.test(String(amountRaw ?? '') + remarks)
-    // NHQ and some SDOs leave packs blank in Excel; ₱25/pack matches filled rows.
+    const milkType = inferMilkType(sdo, remarks)
+    // When Excel packs blank: Amount ÷ ₱25 (PM) or ₱30 (SM). CM needs encoder price later.
     if (target === 0 && amount > 0) {
-      target = Math.round(amount / 25)
+      target = packsFromAmount(amount, milkType)
     }
     if (!rawStatus && target === 0 && amount === 0 && bene === 0 && !fundUnderNda) continue
 
@@ -295,7 +312,8 @@ function parseCenterSheet(wb, sheetName, center, regionMap) {
       include_in_report: status !== 'Failed',
       packs_to_deliver: target,
       packs_delivered: latest,
-      milk_type: inferMilkType(sdo, remarks),
+      milk_type: milkType,
+      pack_unit_price: null,
       delivery_schedule: 'FY 2026',
       amount,
       mode_of_procurement: safeStr(row[cols.mode]) || 'Sagip Saka',

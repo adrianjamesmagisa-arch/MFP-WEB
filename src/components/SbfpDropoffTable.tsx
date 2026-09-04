@@ -7,6 +7,9 @@ import type { SbfpDropoffPoint } from '@/lib/types'
 import {
   resolveDropoffFeedingDays,
   parseFeedingDaysFromText,
+  normalizeSdoName,
+  baseSdoName,
+  pickPreferredSdoVariant,
 } from '@/lib/sbfp-dropoff-sync'
 import { calcMilkFormulations } from '@/lib/mfp-formulas'
 
@@ -131,15 +134,40 @@ export function SbfpDropoffTable({
 
   useEffect(() => { setRows(initialRows || []) }, [initialRows])
 
-  const sdoSelectOptions = useMemo(
-    () => [...sdoOptions].sort((a, b) => a.sdo.localeCompare(b.sdo)),
-    [sdoOptions],
-  )
+  const sdoSelectOptions = useMemo(() => {
+    // "Nueva Ecija (PM)" + "Nueva Ecija (SM)" → one option "Nueva Ecija"
+    const byBase = new Map<string, SdoOption[]>()
+    for (const o of sdoOptions) {
+      const key = normalizeSdoName(o.sdo)
+      if (!key) continue
+      if (!byBase.has(key)) byBase.set(key, [])
+      byBase.get(key)!.push(o)
+    }
+    return [...byBase.values()]
+      .map(variants => {
+        const preferred = pickPreferredSdoVariant(variants) || variants[0]
+        return {
+          ...preferred,
+          sdo: baseSdoName(preferred.sdo) || preferred.sdo,
+          variantIds: variants.map(v => v.id),
+        }
+      })
+      .sort((a, b) => a.sdo.localeCompare(b.sdo))
+  }, [sdoOptions])
 
   const visible = useMemo(() => {
     if (filterSdo === 'ALL') return rows
+    const opt = sdoSelectOptions.find(o => o.id === filterSdo || (o as any).variantIds?.includes(filterSdo))
+    if (opt) {
+      const ids = new Set([opt.id, ...((opt as any).variantIds || [])])
+      const base = normalizeSdoName(opt.sdo)
+      return rows.filter(r =>
+        (r.sbfp_data_id && ids.has(r.sbfp_data_id)) ||
+        normalizeSdoName(r.sdo) === base,
+      )
+    }
     return rows.filter(r => r.sdo === filterSdo || r.sbfp_data_id === filterSdo)
-  }, [rows, filterSdo])
+  }, [rows, filterSdo, sdoSelectOptions])
 
   const syncRow = async (row: DropoffRow) => {
     // Service-role API — browser RLS often cannot update mfp_data for encoders
@@ -153,14 +181,17 @@ export function SbfpDropoffTable({
 
     let patch: Partial<DropoffRow> = { [field]: value }
     if (field === 'sbfp_data_id') {
-      const opt = sdoSelectOptions.find(o => o.id === value)
+      const opt = sdoSelectOptions.find(o =>
+        o.id === value || ((o as any).variantIds || []).includes(value),
+      )
       const inferredDays =
         (opt?.feeding_days && opt.feeding_days > 0 ? opt.feeding_days : null) ||
         parseFeedingDaysFromText(opt?.sdo, opt?.remarks) ||
         0
+      // Store geographic SDO only — milk type lives on procurement / masterlist
       patch = {
-        sbfp_data_id: value || null,
-        sdo: opt?.sdo || '',
+        sbfp_data_id: opt?.id || value || null,
+        sdo: opt ? (baseSdoName(opt.sdo) || opt.sdo) : '',
         region: opt?.region || prev.region,
       }
       if (!(Number(prev.feeding_days) > 0) && inferredDays > 0) {
@@ -365,7 +396,12 @@ export function SbfpDropoffTable({
               )}
               {visible.map(r => {
                 const bg = selected.has(r.id) ? '#e0e7ff' : '#fff'
-                const parentOpt = sdoSelectOptions.find(o => o.id === r.sbfp_data_id)
+                const parentOpt = sdoSelectOptions.find(o =>
+                  o.id === r.sbfp_data_id ||
+                  ((o as any).variantIds || []).includes(r.sbfp_data_id) ||
+                  (r.sdo && normalizeSdoName(o.sdo) === normalizeSdoName(r.sdo)),
+                )
+                const selectValue = parentOpt?.id || ''
                 const days = resolveDropoffFeedingDays(r, parentOpt ? {
                   feeding_days: parentOpt.feeding_days,
                   sdo: parentOpt.sdo,
@@ -373,6 +409,7 @@ export function SbfpDropoffTable({
                 } : null)
                 const calc = calcMilkFormulations(Number(r.beneficiaries) || 0, days)
                 const fmt4 = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 4 })
+                const displaySdo = baseSdoName(r.sdo || '') || r.sdo || '—'
                 return (
                   <tr key={r.id} style={{ background: bg }}>
                     <td style={{ textAlign: 'center', ...stickyTd(0, 36, bg) }}>
@@ -391,16 +428,25 @@ export function SbfpDropoffTable({
                     <td style={stickyTd(36, 160, bg, true)}>
                       {editable ? (
                         <select
-                          value={r.sbfp_data_id || ''}
+                          value={selectValue}
                           onChange={e => updateField(r.id, 'sbfp_data_id', e.target.value || null)}
                           style={{ width: '100%', border: 0, background: 'transparent', fontSize: 'inherit' }}
+                          title={
+                            selectValue
+                              ? 'SDO (PM/SM/CM variants count as one)'
+                              : r.sdo
+                                ? `Stored as “${r.sdo}” but not linked — pick an SDO`
+                                : 'Select SDO'
+                          }
                         >
-                          <option value="">—</option>
+                          <option value="">
+                            {selectValue ? '—' : (displaySdo !== '—' ? `${displaySdo} (not linked)` : '—')}
+                          </option>
                           {sdoSelectOptions.map(o => (
                             <option key={o.id} value={o.id}>{o.sdo}</option>
                           ))}
                         </select>
-                      ) : (r.sdo || '—')}
+                      ) : displaySdo}
                     </td>
                     <EditableText
                       value={r.dropoff_name}

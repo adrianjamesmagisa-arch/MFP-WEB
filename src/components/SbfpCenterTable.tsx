@@ -17,6 +17,14 @@ import {
   toDateInputValue,
   monthKeyFromDateValue,
 } from '@/lib/sbfp-raw-milk'
+import {
+  SBFP_MILK_TYPE_VALUES,
+  packsFromAmount,
+  resolvePackUnitPrice,
+  normalizeSbfpMilkType,
+  fixedPackPriceForMilkType,
+  inferSbfpMilkType,
+} from '@/lib/sbfp-pack-price'
 async function apiDropoffMasterlist(body: Record<string, unknown>): Promise<string | null> {
   const res = await fetch('/api/sbfp/sync-dropoff', {
     method: 'POST',
@@ -72,19 +80,21 @@ const STATUSES = [
   'Awarded (For Delivery)', 'Awarded (Ongoing Delivery)', 'Completed', 'Failed',
 ]
 const MODES = ['Sagip Saka', 'Small Value Procurement', 'Negotiated Procurement', 'Direct Contracting', 'Emergency']
+const MILK_TYPES = [...SBFP_MILK_TYPE_VALUES]
 
 // ─────────────────────────────────────────────
 // Editable cell
 // ─────────────────────────────────────────────
 function EditableCell({
   id, field, value, type = 'text', options, align = 'left',
-  format, render, onSave, cellStyle,
+  format, render, onSave, cellStyle, title,
 }: {
   id: string; field: string; value: any; type?: string; options?: string[];
   align?: 'left' | 'right' | 'center';
   format?: (v: any) => any; render?: (v: any) => React.ReactNode;
   onSave: (id: string, f: string, oldV: any, newV: any) => void
   cellStyle?: CSSProperties
+  title?: string
 }) {
   const [editing, setEditing] = useState(false)
   const [val, setVal]         = useState(value)
@@ -95,15 +105,18 @@ function EditableCell({
   useEffect(() => { setVal(value) }, [value])
   useEffect(() => { if (editing) ref.current?.focus() }, [editing])
 
-  const save = async () => {
-    if (val === value) { setEditing(false); return }
+  const save = async (override?: any) => {
+    const nextVal = override !== undefined ? override : val
+    if (nextVal === value) { setEditing(false); return }
     setSaving(true)
-    let v: any = val
-    if (type === 'number') v = val === '' || val == null ? null : Number(val)
-    if (type === 'checkbox') v = val
+    let v: any = nextVal
+    if (type === 'number') v = nextVal === '' || nextVal == null ? null : Number(nextVal)
+    if (type === 'checkbox') v = nextVal
     const { error } = await supabase.from('sbfp_data').update({ [field]: v }).eq('id', id)
-    if (!error) onSave(id, field, value, v)
-    else setVal(value)
+    if (!error) {
+      setVal(nextVal)
+      onSave(id, field, value, v)
+    } else setVal(value)
     setSaving(false)
     setEditing(false)
   }
@@ -131,12 +144,36 @@ function EditableCell({
     )
   }
 
+  // Always-visible select — change applies immediately (milk type, etc.)
+  if (type === 'select' && options && !editing) {
+    return (
+      <td title={title} style={{ padding: 2, opacity: saving ? 0.5 : 1, ...cellStyle }}>
+        <select
+          value={val || ''}
+          disabled={saving}
+          onChange={e => {
+            const next = e.target.value
+            setVal(next)
+            void save(next)
+          }}
+          style={{
+            width: '100%', border: '1px solid transparent', background: 'transparent',
+            fontSize: 'inherit', cursor: 'pointer', boxSizing: 'border-box',
+          }}
+        >
+          <option value="">—</option>
+          {options.map(o => <option key={o} value={o}>{o}</option>)}
+        </select>
+      </td>
+    )
+  }
+
   if (editing) {
     if (type === 'select' && options) {
       return (
         <td style={{ padding: 2, background: '#fff', ...cellStyle }}>
-          <select ref={ref} value={val || ''} onBlur={save} onKeyDown={onKey}
-            onChange={e => setVal(e.target.value)}
+          <select ref={ref} value={val || ''} onBlur={() => save()} onKeyDown={onKey}
+            onChange={e => { const next = e.target.value; setVal(next); void save(next) }}
             style={{ width: '100%', border: '1px solid #3b82f6', outline: 'none', padding: '2px 4px', fontSize: 'inherit', boxSizing: 'border-box' as const }}>
             <option value="">—</option>
             {options.map(o => <option key={o} value={o}>{o}</option>)}
@@ -147,7 +184,7 @@ function EditableCell({
     return (
       <td style={{ padding: 2, background: '#fff', ...cellStyle }}>
         <input ref={ref} type={type} value={val ?? ''} disabled={saving}
-          onChange={e => setVal(e.target.value)} onBlur={save} onKeyDown={onKey}
+          onChange={e => setVal(e.target.value)} onBlur={() => save()} onKeyDown={onKey}
           style={{
             width: '100%', border: '1px solid #3b82f6', outline: 'none',
             padding: '2px 4px', fontSize: 'inherit', boxSizing: 'border-box' as const,
@@ -163,8 +200,11 @@ function EditableCell({
     : render ? render(val) : format ? format(val) : val
 
   return (
-    <td style={{ cursor: 'text', textAlign: align, opacity: saving ? 0.5 : 1, ...cellStyle }}
-      onClick={() => setEditing(true)}>
+    <td
+      title={title}
+      style={{ cursor: 'text', textAlign: align, opacity: saving ? 0.5 : 1, ...cellStyle }}
+      onClick={() => setEditing(true)}
+    >
       {display}
     </td>
   )
@@ -506,7 +546,66 @@ export function SbfpCenterTable({
         setRows(p => p.map(r => r.id === id ? { ...r, packs_delivered: total } : r))
       }
     }
+
+    // Amount / milk type / CM pack ₱ → packs_to_deliver = amount ÷ ₱ per pack
+    if (
+      nextRow &&
+      (field === 'amount' || field === 'milk_type' || field === 'pack_unit_price')
+    ) {
+      const milk = normalizeSbfpMilkType(nextRow.milk_type) || String(nextRow.milk_type || '').toUpperCase()
+      let packPrice: number | null | undefined = nextRow.pack_unit_price
+      if (milk === 'PM' || milk === 'SM') {
+        packPrice = fixedPackPriceForMilkType(milk)
+        if (nextRow.pack_unit_price != null) {
+          const { error: clearErr } = await supabase
+            .from('sbfp_data')
+            .update({ pack_unit_price: null })
+            .eq('id', id)
+          if (!clearErr) {
+            nextRow = { ...nextRow, pack_unit_price: null }
+            setRows(p => p.map(r => r.id === id ? { ...r, pack_unit_price: null } : r))
+          }
+        }
+      }
+      const derived = packsFromAmount(nextRow.amount, milk, packPrice)
+      // CM without Pack ₱ yet → clear packs; otherwise write Amount ÷ price
+      const nextPacks = derived != null ? derived : (milk === 'CM' ? 0 : null)
+      if (nextPacks != null && nextPacks !== (Number(nextRow.packs_to_deliver) || 0)) {
+        const { error: packErr } = await supabase
+          .from('sbfp_data')
+          .update({ packs_to_deliver: nextPacks })
+          .eq('id', id)
+        if (!packErr) {
+          nextRow = { ...nextRow, packs_to_deliver: nextPacks }
+          setRows(p => p.map(r => r.id === id ? { ...r, packs_to_deliver: nextPacks } : r))
+        } else {
+          alert(`Could not update Packs to Deliver: ${packErr.message}`)
+        }
+      } else if (milk === 'CM' && derived == null && !(Number(nextRow.amount) > 0)) {
+        // no-op: need Amount first
+      } else if (milk === 'CM' && derived == null) {
+        // waiting for Pack ₱ — packs already cleared above if needed
+      } else if ((milk === 'PM' || milk === 'SM') && !(Number(nextRow.amount) > 0)) {
+        alert('Enter Amount (₱) first — Packs to Deliver = Amount ÷ Pack ₱')
+      }
+    }
+
     if (nextRow && field === 'sdo' && String(oldV) !== String(newV)) {
+      // Auto-detect milk type from label e.g. "Zambales (SM)" → SM
+      const inferred = inferSbfpMilkType(String(newV || ''))
+      if (inferred && inferred !== normalizeSbfpMilkType(nextRow.milk_type)) {
+        await supabase.from('sbfp_data').update({ milk_type: inferred }).eq('id', id)
+        nextRow = { ...nextRow, milk_type: inferred }
+        setRows(p => p.map(r => r.id === id ? { ...r, milk_type: inferred } : r))
+        // Recalc packs from Amount ÷ milk pack ₱
+        const price = inferred === 'CM' ? nextRow.pack_unit_price : fixedPackPriceForMilkType(inferred)
+        const derived = packsFromAmount(nextRow.amount, inferred, price)
+        if (derived != null && derived !== (Number(nextRow.packs_to_deliver) || 0)) {
+          await supabase.from('sbfp_data').update({ packs_to_deliver: derived }).eq('id', id)
+          nextRow = { ...nextRow, packs_to_deliver: derived }
+          setRows(p => p.map(r => r.id === id ? { ...r, packs_to_deliver: derived } : r))
+        }
+      }
       const err = await apiDropoffMasterlist({
         action: 'cascade-rename',
         sbfpDataId: id,
@@ -531,7 +630,7 @@ export function SbfpCenterTable({
       })
       if (err) alert(err)
     }
-    await maybeRecompute(field)
+    await maybeRecompute(field === 'amount' || field === 'milk_type' || field === 'pack_unit_price' ? 'packs_to_deliver' : field)
   }
 
   const renameSnapDate = async (oldDate: string, newDate: string) => {
@@ -632,6 +731,7 @@ export function SbfpCenterTable({
       packs_to_deliver: 0,
       packs_delivered: 0,
       milk_type: 'PM',
+      pack_unit_price: null,
       delivery_schedule: `FY ${dbYear}`,
       amount: 0,
       mode_of_procurement: 'Sagip Saka',
@@ -748,6 +848,20 @@ export function SbfpCenterTable({
                 <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, ...stickyTh(246, 140, true) }}>B — SDO</th>
                 <th rowSpan={2} style={{ minWidth: 80,  whiteSpace: 'normal', lineHeight: 1.2 }}>C — Region</th>
                 <th rowSpan={2} style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right' }}>D — Amount (₱)</th>
+                <th
+                  rowSpan={2}
+                  style={{ minWidth: 90, whiteSpace: 'normal', lineHeight: 1.2 }}
+                  title="PM → packs = Amount÷25 · SM → Amount÷30 · CM → Amount÷Pack ₱ you type"
+                >
+                  — Milk type
+                </th>
+                <th
+                  rowSpan={2}
+                  style={{ minWidth: 100, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right' }}
+                  title="₱ per pack. Fixed for PM (25) / SM (30). For CM, type the commercial pack cost — Packs to Deliver updates automatically."
+                >
+                  — Pack ₱
+                </th>
                 <th rowSpan={2} style={{ minWidth: 145, whiteSpace: 'normal', lineHeight: 1.2 }}>E — Mode of Procurement</th>
                 <th rowSpan={2} style={{ minWidth: 110, whiteSpace: 'normal', lineHeight: 1.2 }}>F — Date Recd (Proc)</th>
                 <th rowSpan={2} style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2 }}>G — PR Number</th>
@@ -770,7 +884,13 @@ export function SbfpCenterTable({
                 >
                   N — Delivery End
                 </th>
-                <th rowSpan={2} style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right' }}>O — Packs to Deliver</th>
+                <th
+                  rowSpan={2}
+                  style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right' }}
+                  title="Auto: Amount ÷ Pack ₱ (PM=25, SM=30, CM=typed). You can still override."
+                >
+                  O — Packs to Deliver
+                </th>
                 {snapDates.map((d, i) => (
                   <SnapshotDateHeader
                     key={d}
@@ -828,7 +948,7 @@ export function SbfpCenterTable({
             <tbody>
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={17 + snapDates.length + visibleRawMonths.length * 3 + 3 + (editable ? 1 : 0)} style={{ textAlign: 'center', padding: '3rem', color: 'var(--gray-400)' }}>
+                  <td colSpan={19 + snapDates.length + visibleRawMonths.length * 3 + 3 + (editable ? 1 : 0)} style={{ textAlign: 'center', padding: '3rem', color: 'var(--gray-400)' }}>
                     No records for {center}.
                   </td>
                 </tr>
@@ -870,6 +990,46 @@ export function SbfpCenterTable({
                       ? <EditableCell id={r.id} field="amount" value={r.amount} type="number" align="right" format={fmtPeso} onSave={handleSave} />
                       : <td style={{ textAlign: 'right' }}>{fmtPeso(r.amount)}</td>
                     }
+                    {/* Milk type PM / SM / CM */}
+                    {editable
+                      ? <EditableCell
+                          id={r.id}
+                          field="milk_type"
+                          value={normalizeSbfpMilkType(r.milk_type) || r.milk_type || 'PM'}
+                          type="select"
+                          options={MILK_TYPES}
+                          onSave={handleSave}
+                          title="PM ₱25 · SM ₱30 · CM type Pack ₱"
+                        />
+                      : <td>{normalizeSbfpMilkType(r.milk_type) || r.milk_type || 'N/A'}</td>
+                    }
+                    {/* Pack ₱ — fixed for PM/SM, editable for CM */}
+                    {(() => {
+                      const milk = normalizeSbfpMilkType(r.milk_type) || r.milk_type
+                      const shown = resolvePackUnitPrice(r)
+                      if (milk === 'CM' && editable) {
+                        return (
+                          <EditableCell
+                            id={r.id}
+                            field="pack_unit_price"
+                            value={r.pack_unit_price}
+                            type="number"
+                            align="right"
+                            format={v => (v != null && v !== '' ? `₱${Number(v).toLocaleString()}` : '—')}
+                            onSave={handleSave}
+                            title="Type commercial milk ₱ per pack — packs = Amount ÷ this"
+                          />
+                        )
+                      }
+                      return (
+                        <td
+                          style={{ textAlign: 'right', color: shown ? undefined : 'var(--gray-400)' }}
+                          title={milk === 'CM' ? 'Set Pack ₱ for commercial milk' : milk === 'PM' ? 'PM fixed ₱25/pack' : milk === 'SM' ? 'SM fixed ₱30/pack' : 'Select milk type'}
+                        >
+                          {shown ? `₱${shown.toLocaleString()}` : '—'}
+                        </td>
+                      )
+                    })()}
                     {/* E — Mode */}
                     {editable
                       ? <EditableCell id={r.id} field="mode_of_procurement" value={r.mode_of_procurement} type="select" options={MODES} onSave={handleSave} />
