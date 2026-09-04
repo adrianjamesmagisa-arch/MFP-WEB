@@ -1,10 +1,12 @@
 /**
  * Sync SBFP drop-off schools into mfp_data masterlist.
- * Identity fields always refresh from drop-off/SDO; HQ money/delivery fields are preserved.
+ * Identity fields always refresh from drop-off/SDO; HQ money fields are preserved.
  * Milk packs + formulations recompute when beneficiaries + feeding_days are set.
+ * SDO delivery_start / delivery_end push to masterlist date_started / date_completed.
  */
 
 import { calcMilkFormulations } from '@/lib/mfp-formulas'
+import { toDateInputValue } from '@/lib/sbfp-raw-milk'
 
 export type SbfpDropoffRow = {
   id: string
@@ -31,6 +33,8 @@ export type SbfpParentSdo = {
   batch?: string | null
   feeding_days?: number | null
   remarks?: string | null
+  delivery_start?: string | Date | null
+  delivery_end?: string | Date | null
 }
 
 export type MfpMasterRow = {
@@ -152,6 +156,14 @@ export function buildMasterlistIdentity(
     : null
   if (isBlank(existing?.milk_type) && milkType) payload.milk_type = milkType
   if (isBlank(existing?.batch) && parent?.batch) payload.batch = parent.batch
+
+  // SDO Delivery Start/End → masterlist Date Started / Date Completed (all drop-offs under that SDO)
+  if (parent) {
+    const start = toDateInputValue(parent.delivery_start)
+    const end = toDateInputValue(parent.delivery_end)
+    payload.date_started = start || null
+    payload.date_completed = end || null
+  }
 
   const calc = calcMilkFormulations(beneficiaries, feedingDays)
   if (calc) {
@@ -319,7 +331,7 @@ export async function loadParentSdo(
   if (!sbfpDataId) return null
   const { data, error } = await supabase
     .from('sbfp_data')
-    .select('id,sdo,region,milk_type,batch,feeding_days,remarks')
+    .select('id,sdo,region,milk_type,batch,feeding_days,remarks,delivery_start,delivery_end')
     .eq('id', sbfpDataId)
     .maybeSingle()
   if (error || !data) return null

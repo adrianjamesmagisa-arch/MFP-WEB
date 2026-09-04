@@ -8,7 +8,6 @@ import {
   SBFP_RAW_MILK_MONTHS,
   readMonthlyMap,
   packsForMonth,
-  incrementFromSnapshots,
   totalPacksDelivered,
   incomeForMonth,
   sumRowIncome,
@@ -517,7 +516,13 @@ export function SbfpCenterTable({
       if (err) alert(err)
     } else if (
       nextRow &&
-      (field === 'region' || field === 'milk_type' || field === 'batch' || field === 'feeding_days' || field === 'remarks')
+      (field === 'region' ||
+        field === 'milk_type' ||
+        field === 'batch' ||
+        field === 'feeding_days' ||
+        field === 'remarks' ||
+        field === 'delivery_start' ||
+        field === 'delivery_end')
     ) {
       const err = await apiDropoffMasterlist({
         action: 'cascade-fields',
@@ -751,8 +756,20 @@ export function SbfpCenterTable({
                 <th rowSpan={2} style={{ minWidth: 80,  whiteSpace: 'normal', lineHeight: 1.2 }}>J — Batch</th>
                 <th rowSpan={2} style={{ minWidth: 100, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right' }}>K — Beneficiaries</th>
                 <th rowSpan={2} style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right' }}>L — Contract Amt (₱)</th>
-                <th rowSpan={2} style={{ minWidth: 110, whiteSpace: 'normal', lineHeight: 1.2 }}>M — Delivery Start</th>
-                <th rowSpan={2} style={{ minWidth: 110, whiteSpace: 'normal', lineHeight: 1.2 }}>N — Delivery End</th>
+                <th
+                  rowSpan={2}
+                  style={{ minWidth: 110, whiteSpace: 'normal', lineHeight: 1.2 }}
+                  title="Also sets Date Started on all linked drop-off schools in the masterlist"
+                >
+                  M — Delivery Start
+                </th>
+                <th
+                  rowSpan={2}
+                  style={{ minWidth: 110, whiteSpace: 'normal', lineHeight: 1.2 }}
+                  title="Also sets Date Completed on all linked drop-off schools in the masterlist"
+                >
+                  N — Delivery End
+                </th>
                 <th rowSpan={2} style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right' }}>O — Packs to Deliver</th>
                 {snapDates.map((d, i) => (
                   <SnapshotDateHeader
@@ -773,7 +790,7 @@ export function SbfpCenterTable({
                       background: '#1e3a5f', color: '#fff',
                       borderLeft: '2px solid rgba(255,255,255,0.25)',
                     }}
-                    title={`${m.label} packs completed this month × Raw ₱/L for ${m.label}`}
+                    title={`Raw milk used (L) and income for ${m.label} — packs come from Delivered-as-of dates`}
                   >
                     {m.label} {dbYear || ''}
                   </th>
@@ -792,8 +809,11 @@ export function SbfpCenterTable({
               <tr>
                 {visibleRawMonths.map(m => (
                   <Fragment key={`sub-${m.key}`}>
-                    <th style={{ minWidth: 100, whiteSpace: 'normal', lineHeight: 1.15, textAlign: 'right', background: '#1e40af' }}>
-                      Packs
+                    <th
+                      style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.15, textAlign: 'right', background: '#1e40af' }}
+                      title={`Raw Milk used for the month of ${m.label} ${dbYear || ''} (L) = (packs ÷ 5) × 0.2`}
+                    >
+                      Raw milk used (L)
                     </th>
                     <th style={{ minWidth: 90, whiteSpace: 'normal', lineHeight: 1.15, textAlign: 'right', background: '#166534' }}>
                       Raw ₱/L
@@ -917,29 +937,28 @@ export function SbfpCenterTable({
                     ))}
                     {visibleRawMonths.map((m, mi) => {
                       const monthNum = parseInt(m.key, 10)
-                      const packMap = readMonthlyMap(r.monthly_packs_delivered)
                       const priceMap = readMonthlyMap(r.raw_milk_prices)
-                      const derived = incrementFromSnapshots(r.delivery_snapshots, monthNum, dbYear)
                       const packs = packsForMonth(r, monthNum, { year: dbYear })
                       const price = Number(priceMap[m.key]) || 0
                       const income = incomeForMonth(r, monthNum, { year: dbYear })
                       const liters = rawMilkUtilizedLiters(packs)
                       return (
                         <Fragment key={`${r.id}-m-${m.key}`}>
-                          {editable
-                            ? <MonthlyMapCell
-                                id={r.id}
-                                field="monthly_packs_delivered"
-                                monthKey={m.key}
-                                map={packMap}
-                                derived={derived}
-                                background={mi === 0 ? 'rgba(59,130,246,0.08)' : 'rgba(59,130,246,0.04)'}
-                                onSave={handleSave}
-                              />
-                            : <td style={{ textAlign: 'right', background: 'rgba(59,130,246,0.04)' }}>
-                                {packs ? packs.toLocaleString() : '—'}
-                              </td>
-                          }
+                          <td
+                            style={{
+                              textAlign: 'right',
+                              background: mi === 0 ? 'rgba(59,130,246,0.08)' : 'rgba(59,130,246,0.04)',
+                              fontWeight: liters ? 600 : undefined,
+                              color: liters ? '#1e40af' : undefined,
+                            }}
+                            title={packs
+                              ? `Raw Milk used for the month of ${m.label} ${dbYear || ''} (L)\n${packs.toLocaleString()} packs → (${packs.toLocaleString()} ÷ 5) × 0.2 = ${liters.toLocaleString(undefined, { maximumFractionDigits: 4 })} L`
+                              : `Enter packs in Delivered-as-of columns to compute raw milk used for ${m.label}`}
+                          >
+                            {liters
+                              ? liters.toLocaleString(undefined, { maximumFractionDigits: 2 })
+                              : '—'}
+                          </td>
                           {editable
                             ? <MonthlyMapCell
                                 id={r.id}
@@ -956,8 +975,8 @@ export function SbfpCenterTable({
                           <td
                             style={{ textAlign: 'right', background: 'rgba(245,158,11,0.06)', color: income ? '#92400e' : undefined }}
                             title={packs && price
-                              ? `${m.short}: ${packs.toLocaleString()} packs completed this month → ${liters.toLocaleString()} L × ₱${price}`
-                              : `Needs ${m.short} packs completed + Raw ₱/L for ${m.short}`}
+                              ? `${m.short}: ${liters.toLocaleString(undefined, { maximumFractionDigits: 2 })} L × ₱${price}`
+                              : `Needs ${m.short} delivered packs + Raw ₱/L for ${m.short}`}
                           >
                             {income ? `₱${income.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : '—'}
                           </td>
