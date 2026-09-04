@@ -119,8 +119,8 @@ export function SbfpCenterWorkspace({
       <section className="flex flex-col gap-2">
         <h2 className="text-base font-semibold">1. SDO Procurement</h2>
         <p className="text-xs text-muted-foreground">
-          Enter <strong>Packs — Aug…Dec</strong> and <strong>Raw ₱/L</strong> per month.
-          Income auto-calculates as (packs ÷ 5) × 0.2 × price — used by PIMD Gross Income from Raw Milk.
+          Enter <strong>Raw ₱/L</strong> for the month of <strong>Delivery Start</strong>.
+          Income auto-calculates from <strong>packs delivered</strong> × price — used by PIMD Gross Income from Raw Milk.
         </p>
         <SbfpCenterTable
           center={center}

@@ -20,9 +20,11 @@ const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.
 const EXCEL = "C:/pcc folder/PCC/Data processing/SBFP FY 2026_Monitoring.xlsx";
 
 function excelDateToISO(serial) {
-  if (!serial || typeof serial !== "number") return null;
+  // Only accept Excel date serials in a plausible FY range (not pack counts).
+  if (serial == null || typeof serial !== "number" || !Number.isFinite(serial)) return null;
+  if (serial < 45300 || serial > 47500) return null;
   const d = xlsx.SSF.parse_date_code(serial);
-  if (!d) return null;
+  if (!d || d.y < 2024 || d.y > 2030) return null;
   return `${d.y}-${String(d.m).padStart(2,"0")}-${String(d.d).padStart(2,"0")}`;
 }
 
@@ -128,30 +130,65 @@ async function seedCenterData(wb) {
     if(hr===-1){console.log(`SKIP ${name} — no header`);continue;}
 
     const hcols = rows[hr];
+    // Detect columns by header label (Excel has no Batch column on most center sheets)
+    const labels = hcols.map(h => String(h || '').toLowerCase().trim());
+    const findCol = (...parts) => labels.findIndex(h => parts.every(p => h.includes(p)));
+    const colBeni = findCol('beneficiar') >= 0 ? findCol('beneficiar') : 9;
+    const colContract = findCol('contract') >= 0 ? findCol('contract') : 10;
+    const colStart = findCol('start', 'delivery') >= 0 ? findCol('start', 'delivery') : 11;
+    const colEnd = findCol('end', 'delivery') >= 0 ? findCol('end', 'delivery') : 12;
+    const colPacks = findCol('packs to be delivered') >= 0
+      ? findCol('packs to be delivered')
+      : (findCol('packs to be') >= 0 ? findCol('packs to be') : 13);
+    const colBatch = findCol('batch');
+
     const snaps = [];
-    for(let c=14;c<hcols.length;c++){
-      const h = String(hcols[c]||"").toLowerCase();
-      if(h.includes("packs delivered as of")||h.includes("no. of packs delivered")){
-        snaps.push({colIndex:c, label:String(hcols[c]).replace(/total no\. of packs delivered as of/i,"").trim()});
+    for (let c = 0; c < hcols.length; c++) {
+      const h = String(hcols[c] || '').toLowerCase();
+      if (h.includes('packs delivered as of') || h.includes('no. of packs delivered')) {
+        snaps.push({ colIndex: c, label: String(hcols[c]).replace(/total no\. of packs delivered as of/i, '').trim() });
       }
     }
 
-    let count=0;
-    for(let i=hr+1;i<rows.length;i++){
-      const row=rows[i];
-      const raw=String(row[0]||"").trim(), sdo=String(row[1]||"").trim();
-      if(!sdo) continue;
-      if(isJunk(sdo,raw)) continue;
-      const packs=Math.round(Number(row[14]))||0, amt=Math.round(Number(row[2]))||0, beni=Math.round(Number(row[10]))||0;
-      if(packs===0&&amt===0&&beni===0) continue;
+    let count = 0;
+    for (let i = hr + 1; i < rows.length; i++) {
+      const row = rows[i];
+      const raw = String(row[0] || '').trim(), sdo = String(row[1] || '').trim();
+      if (!sdo) continue;
+      if (isJunk(sdo, raw)) continue;
+      const packs = Math.round(Number(row[colPacks])) || 0;
+      const amt = Math.round(Number(row[2])) || 0;
+      const beni = Math.round(Number(row[colBeni])) || 0;
+      if (packs === 0 && amt === 0 && beni === 0) continue;
 
-      const delSnaps = snaps.map(s=>({date:s.label,packs:Math.round(Number(row[s.colIndex]))||0})).filter(s=>s.packs>0);
-      const lastSnap = delSnaps.length>0?delSnaps[delSnaps.length-1].packs:0;
+      const delSnaps = snaps.map(s => ({ date: s.label, packs: Math.round(Number(row[s.colIndex])) || 0 })).filter(s => s.packs > 0);
+      const lastSnap = delSnaps.length > 0 ? delSnaps[delSnaps.length - 1].packs : 0;
       const status = deriveStatus(raw, row);
-      const sdoKey = sdo.toLowerCase().replace(/ -(pm|sm|smp|cm)$/i,"").trim();
-      const region = regionMap[sdoKey]||regionMap[sdo.toLowerCase().trim()]||"";
+      const sdoKey = sdo.toLowerCase().replace(/ -(pm|sm|smp|cm)$/i, '').trim();
+      const region = regionMap[sdoKey] || regionMap[sdo.toLowerCase().trim()] || '';
+      const contractRaw = row[colContract];
+      const contractAmt = typeof contractRaw === 'number' ? Math.round(contractRaw) || 0 : 0;
 
-      all.push({year:2026,center:code,region,sdo,procurement_status:status,include_in_report:true,amount:amt,mode_of_procurement:row[3]?String(row[3]).trim():"Sagip Saka",pr_date_received:excelDateToISO(row[4]),pr_number:row[5]?String(row[5]).trim():null,ors_date:excelDateToISO(row[6]),po_number:row[7]?String(row[7]).trim():null,remarks:row[8]?String(row[8]).trim():null,batch:row[9]?String(row[9]).trim():null,beneficiaries_pm:beni,contract_amount:Math.round(Number(row[11]))||0,delivery_start:excelDateToISO(row[12]),delivery_end:excelDateToISO(row[13]),packs_to_deliver:packs,packs_delivered:lastSnap,delivery_snapshots:delSnaps,milk_type:"Pasteurized",delivery_schedule:""});
+      all.push({
+        year: 2026, center: code, region, sdo, procurement_status: status, include_in_report: true,
+        amount: amt,
+        mode_of_procurement: row[3] ? String(row[3]).trim() : 'Sagip Saka',
+        pr_date_received: excelDateToISO(row[4]),
+        pr_number: row[5] ? String(row[5]).trim() : null,
+        ors_date: excelDateToISO(row[6]),
+        po_number: row[7] ? String(row[7]).trim() : null,
+        remarks: row[8] ? String(row[8]).trim() : null,
+        batch: colBatch >= 0 && row[colBatch] != null ? String(row[colBatch]).trim() : null,
+        beneficiaries_pm: beni,
+        contract_amount: contractAmt,
+        delivery_start: excelDateToISO(row[colStart]),
+        delivery_end: excelDateToISO(row[colEnd]),
+        packs_to_deliver: packs,
+        packs_delivered: lastSnap,
+        delivery_snapshots: delSnaps,
+        milk_type: 'Pasteurized',
+        delivery_schedule: '',
+      });
       count++;
     }
     console.log(`  ${name}: ${count} valid rows`);

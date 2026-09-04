@@ -5,7 +5,8 @@ export const dynamic = "force-dynamic";
 
 const MONTHLY_RAW_MILK_SQL = `ALTER TABLE public.sbfp_data
   ADD COLUMN IF NOT EXISTS monthly_packs_delivered JSONB DEFAULT '{}'::jsonb,
-  ADD COLUMN IF NOT EXISTS raw_milk_prices JSONB DEFAULT '{}'::jsonb;`;
+  ADD COLUMN IF NOT EXISTS raw_milk_prices JSONB DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS raw_milk_month TEXT;`;
 
 export async function GET() {
   const supabase = createClient(
@@ -16,13 +17,14 @@ export async function GET() {
 
   const { error: testErr } = await supabase
     .from("sbfp_data")
-    .select("monthly_packs_delivered,raw_milk_prices")
+    .select("monthly_packs_delivered,raw_milk_prices,raw_milk_month")
     .limit(1);
 
   const colMissing =
     !!testErr?.message &&
     (testErr.message.includes("monthly_packs_delivered") ||
       testErr.message.includes("raw_milk_prices") ||
+      testErr.message.includes("raw_milk_month") ||
       testErr.message.includes("column"));
 
   if (colMissing) {
@@ -36,6 +38,7 @@ export async function GET() {
 
   return NextResponse.json({
     status: "OK",
-    message: "monthly_packs_delivered and raw_milk_prices columns are ready.",
+    message:
+      "monthly_packs_delivered, raw_milk_prices, and raw_milk_month columns are ready.",
   });
 }

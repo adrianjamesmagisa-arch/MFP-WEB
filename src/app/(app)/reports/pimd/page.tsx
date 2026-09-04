@@ -369,7 +369,7 @@ export default function PIMDReportPage() {
     if (includeSbfpForFunder(funder)) {
       let sq = supabase
         .from('sbfp_data')
-        .select('contract_amount,amount,packs_delivered,delivery_start,delivery_end,delivery_snapshots,milk_type,remarks,monthly_packs_delivered,raw_milk_prices')
+        .select('contract_amount,amount,packs_delivered,delivery_start,delivery_end,delivery_snapshots,milk_type,remarks,monthly_packs_delivered,raw_milk_prices,raw_milk_month')
       if (center && center !== ALL_CENTERS_VALUE) {
         const aliases = sbfpCenterAliases(center)
         sq = aliases.length === 1 ? sq.eq('center', aliases[0]) : sq.in('center', aliases)
@@ -395,8 +395,9 @@ export default function PIMDReportPage() {
     }, 0)
 
     // GROSS INCOME FROM THE RAW MILK:
-    //   Raw Milk used (L) = (packs for month / 5) × 0.2
-    //   Income = used × raw_milk_prices[month] (encoder-entered ₱/L)
+    //   Packs basis = packs_delivered (or delivery snapshot)
+    //   Raw Milk used (L) = (packs / 5) × 0.2
+    //   Income = used × raw_milk_prices[Delivery Start month]
     const monthNum = month ? parseInt(month, 10) : null
     const grossIncome = sumGrossIncomeRawMilk(sbfpScoped, monthNum)
 
@@ -475,10 +476,23 @@ export default function PIMDReportPage() {
         ? Math.min(Math.round((totalDelivered / totalTarget) * 1000) / 10, 100)
         : 0
     }
+
+    // Beneficiary / packs / utilization / packaging show the accomplished portion only
+    // (same rate as MILK FEEDING PROGRAM ACCOMPLISHMENT).
+    const rate = Math.max(0, Math.min(accomplishment, 100)) / 100
+    const scaleQty = (n: number) => Math.round((Number(n) || 0) * rate)
+    const scaleMap = (rec: Record<string, number>) =>
+      Object.fromEntries(Object.entries(rec).map(([k, v]) => [k, scaleQty(v)]))
+
     setStats({
       grossIncome, grossRevenue,
       dswdCenters: new Set(rows.filter(r => r.funded_by === 'DSWD').map(r => r.center)).size,
-      totalBene, beneByFunder, totalPacks, packsByFunder, volumeByType, packsBySize,
+      totalBene: scaleQty(totalBene),
+      beneByFunder: scaleMap(beneByFunder),
+      totalPacks: scaleQty(totalPacks),
+      packsByFunder: scaleMap(packsByFunder),
+      volumeByType: scaleMap(volumeByType),
+      packsBySize: scaleMap(packsBySize),
       coopCount:    new Set(rows.map(r => r.supplier_id).filter(Boolean)).size,
       districtCount: new Set(rows.map(r => r.municipality).filter(Boolean)).size,
       divisionCount: new Set(rows.map(r => r.division).filter(Boolean)).size,

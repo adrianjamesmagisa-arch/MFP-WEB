@@ -39,27 +39,27 @@ export function monthKey(month: number): string {
 }
 
 /**
- * Packs for a given calendar month.
- * Prefers monthly_packs_delivered[m]; falls back to packs_delivered when no monthly map entry exists
- * (legacy rows seeded before monthly columns).
+ * Packs basis for raw-milk income.
+ * Uses packs_delivered; falls back to latest delivery_snapshots packs (same as “Delivered as of”).
  */
 export function packsForMonth(
   row: {
     monthly_packs_delivered?: unknown
     packs_delivered?: number | null
+    delivery_snapshots?: Array<{ date?: string; packs?: number | null }> | null
   },
-  month: number,
-  opts?: { allowLegacyFallback?: boolean }
+  _month?: number,
+  _opts?: { allowLegacyFallback?: boolean }
 ): number {
-  const map = readMonthlyMap(row.monthly_packs_delivered)
-  const key = monthKey(month)
-  if (Object.prototype.hasOwnProperty.call(map, key)) {
-    return Number(map[key]) || 0
+  const direct = Number(row.packs_delivered) || 0
+  if (direct > 0) return direct
+  const snaps = Array.isArray(row.delivery_snapshots) ? row.delivery_snapshots : []
+  let best = 0
+  for (const snap of snaps) {
+    const p = Number(snap?.packs) || 0
+    if (p > best) best = p
   }
-  if (opts?.allowLegacyFallback !== false) {
-    return Number(row.packs_delivered) || 0
-  }
-  return 0
+  return best
 }
 
 export function priceForMonth(
@@ -73,40 +73,67 @@ export function priceForMonth(
   return Number.isFinite(n) && n > 0 ? n : null
 }
 
-/** Gross income for one month across rows (null if nothing calculable). */
+/** Calendar month key ("1".."12") from Delivery Start. */
+export function monthKeyFromDeliveryStart(value: unknown): string | null {
+  if (value == null || value === '') return null
+  const d = value instanceof Date ? value : new Date(String(value))
+  if (Number.isNaN(d.getTime())) return null
+  return String(d.getMonth() + 1)
+}
+
+/**
+ * Month for Raw ₱/L / Income = Delivery Start month.
+ * Empty when the row has no start date yet.
+ */
+export function resolveRawMilkMonthKey(row: {
+  delivery_start?: string | Date | null
+  raw_milk_month?: string | number | null
+  raw_milk_prices?: unknown
+}): string {
+  return monthKeyFromDeliveryStart(row.delivery_start) ?? ''
+}
+
+export function monthMeta(key: string) {
+  const listed = SBFP_RAW_MILK_MONTHS.find(m => m.key === key)
+  if (listed) return listed
+  const n = parseInt(key, 10)
+  if (n >= 1 && n <= 12) {
+    const d = new Date(2026, n - 1, 1)
+    return {
+      key,
+      short: d.toLocaleString('en-US', { month: 'short' }),
+      label: d.toLocaleString('en-US', { month: 'long' }),
+    }
+  }
+  return { key: '', short: '—', label: '—' }
+}
+
+/** Gross income across rows (null if nothing calculable). */
 export function sumGrossIncomeRawMilk(
   rows: Array<{
     monthly_packs_delivered?: unknown
     packs_delivered?: number | null
+    delivery_snapshots?: Array<{ date?: string; packs?: number | null }> | null
     raw_milk_prices?: unknown
+    delivery_start?: string | Date | null
+    raw_milk_month?: string | number | null
   }>,
-  month: number | null | undefined,
-  opts?: { allowLegacyFallback?: boolean }
+  _month?: number | null,
+  _opts?: { allowLegacyFallback?: boolean }
 ): number | null {
   let income = 0
   let any = false
 
-  const months =
-    month != null && month >= 1 && month <= 12
-      ? [month]
-      : SBFP_RAW_MILK_MONTHS.map(m => parseInt(m.key, 10))
-
   for (const r of rows) {
-    for (const m of months) {
-      const packs = packsForMonth(r, m, {
-        // Only fall back to total packs_delivered when filtering a single month
-        // and that row has no monthly map at all.
-        allowLegacyFallback:
-          opts?.allowLegacyFallback !== false &&
-          month != null &&
-          Object.keys(readMonthlyMap(r.monthly_packs_delivered)).length === 0,
-      })
-      if (packs <= 0) continue
-      const price = priceForMonth(r, m)
-      if (price == null) continue
-      any = true
-      income += rawMilkIncome(packs, price)
-    }
+    const packs = packsForMonth(r)
+    if (packs <= 0) continue
+
+    const key = resolveRawMilkMonthKey(r)
+    if (!key) continue
+    const price = priceForMonth(r, parseInt(key, 10))
+    if (price == null) continue
+    any = true
+    income += rawMilkIncome(packs, price)
   }
 
   return any ? income : null

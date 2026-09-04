@@ -1,12 +1,14 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, type CSSProperties } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Trash2, Plus } from 'lucide-react'
 import { recomputeCenterSummary } from '@/lib/sbfp-compute'
 import {
-  SBFP_RAW_MILK_MONTHS,
   readMonthlyMap,
+  packsForMonth,
+  resolveRawMilkMonthKey,
+  monthMeta,
   rawMilkUtilizedLiters,
   rawMilkIncome,
 } from '@/lib/sbfp-raw-milk'
@@ -61,12 +63,13 @@ const MODES = ['Sagip Saka', 'Small Value Procurement', 'Negotiated Procurement'
 // ─────────────────────────────────────────────
 function EditableCell({
   id, field, value, type = 'text', options, align = 'left',
-  format, render, onSave
+  format, render, onSave, cellStyle,
 }: {
   id: string; field: string; value: any; type?: string; options?: string[];
   align?: 'left' | 'right' | 'center';
   format?: (v: any) => any; render?: (v: any) => React.ReactNode;
   onSave: (id: string, f: string, oldV: any, newV: any) => void
+  cellStyle?: CSSProperties
 }) {
   const [editing, setEditing] = useState(false)
   const [val, setVal]         = useState(value)
@@ -97,7 +100,7 @@ function EditableCell({
 
   if (type === 'checkbox') {
     return (
-      <td style={{ textAlign: 'center', opacity: saving ? 0.5 : 1 }}>
+      <td style={{ textAlign: 'center', opacity: saving ? 0.5 : 1, ...cellStyle }}>
         <input type="checkbox" checked={!!val}
           onChange={async (e) => {
             const newVal = e.target.checked
@@ -116,7 +119,7 @@ function EditableCell({
   if (editing) {
     if (type === 'select' && options) {
       return (
-        <td style={{ padding: 2, background: '#fff' }}>
+        <td style={{ padding: 2, background: '#fff', ...cellStyle }}>
           <select ref={ref} value={val || ''} onBlur={save} onKeyDown={onKey}
             onChange={e => setVal(e.target.value)}
             style={{ width: '100%', border: '1px solid #3b82f6', outline: 'none', padding: '2px 4px', fontSize: 'inherit', boxSizing: 'border-box' as const }}>
@@ -127,7 +130,7 @@ function EditableCell({
       )
     }
     return (
-      <td style={{ padding: 2, background: '#fff' }}>
+      <td style={{ padding: 2, background: '#fff', ...cellStyle }}>
         <input ref={ref} type={type} value={val ?? ''} disabled={saving}
           onChange={e => setVal(e.target.value)} onBlur={save} onKeyDown={onKey}
           style={{
@@ -145,19 +148,19 @@ function EditableCell({
     : render ? render(val) : format ? format(val) : val
 
   return (
-    <td style={{ cursor: 'text', textAlign: align, opacity: saving ? 0.5 : 1 }}
+    <td style={{ cursor: 'text', textAlign: align, opacity: saving ? 0.5 : 1, ...cellStyle }}
       onClick={() => setEditing(true)}>
       {display}
     </td>
   )
 }
 
-/** Editable one month key inside a JSONB number map (monthly_packs / raw_milk_prices). */
+/** Editable one month key inside raw_milk_prices JSONB map. */
 function MonthlyMapCell({
   id, field, monthKey, map, align = 'right', format, onSave,
 }: {
   id: string
-  field: 'monthly_packs_delivered' | 'raw_milk_prices'
+  field: 'raw_milk_prices'
   monthKey: string
   map: Record<string, number>
   align?: 'left' | 'right' | 'center'
@@ -221,7 +224,7 @@ function MonthlyMapCell({
       title="Click to edit"
       style={{
         textAlign: align, cursor: 'pointer', opacity: saving ? 0.5 : 1,
-        background: field === 'raw_milk_prices' ? 'rgba(16,185,129,0.06)' : 'rgba(59,130,246,0.04)',
+        background: 'rgba(16,185,129,0.06)',
       }}
     >
       {current != null && current !== 0
@@ -353,6 +356,21 @@ export function SbfpCenterTable({
   const fmtPeso = (v: any) => (v != null && v !== 0 && v !== '') ? '₱' + Number(v).toLocaleString() : 'N/A'
   const fmtDate = (v: any) => v ? new Date(v).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A'
 
+  // Sticky left identity columns so SDO stays visible while scrolling monthly packs/price/income.
+  // Keep navy + white text so headers stay readable (globals .data-table th uses color:white).
+  const stickyTh = (left: number, width: number, edge = false): CSSProperties => ({
+    position: 'sticky', left, top: 0, zIndex: 20,
+    width, minWidth: width, maxWidth: width,
+    background: 'var(--navy)', color: '#fff',
+    boxShadow: edge ? '3px 0 6px rgba(15,23,42,0.18)' : undefined,
+  })
+  const stickyTd = (left: number, width: number, bg: string, edge = false): CSSProperties => ({
+    position: 'sticky', left, zIndex: 5,
+    width, minWidth: width, maxWidth: width,
+    background: bg,
+    boxShadow: edge ? '3px 0 6px rgba(15,23,42,0.12)' : undefined,
+  })
+
   return (
     <>
       {allowAdd && editable && center !== 'OVERALL' && dbYear && (
@@ -370,17 +388,17 @@ export function SbfpCenterTable({
       )}
       <div className="card" style={{ overflow: 'hidden' }}>
         <div style={{ overflow: 'auto', maxHeight: 'calc(100vh - 280px)' }}>
-          <table className="data-table" style={{ minWidth: 2200, fontSize: '0.78rem' }}>
+          <table className="data-table sbfp-center-table" style={{ minWidth: 1800, fontSize: '0.78rem', borderCollapse: 'separate', borderSpacing: 0 }}>
             <thead>
               <tr>
-                <th style={{ minWidth: 36, width: 36, textAlign: 'center' }}>
+                <th style={{ textAlign: 'center', ...stickyTh(0, 36) }}>
                   <input type="checkbox"
                     checked={rows.length > 0 && selected.size === rows.length}
                     onChange={toggleAll} style={{ cursor: 'pointer' }} />
                 </th>
-                <th style={{ minWidth: 60, textAlign: 'center' }}>In Report?</th>
-                <th style={{ minWidth: 175, whiteSpace: 'normal', lineHeight: 1.2 }}>A — Status</th>
-                <th style={{ minWidth: 165, whiteSpace: 'normal', lineHeight: 1.2 }}>B — SDO</th>
+                <th style={{ textAlign: 'center', ...stickyTh(36, 60) }}>In Report?</th>
+                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, ...stickyTh(96, 150) }}>A — Status</th>
+                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, ...stickyTh(246, 140, true) }}>B — SDO</th>
                 <th style={{ minWidth: 80,  whiteSpace: 'normal', lineHeight: 1.2 }}>C — Region</th>
                 <th style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right' }}>D — Amount (₱)</th>
                 <th style={{ minWidth: 145, whiteSpace: 'normal', lineHeight: 1.2 }}>E — Mode of Procurement</th>
@@ -399,33 +417,18 @@ export function SbfpCenterTable({
                     {String.fromCharCode(80 + i)} — Delivered as of {d}
                   </th>
                 ))}
-                {SBFP_RAW_MILK_MONTHS.map(m => (
-                  <th
-                    key={`packs-${m.key}`}
-                    style={{ minWidth: 110, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', background: 'rgba(59,130,246,0.08)' }}
-                    title={`Packs delivered for ${m.label}`}
-                  >
-                    Packs — {m.short}
-                  </th>
-                ))}
-                {SBFP_RAW_MILK_MONTHS.map(m => (
-                  <th
-                    key={`price-${m.key}`}
-                    style={{ minWidth: 100, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', background: 'rgba(16,185,129,0.1)' }}
-                    title={`Raw milk price ₱/L for ${m.label} (encoder input)`}
-                  >
-                    Raw ₱/L — {m.short}
-                  </th>
-                ))}
-                {SBFP_RAW_MILK_MONTHS.map(m => (
-                  <th
-                    key={`inc-${m.key}`}
-                    style={{ minWidth: 115, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', background: 'rgba(245,158,11,0.1)' }}
-                    title={`Auto: (packs÷5)×0.2 × price — ${m.label}`}
-                  >
-                    Income — {m.short}
-                  </th>
-                ))}
+                <th
+                  style={{ minWidth: 100, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', background: '#166534', color: '#fff', borderLeft: '2px solid rgba(255,255,255,0.25)' }}
+                  title="Raw milk price ₱/L for the Delivery Start month"
+                >
+                  Raw ₱/L
+                </th>
+                <th
+                  style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', background: '#92400e', color: '#fff' }}
+                  title="Income = packs delivered × Raw ₱/L for the Delivery Start month"
+                >
+                  Income
+                </th>
                 <th style={{ minWidth: 140, whiteSpace: 'normal', lineHeight: 1.2 }}>— Payment Status</th>
                 <th style={{ minWidth: 185, whiteSpace: 'normal', lineHeight: 1.2 }}>— Remarks</th>
                 {editable && <th style={{ minWidth: 70 }}>Actions</th>}
@@ -441,29 +444,30 @@ export function SbfpCenterTable({
               )}
               {rows.map(r => {
                 const isSelected = selected.has(r.id)
+                const rowBg = isSelected ? '#e0e7ff' : !r.include_in_report ? '#fef2f2' : '#fff'
                 return (
-                  <tr key={r.id} style={{ background: isSelected ? '#e0e7ff' : !r.include_in_report ? '#fef2f2' : undefined }}>
-                    <td style={{ textAlign: 'center' }}>
+                  <tr key={r.id} style={{ background: rowBg }}>
+                    <td style={{ textAlign: 'center', ...stickyTd(0, 36, rowBg) }}>
                       <input type="checkbox" checked={isSelected} onChange={() => toggleRow(r.id)} style={{ cursor: 'pointer' }} />
                     </td>
 
                     {/* In Report? toggle */}
                     {editable
-                      ? <EditableCell id={r.id} field="include_in_report" value={r.include_in_report !== false} type="checkbox" onSave={handleSave} />
-                      : <td style={{ textAlign: 'center' }}>{r.include_in_report !== false ? '✓' : '✗'}</td>
+                      ? <EditableCell id={r.id} field="include_in_report" value={r.include_in_report !== false} type="checkbox" onSave={handleSave} cellStyle={stickyTd(36, 60, rowBg)} />
+                      : <td style={{ textAlign: 'center', ...stickyTd(36, 60, rowBg) }}>{r.include_in_report !== false ? '✓' : '✗'}</td>
                     }
 
                     {/* A — Status */}
                     {editable
                       ? <EditableCell id={r.id} field="procurement_status" value={r.procurement_status}
                           type="select" options={STATUSES} onSave={handleSave}
-                          render={v => statusBadge(v)} />
-                      : <td>{statusBadge(r.procurement_status)}</td>
+                          render={v => statusBadge(v)} cellStyle={stickyTd(96, 150, rowBg)} />
+                      : <td style={stickyTd(96, 150, rowBg)}>{statusBadge(r.procurement_status)}</td>
                     }
                     {/* B — SDO */}
                     {editable
-                      ? <EditableCell id={r.id} field="sdo" value={r.sdo} onSave={handleSave} />
-                      : <td>{r.sdo || 'N/A'}</td>
+                      ? <EditableCell id={r.id} field="sdo" value={r.sdo} onSave={handleSave} cellStyle={stickyTd(246, 140, rowBg, true)} />
+                      : <td style={stickyTd(246, 140, rowBg, true)}>{r.sdo || 'N/A'}</td>
                     }
                     {/* C — Region */}
                     {editable
@@ -539,57 +543,45 @@ export function SbfpCenterTable({
                     {Array.from({ length: Math.max(0, snapDates.length - (r.delivery_snapshots?.length || 0)) }).map((_, i) => (
                       <td key={`empty-${i}`} style={{ textAlign: 'right', background: 'rgba(59,130,246,0.04)' }}>N/A</td>
                     ))}
-                    {/* Monthly packs delivered (Aug–Dec) */}
+                    {/* Raw ₱/L + Income (month = Delivery Start) */}
                     {(() => {
-                      const packsMap = readMonthlyMap(r.monthly_packs_delivered)
+                      const monthKey = resolveRawMilkMonthKey(r)
+                      const meta = monthMeta(monthKey)
                       const priceMap = readMonthlyMap(r.raw_milk_prices)
+                      const packs = packsForMonth(r)
+                      const price = monthKey ? Number(priceMap[monthKey]) || 0 : 0
+                      const income = rawMilkIncome(packs, price)
+                      const liters = rawMilkUtilizedLiters(packs)
+                      const noStart = !monthKey
                       return (
                         <>
-                          {SBFP_RAW_MILK_MONTHS.map(m => (
-                            editable
-                              ? <MonthlyMapCell
-                                  key={`p-${r.id}-${m.key}`}
-                                  id={r.id}
-                                  field="monthly_packs_delivered"
-                                  monthKey={m.key}
-                                  map={packsMap}
-                                  format={fmtNum}
-                                  onSave={handleSave}
-                                />
-                              : <td key={`p-${r.id}-${m.key}`} style={{ textAlign: 'right', background: 'rgba(59,130,246,0.04)' }}>
-                                  {packsMap[m.key] ? Number(packsMap[m.key]).toLocaleString() : '—'}
-                                </td>
-                          ))}
-                          {SBFP_RAW_MILK_MONTHS.map(m => (
-                            editable
-                              ? <MonthlyMapCell
-                                  key={`pr-${r.id}-${m.key}`}
-                                  id={r.id}
-                                  field="raw_milk_prices"
-                                  monthKey={m.key}
-                                  map={priceMap}
-                                  format={v => `₱${Number(v).toLocaleString()}`}
-                                  onSave={handleSave}
-                                />
-                              : <td key={`pr-${r.id}-${m.key}`} style={{ textAlign: 'right', background: 'rgba(16,185,129,0.06)' }}>
-                                  {priceMap[m.key] ? `₱${Number(priceMap[m.key]).toLocaleString()}` : '—'}
-                                </td>
-                          ))}
-                          {SBFP_RAW_MILK_MONTHS.map(m => {
-                            const packs = Number(packsMap[m.key]) || 0
-                            const price = Number(priceMap[m.key]) || 0
-                            const income = rawMilkIncome(packs, price)
-                            const liters = rawMilkUtilizedLiters(packs)
-                            return (
-                              <td
-                                key={`inc-${r.id}-${m.key}`}
-                                style={{ textAlign: 'right', background: 'rgba(245,158,11,0.06)', color: income ? '#92400e' : undefined }}
-                                title={packs && price ? `Raw milk ${liters.toLocaleString()} L × ₱${price}` : 'Enter packs + raw milk ₱/L'}
+                          {editable && !noStart
+                            ? <MonthlyMapCell
+                                key={`pr-${r.id}-${monthKey}`}
+                                id={r.id}
+                                field="raw_milk_prices"
+                                monthKey={monthKey}
+                                map={priceMap}
+                                format={v => `₱${Number(v).toLocaleString()}`}
+                                onSave={handleSave}
+                              />
+                            : <td
+                                style={{ textAlign: 'right', background: 'rgba(16,185,129,0.06)', borderLeft: '2px solid rgba(15,23,42,0.08)' }}
+                                title={noStart ? 'Set Delivery Start first' : undefined}
                               >
-                                {income ? `₱${income.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : '—'}
+                                {noStart ? '—' : (priceMap[monthKey] ? `₱${Number(priceMap[monthKey]).toLocaleString()}` : '—')}
                               </td>
-                            )
-                          })}
+                          }
+                          <td
+                            style={{ textAlign: 'right', background: 'rgba(245,158,11,0.06)', color: income ? '#92400e' : undefined }}
+                            title={noStart
+                              ? 'Set Delivery Start first — that month drives Raw ₱/L and Income'
+                              : (packs && price
+                                ? `${meta.short}: packs delivered ${packs.toLocaleString()} → ${liters.toLocaleString()} L × ₱${price}`
+                                : 'Needs packs delivered + Raw ₱/L')}
+                          >
+                            {income ? `₱${income.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : '—'}
+                          </td>
                         </>
                       )
                     })()}

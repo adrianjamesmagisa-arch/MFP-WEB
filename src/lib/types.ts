@@ -57,6 +57,8 @@ export interface SbfpRecord {
   monthly_packs_delivered?: Record<string, number>
   /** Raw milk price ₱/L per calendar month. Keys "1".."12". */
   raw_milk_prices?: Record<string, number>
+  /** Active month key for Raw ₱/L / Income on this SDO. "8".."12". */
+  raw_milk_month?: string | null
   center: string
   created_by: string
   created_at: string
