@@ -16,6 +16,7 @@ import {
   formatDeliveredAsOf,
   parseSnapshotDate,
   toDateInputValue,
+  monthKeyFromDateValue,
 } from '@/lib/sbfp-raw-milk'
 async function apiDropoffMasterlist(body: Record<string, unknown>): Promise<string | null> {
   const res = await fetch('/api/sbfp/sync-dropoff', {
@@ -265,12 +266,13 @@ function MonthlyMapCell({
 }
 
 function SnapshotDateHeader({
-  letter, date, editable, onRename,
+  letter, date, editable, onRename, onDelete,
 }: {
   letter: string
   date: string
   editable: boolean
   onRename: (oldDate: string, newDate: string) => void
+  onDelete: (date: string) => void
 }) {
   const [editing, setEditing] = useState(false)
   const ref = useRef<HTMLInputElement>(null)
@@ -293,31 +295,51 @@ function SnapshotDateHeader({
     <th
       rowSpan={2}
       style={{ minWidth: 150, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', verticalAlign: 'middle' }}
-      title={editable ? 'Click the date to rename this Delivered-as-of column' : undefined}
+      title={editable ? 'Click the date to rename, or trash to delete this Delivered-as-of column' : undefined}
     >
-      {letter} — Delivered as of
-      <div>
-        {editable && editing ? (
-          <input
-            ref={ref}
-            type="date"
-            defaultValue={toDateInputValue(date)}
-            onBlur={e => commit(e.target.value)}
-            onChange={e => { if (e.target.value) commit(e.target.value) }}
-            style={{ width: '100%', marginTop: 4, color: '#0f172a', borderRadius: 4, border: 0, padding: '2px 4px' }}
-          />
-        ) : (
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end', gap: 6 }}>
+        <div style={{ flex: 1, textAlign: 'right' }}>
+          {letter} — Delivered as of
+          <div>
+            {editable && editing ? (
+              <input
+                ref={ref}
+                type="date"
+                defaultValue={toDateInputValue(date)}
+                onBlur={e => commit(e.target.value)}
+                onChange={e => { if (e.target.value) commit(e.target.value) }}
+                style={{ width: '100%', marginTop: 4, color: '#0f172a', borderRadius: 4, border: 0, padding: '2px 4px' }}
+              />
+            ) : (
+              <button
+                type="button"
+                disabled={!editable}
+                onClick={() => editable && setEditing(true)}
+                style={{
+                  background: 'none', border: 0, color: '#fff', fontWeight: 700,
+                  textDecoration: editable ? 'underline' : 'none', cursor: editable ? 'pointer' : 'default',
+                  padding: 0, marginTop: 2,
+                }}
+              >
+                {date}
+              </button>
+            )}
+          </div>
+        </div>
+        {editable && (
           <button
             type="button"
-            disabled={!editable}
-            onClick={() => editable && setEditing(true)}
+            onClick={() => onDelete(date)}
+            title={`Delete “Delivered as of ${date}” column`}
+            aria-label={`Delete Delivered as of ${date} column`}
             style={{
-              background: 'none', border: 0, color: '#fff', fontWeight: 700,
-              textDecoration: editable ? 'underline' : 'none', cursor: editable ? 'pointer' : 'default',
-              padding: 0, marginTop: 2,
+              flexShrink: 0, marginTop: 1, width: 22, height: 22, borderRadius: 4,
+              border: '1px solid rgba(255,255,255,0.35)', background: 'rgba(239,68,68,0.25)',
+              color: '#fecaca', cursor: 'pointer', display: 'inline-flex',
+              alignItems: 'center', justifyContent: 'center', padding: 0,
             }}
           >
-            {date}
+            <Trash2 size={12} />
           </button>
         )}
       </div>
@@ -543,6 +565,39 @@ export function SbfpCenterTable({
     setExtraSnapDates(p => [...p, label])
   }
 
+  const deleteSnapDate = async (date: string) => {
+    if (!editable || !date) return
+    const hasValues = rows.some(r =>
+      (r.delivery_snapshots || []).some((s: any) => s.date === date && Number(s.packs) > 0)
+    )
+    const ok = confirm(
+      hasValues
+        ? `Delete the “Delivered as of ${date}” column and clear its packs for all SDOs?`
+        : `Delete the “Delivered as of ${date}” column?`,
+    )
+    if (!ok) return
+
+    setExtraSnapDates(p => p.filter(d => d !== date))
+
+    await Promise.all(rows.map(async r => {
+      const oldSnaps = [...(r.delivery_snapshots || [])]
+      if (!oldSnaps.some((s: any) => s.date === date)) return
+      const newSnaps = oldSnaps.filter((s: any) => s.date !== date)
+      const nextRow = { ...r, delivery_snapshots: newSnaps }
+      const total = totalPacksDelivered(nextRow)
+      const { error } = await supabase
+        .from('sbfp_data')
+        .update({ delivery_snapshots: newSnaps, packs_delivered: total })
+        .eq('id', r.id)
+      if (!error) {
+        setRows(p => p.map(row =>
+          row.id === r.id ? { ...row, delivery_snapshots: newSnaps, packs_delivered: total } : row
+        ))
+      }
+    }))
+    await maybeRecompute('delivery_snapshots')
+  }
+
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this record? Linked drop-off schools and their masterlist rows will also be removed.')) return
     const { data: children } = await supabase
@@ -608,6 +663,11 @@ export function SbfpCenterTable({
     const db = parseSnapshotDate(b)?.getTime() ?? 0
     return da - db
   })
+
+  // Packs / Raw ₱/L / Income month groups only appear when a Delivered-as-of date exists for that month
+  const visibleRawMonths = SBFP_RAW_MILK_MONTHS.filter(m =>
+    snapDates.some(d => monthKeyFromDateValue(d) === m.key)
+  )
 
   const fmtNum  = (v: any) => (v != null && v !== 0 && v !== '') ? Number(v).toLocaleString() : 'N/A'
   const fmtPeso = (v: any) => (v != null && v !== 0 && v !== '') ? '₱' + Number(v).toLocaleString() : 'N/A'
@@ -701,9 +761,10 @@ export function SbfpCenterTable({
                     date={d}
                     editable={editable}
                     onRename={renameSnapDate}
+                    onDelete={deleteSnapDate}
                   />
                 ))}
-                {SBFP_RAW_MILK_MONTHS.map(m => (
+                {visibleRawMonths.map(m => (
                   <th
                     key={`grp-${m.key}`}
                     colSpan={3}
@@ -729,7 +790,7 @@ export function SbfpCenterTable({
                 {editable && <th rowSpan={2} style={{ minWidth: 70 }}>Actions</th>}
               </tr>
               <tr>
-                {SBFP_RAW_MILK_MONTHS.map(m => (
+                {visibleRawMonths.map(m => (
                   <Fragment key={`sub-${m.key}`}>
                     <th style={{ minWidth: 100, whiteSpace: 'normal', lineHeight: 1.15, textAlign: 'right', background: '#1e40af' }}>
                       Packs
@@ -747,7 +808,7 @@ export function SbfpCenterTable({
             <tbody>
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={17 + snapDates.length + SBFP_RAW_MILK_MONTHS.length * 3 + 3 + (editable ? 1 : 0)} style={{ textAlign: 'center', padding: '3rem', color: 'var(--gray-400)' }}>
+                  <td colSpan={17 + snapDates.length + visibleRawMonths.length * 3 + 3 + (editable ? 1 : 0)} style={{ textAlign: 'center', padding: '3rem', color: 'var(--gray-400)' }}>
                     No records for {center}.
                   </td>
                 </tr>
@@ -854,7 +915,7 @@ export function SbfpCenterTable({
                         onSave={handleSave}
                       />
                     ))}
-                    {SBFP_RAW_MILK_MONTHS.map((m, mi) => {
+                    {visibleRawMonths.map((m, mi) => {
                       const monthNum = parseInt(m.key, 10)
                       const packMap = readMonthlyMap(r.monthly_packs_delivered)
                       const priceMap = readMonthlyMap(r.raw_milk_prices)

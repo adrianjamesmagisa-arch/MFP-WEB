@@ -133,7 +133,7 @@ export function SbfpCenterWorkspace({
       <section className="flex flex-col gap-2">
         <h2 className="text-base font-semibold">1. SDO Procurement</h2>
         <p className="text-xs text-muted-foreground">
-          Add <strong>Delivered as of</strong> dates (encoder-chosen). Enter packs completed each month and that month’s <strong>Raw ₱/L</strong> — prices can change. Income for a month uses only that month’s completed packs. Totals join all months for PIMD.
+          Add <strong>Delivered as of</strong> dates (encoder-chosen). Packs / Raw ₱/L / Income columns appear only for months that have a delivered date (e.g. add a September date to show September). Income for a month uses only that month’s completed packs. Totals join all months for PIMD.
           {' '}
           <a href="#dropoff-points" className="underline font-medium text-primary">Jump to Drop-off Points ↓</a>
         </p>
