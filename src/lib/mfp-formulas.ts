@@ -22,7 +22,14 @@ export const MFP_DEFAULT_FORMULAS = {
   sugar_factor: 0.02,
 } as const
 
-export type MfpFormulaFactors = typeof MFP_DEFAULT_FORMULAS
+/** Mutable factor bag — values are numbers so milk-type overrides type-check. */
+export type MfpFormulaFactors = {
+  total_volume_factor: number
+  raw_milk_factor: number
+  whole_milk_factor: number
+  skim_milk_factor: number
+  sugar_factor: number
+}
 
 export type MilkFormulationResult = {
   milkPacks: number
