@@ -35,10 +35,32 @@ export interface MfpRecord {
   liquidation: string | null
   target_milk_packs_to_deliver: number
   total_milk_packs_delivered: number
+  /** Linked SBFP drop-off school row when masterlist was synced from SBFP. */
+  source_dropoff_id?: string | null
   created_by: string
   created_at: string
   updated_at: string
   cooperatives?: Cooperative
+}
+
+export interface SbfpDropoffPoint {
+  id: string
+  year: number
+  center: string
+  sbfp_data_id: string | null
+  sdo: string
+  dropoff_name: string
+  beneficiaries: number
+  /** Encoder-entered feeding days → milk packs = beneficiaries × days. */
+  feeding_days?: number | null
+  district: string | null
+  municipality: string | null
+  province: string | null
+  region: string | null
+  remarks: string | null
+  include_in_masterlist: boolean
+  created_at: string
+  updated_at: string
 }
 
 export type ProcurementStatus = 'For Preparation' | 'Ongoing (For Award)' | 'Awarded (For Delivery)' | 'Awarded (Ongoing Delivery)' | 'Ongoing' | 'Completed' | 'Not Started'
@@ -53,10 +75,12 @@ export interface SbfpRecord {
   milk_type: string
   delivery_schedule: string
   packs_delivered: number
-  /** Packs delivered per calendar month. Keys "1".."12". */
+  /** Packs delivered per calendar month (increment, not running total). Keys "1".."12". */
   monthly_packs_delivered?: Record<string, number>
   /** Raw milk price ₱/L per calendar month. Keys "1".."12". */
   raw_milk_prices?: Record<string, number>
+  /** Cumulative “Delivered as of” snapshots. Encoder-chosen dates. */
+  delivery_snapshots?: Array<{ date?: string; packs?: number | null }>
   /** Active month key for Raw ₱/L / Income on this SDO. "8".."12". */
   raw_milk_month?: string | null
   center: string

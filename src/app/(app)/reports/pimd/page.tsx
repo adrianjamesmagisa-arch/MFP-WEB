@@ -3,8 +3,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { PCC_CENTERS } from '@/lib/types'
-import { sumGrossIncomeRawMilk } from '@/lib/sbfp-raw-milk'
+import { parseSnapshotDate, sumGrossIncomeRawMilk } from '@/lib/sbfp-raw-milk'
 import { excludeAuxSbfp } from '@/lib/sbfp-aux'
+import { normalizeSdoName } from '@/lib/sbfp-dropoff-sync'
+import { calcMilkFormulations } from '@/lib/mfp-formulas'
 import { APP_YEAR_STRINGS } from '@/lib/app-years'
 import { mfpCenterAliases, sbfpCenterAliases, centerDisplayLabel } from '@/lib/center-aliases'
 import { Download, Filter, Printer, ZoomIn, ZoomOut, Maximize2, AlignCenter } from 'lucide-react'
@@ -290,7 +292,7 @@ export default function PIMDReportPage() {
     // Supabase API max rows per request is typically 1000 — using a larger PAGE_SIZE
     // previously stopped after the first batch (1000 < 10000) and dropped SM/Karabao rows.
     const PAGE_SIZE = 1000
-    const selectCols = 'beneficiaries,milk_packs,milk_cost,total_funds_transferred,funded_by,center,province,division,municipality,elementary_school,milk_type,total_volume_requirements,supplier_id,date_started,date_completed,target_milk_packs_to_deliver,total_milk_packs_delivered,raw_milk_liters,price'
+    const selectCols = 'beneficiaries,milk_packs,milk_cost,total_funds_transferred,funded_by,center,province,division,municipality,elementary_school,milk_type,total_volume_requirements,supplier_id,date_started,date_completed,target_milk_packs_to_deliver,total_milk_packs_delivered,raw_milk_liters,price,feeding_days'
     let allRows: any[] = []
     let offset = 0
     let hasMore = true
@@ -354,6 +356,15 @@ export default function PIMDReportPage() {
     }
     const rowActiveInMonth = (r: any, m: number, y?: number) => {
       if (monthMatches(r.delivery_start, m, y) || monthMatches(r.delivery_end, m, y)) return true
+      const startD = parseSnapshotDate(r.delivery_start)
+      const endD = parseSnapshotDate(r.delivery_end)
+      if (startD && endD) {
+        const year = y ?? startD.getFullYear()
+        const cursor = new Date(year, m - 1, 15).getTime()
+        const spanStart = new Date(startD.getFullYear(), startD.getMonth(), 1).getTime()
+        const spanEnd = new Date(endD.getFullYear(), endD.getMonth() + 1, 0).getTime()
+        if (cursor >= spanStart && cursor <= spanEnd) return true
+      }
       const snaps = Array.isArray(r.delivery_snapshots) ? r.delivery_snapshots : []
       if (snaps.some((snap: any) =>
         (Number(snap?.packs) || 0) > 0 && monthMatches(snap?.date, m, y)
@@ -367,10 +378,11 @@ export default function PIMDReportPage() {
     }
 
     let sbfpScoped: any[] = []
+    let completedSdoKeys = new Set<string>()
     if (includeSbfpForFunder(funder)) {
       let sq = supabase
         .from('sbfp_data')
-        .select('contract_amount,amount,packs_delivered,delivery_start,delivery_end,delivery_snapshots,milk_type,remarks,monthly_packs_delivered,raw_milk_prices,raw_milk_month,include_in_report')
+        .select('sdo,procurement_status,contract_amount,amount,packs_delivered,delivery_start,delivery_end,delivery_snapshots,milk_type,remarks,monthly_packs_delivered,raw_milk_prices,raw_milk_month,include_in_report')
       if (center && center !== ALL_CENTERS_VALUE) {
         const aliases = sbfpCenterAliases(center)
         sq = aliases.length === 1 ? sq.eq('center', aliases[0]) : sq.in('center', aliases)
@@ -384,6 +396,13 @@ export default function PIMDReportPage() {
           const yNum = year ? parseInt(year) : undefined
           sbfpScoped = sbfpScoped.filter(r => rowActiveInMonth(r, m, yNum))
         }
+        for (const r of sbfpScoped) {
+          const st = String(r.procurement_status || '').toUpperCase()
+          if (st === 'COMPLETED' || st === 'DONE') {
+            const key = normalizeSdoName(r.sdo || '')
+            if (key) completedSdoKeys.add(key)
+          }
+        }
       }
     }
 
@@ -396,29 +415,45 @@ export default function PIMDReportPage() {
     }, 0)
 
     // GROSS INCOME FROM THE RAW MILK:
-    //   Packs basis = packs_delivered (or delivery snapshot)
+    //   Each month: only packs completed that month × that month’s Raw ₱/L
     //   Raw Milk used (L) = (packs / 5) × 0.2
-    //   Income = used × raw_milk_prices[Delivery Start month]
+    //   Month filter = that month only; otherwise sum of all months on the row
     const monthNum = month ? parseInt(month, 10) : null
-    const grossIncome = sumGrossIncomeRawMilk(sbfpScoped, monthNum)
+    const yNum = year ? parseInt(year, 10) : undefined
+    const grossIncome = sumGrossIncomeRawMilk(sbfpScoped, monthNum, { year: yNum })
 
-    const totalBene    = rows.reduce((s, r) => s + (r.beneficiaries || 0), 0)
-    const totalPacks   = rows.reduce((s, r) => s + (r.milk_packs || 0), 0)
-    const beneByFunder: Record<string, number>  = {}
+    // Quantity cards/charts: for DepEd/SBFP use FULL values of Completed SDOs only
+    // (those SDOs ARE the accomplishment %). Do not multiply again by the %.
+    const useCompletedOnly = includeSbfpForFunder(funder) && completedSdoKeys.size > 0
+    const qtyRows = useCompletedOnly
+      ? rows.filter(r => completedSdoKeys.has(normalizeSdoName(r.division || '')))
+      : rows
+
+    const rowPacks = (r: any) => {
+      const direct = Number(r.milk_packs) || 0
+      if (direct > 0) return direct
+      const calc = calcMilkFormulations(Number(r.beneficiaries) || 0, Number(r.feeding_days) || 0)
+      return calc?.milkPacks || 0
+    }
+
+    const totalBene = qtyRows.reduce((s, r) => s + (r.beneficiaries || 0), 0)
+    const totalPacks = qtyRows.reduce((s, r) => s + rowPacks(r), 0)
+    const beneByFunder: Record<string, number> = {}
     const packsByFunder: Record<string, number> = {}
-    const volumeByType: Record<string, number>  = {}
-    const packsBySize: Record<string, number>   = {}
-    rows.forEach(r => {
-      // Normalize DB values to display keys: DepEd→DEPED, LDS→LDS, DSWD→DSWD
+    const volumeByType: Record<string, number> = {}
+    const packsBySize: Record<string, number> = {}
+    qtyRows.forEach(r => {
       const rawF = r.funded_by || ''
       const f = rawF === 'DepEd' ? 'DEPED' : rawF === 'LDS' ? 'LDS' : rawF === 'DSWD' ? 'DSWD' : rawF ? rawF.toUpperCase() : 'OTHERS'
-      beneByFunder[f]  = (beneByFunder[f]  || 0) + (r.beneficiaries || 0)
-      packsByFunder[f] = (packsByFunder[f] || 0) + (r.milk_packs || 0)
+      const packs = rowPacks(r)
+      beneByFunder[f] = (beneByFunder[f] || 0) + (r.beneficiaries || 0)
+      packsByFunder[f] = (packsByFunder[f] || 0) + packs
       const t = r.milk_type || 'Unknown'
-      volumeByType[t]  = (volumeByType[t]  || 0) + (r.total_volume_requirements || 0)
+      const vol = Number(r.total_volume_requirements) || (packs > 0 ? packs * 0.18 : 0)
+      volumeByType[t] = (volumeByType[t] || 0) + vol
       let size = 'OTHER'
-      if (r.milk_packs > 0 && r.total_volume_requirements > 0) {
-        const ml = (r.total_volume_requirements / r.milk_packs) * 1000
+      if (packs > 0 && vol > 0) {
+        const ml = (vol / packs) * 1000
         if (Math.abs(ml - 180) < 10) size = '180 ML CAN/POUCH'
         else if (Math.abs(ml - 200) < 10) size = '200 POUCH'
         else if (Math.abs(ml - 500) < 10) size = '500 ML'
@@ -430,7 +465,7 @@ export default function PIMDReportPage() {
         else if (t === 'SM') size = '500 ML'
         else if (t === 'SMP') size = '1 LITER BOTTLE'
       }
-      packsBySize[size] = (packsBySize[size] || 0) + (r.milk_packs || 0)
+      packsBySize[size] = (packsBySize[size] || 0) + packs
     })
     // Accomplishment % comes from SBFP FY 2026 Monitoring (sbfp_monitoring),
     // not from the MFP masterlist AD/AE columns.
@@ -478,27 +513,20 @@ export default function PIMDReportPage() {
         : 0
     }
 
-    // Beneficiary / packs / utilization / packaging show the accomplished portion only
-    // (same rate as MILK FEEDING PROGRAM ACCOMPLISHMENT).
-    const rate = Math.max(0, Math.min(accomplishment, 100)) / 100
-    const scaleQty = (n: number) => Math.round((Number(n) || 0) * rate)
-    const scaleMap = (rec: Record<string, number>) =>
-      Object.fromEntries(Object.entries(rec).map(([k, v]) => [k, scaleQty(v)]))
-
     setStats({
       grossIncome, grossRevenue,
       dswdCenters: new Set(rows.filter(r => r.funded_by === 'DSWD').map(r => r.center)).size,
-      totalBene: scaleQty(totalBene),
-      beneByFunder: scaleMap(beneByFunder),
-      totalPacks: scaleQty(totalPacks),
-      packsByFunder: scaleMap(packsByFunder),
-      volumeByType: scaleMap(volumeByType),
-      packsBySize: scaleMap(packsBySize),
-      coopCount:    new Set(rows.map(r => r.supplier_id).filter(Boolean)).size,
-      districtCount: new Set(rows.map(r => r.municipality).filter(Boolean)).size,
-      divisionCount: new Set(rows.map(r => r.division).filter(Boolean)).size,
-      provinceCount: new Set(rows.map(r => r.province).filter(Boolean)).size,
-      schoolCount:   new Set(rows.map(r => r.elementary_school).filter(Boolean)).size,
+      totalBene,
+      beneByFunder,
+      totalPacks,
+      packsByFunder,
+      volumeByType,
+      packsBySize,
+      coopCount: new Set(qtyRows.map(r => r.supplier_id).filter(Boolean)).size,
+      districtCount: new Set(qtyRows.map(r => r.municipality).filter(Boolean)).size,
+      divisionCount: new Set(qtyRows.map(r => r.division).filter(Boolean)).size,
+      provinceCount: new Set(qtyRows.map(r => r.province).filter(Boolean)).size,
+      schoolCount: new Set(qtyRows.map(r => r.elementary_school).filter(Boolean)).size,
       accomplishment,
     })
     setLoading(false)

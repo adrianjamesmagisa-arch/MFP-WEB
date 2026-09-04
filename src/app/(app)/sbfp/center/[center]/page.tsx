@@ -35,7 +35,7 @@ export default async function SbfpCenterPage({
   const sy = parseSchoolYear(syParam, schoolYears)
   const year = schoolYearToDbYear(sy)
 
-  const [{ data: records }, { data: budget }, { data: capacity }] = await Promise.all([
+  const [{ data: records }, { data: budget }, { data: capacity }, dropoffRes] = await Promise.all([
     supabase
       .from('sbfp_data')
       .select('*')
@@ -54,24 +54,38 @@ export default async function SbfpCenterPage({
       .eq('center', decodedCenter)
       .eq('year', year)
       .maybeSingle(),
+    supabase
+      .from('sbfp_dropoff_points')
+      .select('*')
+      .eq('center', decodedCenter)
+      .eq('year', year)
+      .order('sdo', { ascending: true })
+      .order('dropoff_name', { ascending: true }),
   ])
   const all = records || []
   const sdoRecords = excludeAuxSbfp(all)
   const ppmpItems = all.filter(r => r.milk_type === SBFP_PPMP_TYPE).map(toPpmpRow)
   const hiringRows = all.filter(r => r.milk_type === SBFP_HIRING_TYPE).map(toHiringRow)
+  const dropoffs = dropoffRes.error ? [] : (dropoffRes.data || [])
+  const dropoffSchemaReady = !dropoffRes.error
+  const { error: feedingErr } = await supabase.from('sbfp_dropoff_points').select('feeding_days').limit(1)
+  const feedingDaysReady = !feedingErr
 
   return (
     <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading…</div>}>
       <SbfpCenterWorkspace
         center={decodedCenter}
         title={`${decodedCenter} Procurement`}
-        subtitle={`SBFP ${schoolYearLabel(sy)} — SDO procurement, center budget, and milk capacity`}
+        subtitle={`SBFP ${schoolYearLabel(sy)} — SDO procurement, drop-off schools, center budget, and milk capacity`}
         schoolYears={schoolYears}
         records={sdoRecords}
         budget={budget}
         capacity={capacity}
         ppmpItems={ppmpItems}
         hiringRows={hiringRows}
+        dropoffRows={dropoffs}
+        dropoffSchemaReady={dropoffSchemaReady}
+        feedingDaysReady={feedingDaysReady}
         userRole={profile?.role}
       />
     </Suspense>

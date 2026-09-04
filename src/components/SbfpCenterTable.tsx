@@ -1,17 +1,23 @@
 'use client'
 
-import { useState, useEffect, useRef, type CSSProperties } from 'react'
+import { useState, useEffect, useRef, Fragment, type CSSProperties } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Trash2, Plus } from 'lucide-react'
+import { Trash2, Plus, CalendarPlus } from 'lucide-react'
 import { recomputeCenterSummary } from '@/lib/sbfp-compute'
 import {
+  SBFP_RAW_MILK_MONTHS,
   readMonthlyMap,
   packsForMonth,
-  resolveRawMilkMonthKey,
-  monthMeta,
+  incrementFromSnapshots,
+  totalPacksDelivered,
+  incomeForMonth,
+  sumRowIncome,
   rawMilkUtilizedLiters,
-  rawMilkIncome,
+  formatDeliveredAsOf,
+  parseSnapshotDate,
+  toDateInputValue,
 } from '@/lib/sbfp-raw-milk'
+import { cascadeSdoFieldSync, cascadeSdoRename, unlinkDropoffFromMasterlist } from '@/lib/sbfp-dropoff-sync'
 
 // ─────────────────────────────────────────────
 // Status badge — PDF-exact values
@@ -155,25 +161,30 @@ function EditableCell({
   )
 }
 
-/** Editable one month key inside raw_milk_prices JSONB map. */
+/** Editable one month key inside a JSONB monthly map. */
 function MonthlyMapCell({
-  id, field, monthKey, map, align = 'right', format, onSave,
+  id, field, monthKey, map, align = 'right', format, onSave, derived, background,
 }: {
   id: string
-  field: 'raw_milk_prices'
+  field: 'raw_milk_prices' | 'monthly_packs_delivered'
   monthKey: string
   map: Record<string, number>
   align?: 'left' | 'right' | 'center'
   format?: (v: any) => any
   onSave: (id: string, f: string, oldV: any, newV: any) => void
+  /** Shown when this month is not stored — e.g. increment from snapshots. */
+  derived?: number | null
+  background?: string
 }) {
-  const current = map?.[monthKey]
-  const display = current == null || current === 0 ? '' : current
+  const has = Object.prototype.hasOwnProperty.call(map || {}, monthKey)
+  const current = has ? Number((map || {})[monthKey]) : undefined
+  const display = has && current != null && Number.isFinite(current) ? current : ''
   const [editing, setEditing] = useState(false)
   const [val, setVal] = useState<string | number>(display)
   const [saving, setSaving] = useState(false)
   const ref = useRef<HTMLInputElement>(null)
   const supabase = createClient()
+  const bg = background ?? (field === 'raw_milk_prices' ? 'rgba(16,185,129,0.06)' : 'rgba(59,130,246,0.06)')
 
   useEffect(() => { setVal(display) }, [display])
   useEffect(() => { if (editing) ref.current?.focus() }, [editing])
@@ -185,8 +196,9 @@ function MonthlyMapCell({
     if (nextNum == null || !Number.isFinite(nextNum)) delete newMap[monthKey]
     else newMap[monthKey] = nextNum
     const same =
-      (oldMap[monthKey] == null && newMap[monthKey] == null) ||
-      Number(oldMap[monthKey]) === Number(newMap[monthKey])
+      !Object.prototype.hasOwnProperty.call(oldMap, monthKey) &&
+      !Object.prototype.hasOwnProperty.call(newMap, monthKey)
+      || Number(oldMap[monthKey]) === Number(newMap[monthKey])
     if (same) { setEditing(false); return }
     setSaving(true)
     const { error } = await supabase.from('sbfp_data').update({ [field]: newMap }).eq('id', id)
@@ -218,18 +230,172 @@ function MonthlyMapCell({
     )
   }
 
+  const shown = has && current != null
+    ? (format ? format(current) : Number(current).toLocaleString())
+    : derived != null && derived > 0
+      ? (format ? format(derived) : derived.toLocaleString())
+      : '—'
+  const isDerived = !has && derived != null && derived > 0
+
   return (
     <td
       onClick={() => setEditing(true)}
-      title="Click to edit"
+      title={isDerived
+        ? 'From Delivered-as-of snapshots — click to save as this month’s packs'
+        : 'Click to edit'}
       style={{
         textAlign: align, cursor: 'pointer', opacity: saving ? 0.5 : 1,
-        background: 'rgba(16,185,129,0.06)',
+        background: bg,
+        fontStyle: isDerived ? 'italic' : undefined,
+        color: isDerived ? '#64748b' : undefined,
       }}
     >
-      {current != null && current !== 0
-        ? (format ? format(current) : Number(current).toLocaleString())
-        : '—'}
+      {shown}
+    </td>
+  )
+}
+
+function SnapshotDateHeader({
+  letter, date, editable, onRename,
+}: {
+  letter: string
+  date: string
+  editable: boolean
+  onRename: (oldDate: string, newDate: string) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const ref = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!editing) return
+    ref.current?.focus()
+    ref.current?.showPicker?.()
+  }, [editing])
+
+  const commit = (iso: string) => {
+    const parsed = parseSnapshotDate(iso)
+    if (!parsed) { setEditing(false); return }
+    const next = formatDeliveredAsOf(parsed)
+    if (next !== date) onRename(date, next)
+    setEditing(false)
+  }
+
+  return (
+    <th
+      rowSpan={2}
+      style={{ minWidth: 150, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', verticalAlign: 'middle' }}
+      title={editable ? 'Click the date to rename this Delivered-as-of column' : undefined}
+    >
+      {letter} — Delivered as of
+      <div>
+        {editable && editing ? (
+          <input
+            ref={ref}
+            type="date"
+            defaultValue={toDateInputValue(date)}
+            onBlur={e => commit(e.target.value)}
+            onChange={e => { if (e.target.value) commit(e.target.value) }}
+            style={{ width: '100%', marginTop: 4, color: '#0f172a', borderRadius: 4, border: 0, padding: '2px 4px' }}
+          />
+        ) : (
+          <button
+            type="button"
+            disabled={!editable}
+            onClick={() => editable && setEditing(true)}
+            style={{
+              background: 'none', border: 0, color: '#fff', fontWeight: 700,
+              textDecoration: editable ? 'underline' : 'none', cursor: editable ? 'pointer' : 'default',
+              padding: 0, marginTop: 2,
+            }}
+          >
+            {date}
+          </button>
+        )}
+      </div>
+    </th>
+  )
+}
+
+function SnapshotCell({
+  id, date, snaps, editable, onSave,
+}: {
+  id: string
+  date: string
+  snaps: Array<{ date?: string; packs?: number | null }>
+  editable: boolean
+  onSave: (id: string, field: string, oldV: any, newV: any) => void
+}) {
+  const current = snaps.find(s => s.date === date)
+  const packs = current?.packs
+  const display = packs == null || packs === 0 ? '' : packs
+  const [editing, setEditing] = useState(false)
+  const [val, setVal] = useState<string | number>(display)
+  const [saving, setSaving] = useState(false)
+  const ref = useRef<HTMLInputElement>(null)
+  const supabase = createClient()
+
+  useEffect(() => { setVal(display) }, [display])
+  useEffect(() => { if (editing) ref.current?.focus() }, [editing])
+
+  const save = async () => {
+    const nextNum = val === '' || val == null ? null : Number(val)
+    const oldSnaps = [...(snaps || [])]
+    const newSnaps = oldSnaps.filter(s => s.date !== date)
+    if (nextNum != null && Number.isFinite(nextNum) && nextNum !== 0) {
+      newSnaps.push({ date, packs: nextNum })
+    }
+    const same = JSON.stringify(oldSnaps) === JSON.stringify(newSnaps)
+    if (same) { setEditing(false); return }
+    setSaving(true)
+    const { error } = await supabase.from('sbfp_data').update({ delivery_snapshots: newSnaps }).eq('id', id)
+    if (!error) onSave(id, 'delivery_snapshots', oldSnaps, newSnaps)
+    else setVal(display)
+    setSaving(false)
+    setEditing(false)
+  }
+
+  if (!editable) {
+    return (
+      <td style={{ textAlign: 'right', fontWeight: 600, color: packs ? '#2563eb' : undefined, background: 'rgba(59,130,246,0.04)' }}>
+        {packs ? Number(packs).toLocaleString() : 'N/A'}
+      </td>
+    )
+  }
+
+  if (editing) {
+    return (
+      <td style={{ padding: 2, background: '#fff', textAlign: 'right' }}>
+        <input
+          ref={ref}
+          type="number"
+          value={val}
+          onChange={e => setVal(e.target.value)}
+          onBlur={save}
+          onKeyDown={e => {
+            if (e.key === 'Enter') save()
+            if (e.key === 'Escape') { setVal(display); setEditing(false) }
+          }}
+          style={{
+            width: '100%', border: '1px solid #3b82f6', outline: 'none',
+            padding: '2px 4px', fontSize: 'inherit', textAlign: 'right', boxSizing: 'border-box',
+          }}
+        />
+      </td>
+    )
+  }
+
+  return (
+    <td
+      onClick={() => setEditing(true)}
+      title="Cumulative packs delivered as of this date — click to edit"
+      style={{
+        textAlign: 'right', fontWeight: 600, cursor: 'pointer',
+        color: packs ? '#2563eb' : undefined,
+        background: 'rgba(59,130,246,0.04)',
+        opacity: saving ? 0.5 : 1,
+      }}
+    >
+      {packs ? Number(packs).toLocaleString() : 'N/A'}
     </td>
   )
 }
@@ -252,6 +418,8 @@ export function SbfpCenterTable({
   const [undoStack, setUndoStack] = useState<any[]>([])
   const [redoStack, setRedoStack] = useState<any[]>([])
   const [adding, setAdding]       = useState(false)
+  const [extraSnapDates, setExtraSnapDates] = useState<string[]>([])
+  const addSnapRef                = useRef<HTMLInputElement>(null)
   const editable                  = userRole !== 'viewer'
   const dbYear                    = year ?? (initialRecords[0]?.year as number | undefined)
 
@@ -293,14 +461,78 @@ export function SbfpCenterTable({
   }, [undoStack, redoStack, dbYear, center])
 
   const handleSave = async (id: string, field: string, oldV: any, newV: any) => {
-    setRows(p => p.map(r => r.id === id ? { ...r, [field]: newV } : r))
+    let nextRow: any = null
+    setRows(p => p.map(r => {
+      if (r.id !== id) return r
+      nextRow = { ...r, [field]: newV }
+      return nextRow
+    }))
     setUndoStack(p => [...p, { id, field, oldV, newV }])
     setRedoStack([])
+    if (nextRow && (field === 'monthly_packs_delivered' || field === 'delivery_snapshots')) {
+      const total = totalPacksDelivered(nextRow)
+      if (total !== (Number(nextRow.packs_delivered) || 0)) {
+        await supabase.from('sbfp_data').update({ packs_delivered: total }).eq('id', id)
+        setRows(p => p.map(r => r.id === id ? { ...r, packs_delivered: total } : r))
+      }
+    }
+    if (nextRow && field === 'sdo' && String(oldV) !== String(newV)) {
+      await cascadeSdoRename(supabase, id, String(newV || ''), nextRow)
+    } else if (
+      nextRow &&
+      (field === 'region' || field === 'milk_type' || field === 'batch' || field === 'feeding_days' || field === 'remarks')
+    ) {
+      await cascadeSdoFieldSync(supabase, id, nextRow)
+    }
     await maybeRecompute(field)
   }
 
+  const renameSnapDate = async (oldDate: string, newDate: string) => {
+    if (!newDate || oldDate === newDate) return
+    const taken = rows.some(r =>
+      (r.delivery_snapshots || []).some((s: any) => s.date === newDate)
+    ) || extraSnapDates.includes(newDate)
+    if (taken) {
+      alert(`A “Delivered as of ${newDate}” column already exists.`)
+      return
+    }
+    setExtraSnapDates(p => p.map(d => d === oldDate ? newDate : d))
+    await Promise.all(rows.map(async r => {
+      const snaps = [...(r.delivery_snapshots || [])]
+      const idx = snaps.findIndex((s: any) => s.date === oldDate)
+      if (idx < 0) return
+      snaps[idx] = { ...snaps[idx], date: newDate }
+      const { error } = await supabase.from('sbfp_data').update({ delivery_snapshots: snaps }).eq('id', r.id)
+      if (!error) {
+        setRows(p => p.map(row => row.id === r.id ? { ...row, delivery_snapshots: snaps } : row))
+      }
+    }))
+  }
+
+  const addSnapDate = (iso: string) => {
+    const parsed = parseSnapshotDate(iso)
+    if (!parsed) return
+    const label = formatDeliveredAsOf(parsed)
+    const exists = extraSnapDates.includes(label) || rows.some(r =>
+      (r.delivery_snapshots || []).some((s: any) => s.date === label)
+    )
+    if (exists) {
+      alert(`A “Delivered as of ${label}” column already exists.`)
+      return
+    }
+    setExtraSnapDates(p => [...p, label])
+  }
+
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this record?')) return
+    if (!confirm('Delete this record? Linked drop-off schools and their masterlist rows will also be removed.')) return
+    const { data: children } = await supabase
+      .from('sbfp_dropoff_points')
+      .select('id')
+      .eq('sbfp_data_id', id)
+    for (const child of children || []) {
+      await unlinkDropoffFromMasterlist(supabase, child.id)
+      await supabase.from('sbfp_dropoff_points').delete().eq('id', child.id)
+    }
     await supabase.from('sbfp_data').delete().eq('id', id)
     setRows(p => p.filter(r => r.id !== id))
     await maybeRecompute('packs_to_deliver')
@@ -347,10 +579,14 @@ export function SbfpCenterTable({
     setSelected(s)
   }
 
-  // Snapshot columns
-  const snapDates: string[] = rows.length > 0
-    ? (rows.find(r => (r.delivery_snapshots || []).length > 0)?.delivery_snapshots || []).map((s: any) => s.date)
-    : []
+  const snapDates = Array.from(new Set([
+    ...rows.flatMap(r => (r.delivery_snapshots || []).map((s: any) => s.date).filter(Boolean)),
+    ...extraSnapDates,
+  ])).sort((a, b) => {
+    const da = parseSnapshotDate(a)?.getTime() ?? 0
+    const db = parseSnapshotDate(b)?.getTime() ?? 0
+    return da - db
+  })
 
   const fmtNum  = (v: any) => (v != null && v !== 0 && v !== '') ? Number(v).toLocaleString() : 'N/A'
   const fmtPeso = (v: any) => (v != null && v !== 0 && v !== '') ? '₱' + Number(v).toLocaleString() : 'N/A'
@@ -374,7 +610,32 @@ export function SbfpCenterTable({
   return (
     <>
       {allowAdd && editable && center !== 'OVERALL' && dbYear && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.5rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={() => {
+              const el = addSnapRef.current
+              if (el && typeof el.showPicker === 'function') el.showPicker()
+              else el?.click()
+            }}
+            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md text-sm font-medium border bg-background hover:bg-muted"
+          >
+            <CalendarPlus size={14} />
+            Add delivered-as-of date
+          </button>
+          <input
+            ref={addSnapRef}
+            type="date"
+            onChange={e => {
+              if (e.target.value) {
+                addSnapDate(e.target.value)
+                e.target.value = ''
+              }
+            }}
+            style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
+            tabIndex={-1}
+            aria-hidden
+          />
           <button
             type="button"
             onClick={handleAdd}
@@ -388,56 +649,84 @@ export function SbfpCenterTable({
       )}
       <div className="card" style={{ overflow: 'hidden' }}>
         <div style={{ overflow: 'auto', maxHeight: 'calc(100vh - 280px)' }}>
-          <table className="data-table sbfp-center-table" style={{ minWidth: 1800, fontSize: '0.78rem', borderCollapse: 'separate', borderSpacing: 0 }}>
+          <table className="data-table sbfp-center-table" style={{ minWidth: 3200, fontSize: '0.78rem', borderCollapse: 'separate', borderSpacing: 0 }}>
             <thead>
               <tr>
-                <th style={{ textAlign: 'center', ...stickyTh(0, 36) }}>
+                <th rowSpan={2} style={{ textAlign: 'center', ...stickyTh(0, 36) }}>
                   <input type="checkbox"
                     checked={rows.length > 0 && selected.size === rows.length}
                     onChange={toggleAll} style={{ cursor: 'pointer' }} />
                 </th>
-                <th style={{ textAlign: 'center', ...stickyTh(36, 60) }}>In Report?</th>
-                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, ...stickyTh(96, 150) }}>A — Status</th>
-                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, ...stickyTh(246, 140, true) }}>B — SDO</th>
-                <th style={{ minWidth: 80,  whiteSpace: 'normal', lineHeight: 1.2 }}>C — Region</th>
-                <th style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right' }}>D — Amount (₱)</th>
-                <th style={{ minWidth: 145, whiteSpace: 'normal', lineHeight: 1.2 }}>E — Mode of Procurement</th>
-                <th style={{ minWidth: 110, whiteSpace: 'normal', lineHeight: 1.2 }}>F — Date Recd (Proc)</th>
-                <th style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2 }}>G — PR Number</th>
-                <th style={{ minWidth: 110, whiteSpace: 'normal', lineHeight: 1.2 }}>H — ORS Date</th>
-                <th style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2 }}>I — PO Number</th>
-                <th style={{ minWidth: 80,  whiteSpace: 'normal', lineHeight: 1.2 }}>J — Batch</th>
-                <th style={{ minWidth: 100, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right' }}>K — Beneficiaries</th>
-                <th style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right' }}>L — Contract Amt (₱)</th>
-                <th style={{ minWidth: 110, whiteSpace: 'normal', lineHeight: 1.2 }}>M — Delivery Start</th>
-                <th style={{ minWidth: 110, whiteSpace: 'normal', lineHeight: 1.2 }}>N — Delivery End</th>
-                <th style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right' }}>O — Packs to Deliver</th>
+                <th rowSpan={2} style={{ textAlign: 'center', ...stickyTh(36, 60) }}>In Report?</th>
+                <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, ...stickyTh(96, 150) }}>A — Status</th>
+                <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, ...stickyTh(246, 140, true) }}>B — SDO</th>
+                <th rowSpan={2} style={{ minWidth: 80,  whiteSpace: 'normal', lineHeight: 1.2 }}>C — Region</th>
+                <th rowSpan={2} style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right' }}>D — Amount (₱)</th>
+                <th rowSpan={2} style={{ minWidth: 145, whiteSpace: 'normal', lineHeight: 1.2 }}>E — Mode of Procurement</th>
+                <th rowSpan={2} style={{ minWidth: 110, whiteSpace: 'normal', lineHeight: 1.2 }}>F — Date Recd (Proc)</th>
+                <th rowSpan={2} style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2 }}>G — PR Number</th>
+                <th rowSpan={2} style={{ minWidth: 110, whiteSpace: 'normal', lineHeight: 1.2 }}>H — ORS Date</th>
+                <th rowSpan={2} style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2 }}>I — PO Number</th>
+                <th rowSpan={2} style={{ minWidth: 80,  whiteSpace: 'normal', lineHeight: 1.2 }}>J — Batch</th>
+                <th rowSpan={2} style={{ minWidth: 100, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right' }}>K — Beneficiaries</th>
+                <th rowSpan={2} style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right' }}>L — Contract Amt (₱)</th>
+                <th rowSpan={2} style={{ minWidth: 110, whiteSpace: 'normal', lineHeight: 1.2 }}>M — Delivery Start</th>
+                <th rowSpan={2} style={{ minWidth: 110, whiteSpace: 'normal', lineHeight: 1.2 }}>N — Delivery End</th>
+                <th rowSpan={2} style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right' }}>O — Packs to Deliver</th>
                 {snapDates.map((d, i) => (
-                  <th key={d} style={{ minWidth: 135, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right' }}>
-                    {String.fromCharCode(80 + i)} — Delivered as of {d}
+                  <SnapshotDateHeader
+                    key={d}
+                    letter={String.fromCharCode(80 + i)}
+                    date={d}
+                    editable={editable}
+                    onRename={renameSnapDate}
+                  />
+                ))}
+                {SBFP_RAW_MILK_MONTHS.map(m => (
+                  <th
+                    key={`grp-${m.key}`}
+                    colSpan={3}
+                    style={{
+                      minWidth: 300, whiteSpace: 'nowrap', textAlign: 'center',
+                      background: '#1e3a5f', color: '#fff',
+                      borderLeft: '2px solid rgba(255,255,255,0.25)',
+                    }}
+                    title={`${m.label} packs completed this month × Raw ₱/L for ${m.label}`}
+                  >
+                    {m.label} {dbYear || ''}
                   </th>
                 ))}
                 <th
-                  style={{ minWidth: 100, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', background: '#166534', color: '#fff', borderLeft: '2px solid rgba(255,255,255,0.25)' }}
-                  title="Raw milk price ₱/L for the Delivery Start month"
-                >
-                  Raw ₱/L
-                </th>
-                <th
+                  rowSpan={2}
                   style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', background: '#92400e', color: '#fff' }}
-                  title="Income = packs delivered × Raw ₱/L for the Delivery Start month"
+                  title="Sum of each month’s income — only packs completed that month"
                 >
-                  Income
+                  Total Income
                 </th>
-                <th style={{ minWidth: 140, whiteSpace: 'normal', lineHeight: 1.2 }}>— Payment Status</th>
-                <th style={{ minWidth: 185, whiteSpace: 'normal', lineHeight: 1.2 }}>— Remarks</th>
-                {editable && <th style={{ minWidth: 70 }}>Actions</th>}
+                <th rowSpan={2} style={{ minWidth: 140, whiteSpace: 'normal', lineHeight: 1.2 }}>— Payment Status</th>
+                <th rowSpan={2} style={{ minWidth: 185, whiteSpace: 'normal', lineHeight: 1.2 }}>— Remarks</th>
+                {editable && <th rowSpan={2} style={{ minWidth: 70 }}>Actions</th>}
+              </tr>
+              <tr>
+                {SBFP_RAW_MILK_MONTHS.map(m => (
+                  <Fragment key={`sub-${m.key}`}>
+                    <th style={{ minWidth: 100, whiteSpace: 'normal', lineHeight: 1.15, textAlign: 'right', background: '#1e40af' }}>
+                      Packs
+                    </th>
+                    <th style={{ minWidth: 90, whiteSpace: 'normal', lineHeight: 1.15, textAlign: 'right', background: '#166534' }}>
+                      Raw ₱/L
+                    </th>
+                    <th style={{ minWidth: 110, whiteSpace: 'normal', lineHeight: 1.15, textAlign: 'right', background: '#9a3412' }}>
+                      Income
+                    </th>
+                  </Fragment>
+                ))}
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={40} style={{ textAlign: 'center', padding: '3rem', color: 'var(--gray-400)' }}>
+                  <td colSpan={17 + snapDates.length + SBFP_RAW_MILK_MONTHS.length * 3 + 3 + (editable ? 1 : 0)} style={{ textAlign: 'center', padding: '3rem', color: 'var(--gray-400)' }}>
                     No records for {center}.
                   </td>
                 </tr>
@@ -534,55 +823,74 @@ export function SbfpCenterTable({
                       ? <EditableCell id={r.id} field="packs_to_deliver" value={r.packs_to_deliver} type="number" align="right" format={fmtNum} onSave={handleSave} />
                       : <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmtNum(r.packs_to_deliver)}</td>
                     }
-                    {/* Snapshot columns */}
-                    {(r.delivery_snapshots || []).map((snap: any) => (
-                      <td key={snap.date} style={{ textAlign: 'right', fontWeight: 600, color: '#2563eb', background: 'rgba(59,130,246,0.04)' }}>
-                        {snap.packs ? Number(snap.packs).toLocaleString() : 'N/A'}
-                      </td>
+                    {snapDates.map(d => (
+                      <SnapshotCell
+                        key={`${r.id}-${d}`}
+                        id={r.id}
+                        date={d}
+                        snaps={r.delivery_snapshots || []}
+                        editable={editable}
+                        onSave={handleSave}
+                      />
                     ))}
-                    {Array.from({ length: Math.max(0, snapDates.length - (r.delivery_snapshots?.length || 0)) }).map((_, i) => (
-                      <td key={`empty-${i}`} style={{ textAlign: 'right', background: 'rgba(59,130,246,0.04)' }}>N/A</td>
-                    ))}
-                    {/* Raw ₱/L + Income (month = Delivery Start) */}
-                    {(() => {
-                      const monthKey = resolveRawMilkMonthKey(r)
-                      const meta = monthMeta(monthKey)
+                    {SBFP_RAW_MILK_MONTHS.map((m, mi) => {
+                      const monthNum = parseInt(m.key, 10)
+                      const packMap = readMonthlyMap(r.monthly_packs_delivered)
                       const priceMap = readMonthlyMap(r.raw_milk_prices)
-                      const packs = packsForMonth(r)
-                      const price = monthKey ? Number(priceMap[monthKey]) || 0 : 0
-                      const income = rawMilkIncome(packs, price)
+                      const derived = incrementFromSnapshots(r.delivery_snapshots, monthNum, dbYear)
+                      const packs = packsForMonth(r, monthNum, { year: dbYear })
+                      const price = Number(priceMap[m.key]) || 0
+                      const income = incomeForMonth(r, monthNum, { year: dbYear })
                       const liters = rawMilkUtilizedLiters(packs)
-                      const noStart = !monthKey
                       return (
-                        <>
-                          {editable && !noStart
+                        <Fragment key={`${r.id}-m-${m.key}`}>
+                          {editable
                             ? <MonthlyMapCell
-                                key={`pr-${r.id}-${monthKey}`}
+                                id={r.id}
+                                field="monthly_packs_delivered"
+                                monthKey={m.key}
+                                map={packMap}
+                                derived={derived}
+                                background={mi === 0 ? 'rgba(59,130,246,0.08)' : 'rgba(59,130,246,0.04)'}
+                                onSave={handleSave}
+                              />
+                            : <td style={{ textAlign: 'right', background: 'rgba(59,130,246,0.04)' }}>
+                                {packs ? packs.toLocaleString() : '—'}
+                              </td>
+                          }
+                          {editable
+                            ? <MonthlyMapCell
                                 id={r.id}
                                 field="raw_milk_prices"
-                                monthKey={monthKey}
+                                monthKey={m.key}
                                 map={priceMap}
                                 format={v => `₱${Number(v).toLocaleString()}`}
                                 onSave={handleSave}
                               />
-                            : <td
-                                style={{ textAlign: 'right', background: 'rgba(16,185,129,0.06)', borderLeft: '2px solid rgba(15,23,42,0.08)' }}
-                                title={noStart ? 'Set Delivery Start first' : undefined}
-                              >
-                                {noStart ? '—' : (priceMap[monthKey] ? `₱${Number(priceMap[monthKey]).toLocaleString()}` : '—')}
+                            : <td style={{ textAlign: 'right', background: 'rgba(16,185,129,0.06)' }}>
+                                {price ? `₱${price.toLocaleString()}` : '—'}
                               </td>
                           }
                           <td
                             style={{ textAlign: 'right', background: 'rgba(245,158,11,0.06)', color: income ? '#92400e' : undefined }}
-                            title={noStart
-                              ? 'Set Delivery Start first — that month drives Raw ₱/L and Income'
-                              : (packs && price
-                                ? `${meta.short}: packs delivered ${packs.toLocaleString()} → ${liters.toLocaleString()} L × ₱${price}`
-                                : 'Needs packs delivered + Raw ₱/L')}
+                            title={packs && price
+                              ? `${m.short}: ${packs.toLocaleString()} packs completed this month → ${liters.toLocaleString()} L × ₱${price}`
+                              : `Needs ${m.short} packs completed + Raw ₱/L for ${m.short}`}
                           >
                             {income ? `₱${income.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : '—'}
                           </td>
-                        </>
+                        </Fragment>
+                      )
+                    })}
+                    {(() => {
+                      const totalIncome = sumRowIncome(r, { year: dbYear })
+                      return (
+                        <td
+                          style={{ textAlign: 'right', fontWeight: 700, background: 'rgba(245,158,11,0.1)', color: totalIncome ? '#92400e' : undefined }}
+                          title="Sum of monthly incomes (each month uses only packs completed that month)"
+                        >
+                          {totalIncome ? `₱${totalIncome.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : '—'}
+                        </td>
                       )
                     })()}
                     {/* Payment Status */}
@@ -625,13 +933,23 @@ export function SbfpCenterTable({
             {selected.size} row{selected.size > 1 ? 's' : ''} selected
           </span>
           <button onClick={() => {
-            if (!confirm(`Delete ${selected.size} selected records?`)) return
-            Promise.all(Array.from(selected).map(id => supabase.from('sbfp_data').delete().eq('id', id)))
-              .then(async () => {
-                setRows(p => p.filter(r => !selected.has(r.id)))
-                setSelected(new Set())
-                await maybeRecompute('packs_to_deliver')
-              })
+            if (!confirm(`Delete ${selected.size} selected records? Linked drop-off schools will also be removed.`)) return
+            ;(async () => {
+              for (const id of selected) {
+                const { data: children } = await supabase
+                  .from('sbfp_dropoff_points')
+                  .select('id')
+                  .eq('sbfp_data_id', id)
+                for (const child of children || []) {
+                  await unlinkDropoffFromMasterlist(supabase, child.id)
+                  await supabase.from('sbfp_dropoff_points').delete().eq('id', child.id)
+                }
+                await supabase.from('sbfp_data').delete().eq('id', id)
+              }
+              setRows(p => p.filter(r => !selected.has(r.id)))
+              setSelected(new Set())
+              await maybeRecompute('packs_to_deliver')
+            })()
           }} className="btn btn-gold" style={{ padding: '0.5rem 1rem', borderRadius: 50, background: '#ef4444', border: 'none' }}>
             <Trash2 size={14} /> Delete Selected
           </button>

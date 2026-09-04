@@ -31,7 +31,7 @@ export default async function SbfpNhqPage({
   const sy = parseSchoolYear(syParam, schoolYears)
   const year = schoolYearToDbYear(sy)
 
-  const [{ data: records }, { data: budgetRows }, { data: capacityRows }] = await Promise.all([
+  const [{ data: records }, { data: budgetRows }, { data: capacityRows }, dropoffRes] = await Promise.all([
     supabase
       .from('sbfp_data')
       .select('*')
@@ -48,6 +48,13 @@ export default async function SbfpNhqPage({
       .select('*')
       .in('center', ['NHQ', 'NIZ'])
       .eq('year', year),
+    supabase
+      .from('sbfp_dropoff_points')
+      .select('*')
+      .eq('center', 'NHQ')
+      .eq('year', year)
+      .order('sdo', { ascending: true })
+      .order('dropoff_name', { ascending: true }),
   ])
   const all = records || []
   const sdoRecords = excludeAuxSbfp(all)
@@ -57,19 +64,26 @@ export default async function SbfpNhqPage({
     (rows || []).find(r => r.center === 'NHQ') || (rows || []).find(r => r.center === 'NIZ') || null
   const budget = pickNhq(budgetRows)
   const capacity = pickNhq(capacityRows)
+  const dropoffs = dropoffRes.error ? [] : (dropoffRes.data || [])
+  const dropoffSchemaReady = !dropoffRes.error
+  const { error: feedingErr } = await supabase.from('sbfp_dropoff_points').select('feeding_days').limit(1)
+  const feedingDaysReady = !feedingErr
 
   return (
     <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading…</div>}>
       <SbfpCenterWorkspace
         center="NHQ"
         title="NHQ Procurement Activities"
-        subtitle={`National Headquarters — ${schoolYearLabel(sy)} SDO procurement, budget, and capacity`}
+        subtitle={`National Headquarters — ${schoolYearLabel(sy)} SDO procurement, drop-off schools, budget, and capacity`}
         schoolYears={schoolYears}
         records={sdoRecords}
         budget={budget}
         capacity={capacity}
         ppmpItems={ppmpItems}
         hiringRows={hiringRows}
+        dropoffRows={dropoffs}
+        dropoffSchemaReady={dropoffSchemaReady}
+        feedingDaysReady={feedingDaysReady}
         userRole={profile?.role}
       />
     </Suspense>

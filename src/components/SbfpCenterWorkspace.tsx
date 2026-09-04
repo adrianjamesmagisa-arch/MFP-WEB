@@ -6,8 +6,10 @@ import { SbfpCenterBudgetForm, type BudgetRow } from '@/components/SbfpCenterBud
 import { SbfpCenterCapacityForm, type CapacityRow } from '@/components/SbfpCenterCapacityForm'
 import { SbfpExcelPpmpTable, type PpmpRow } from '@/components/SbfpExcelPpmpTable'
 import { SbfpStaffHiringTable, type HiringRow } from '@/components/SbfpStaffHiringTable'
+import { SbfpDropoffTable, type DropoffRow } from '@/components/SbfpDropoffTable'
 import { SbfpCreateSchoolYearButton } from '@/components/SbfpCreateSchoolYearButton'
 import { parseSchoolYear, schoolYearLabel, schoolYearToDbYear } from '@/lib/sbfp-year'
+import { totalPacksDelivered } from '@/lib/sbfp-raw-milk'
 
 export function SbfpCenterWorkspace({
   center,
@@ -19,6 +21,9 @@ export function SbfpCenterWorkspace({
   capacity,
   ppmpItems = [],
   hiringRows = [],
+  dropoffRows = [],
+  dropoffSchemaReady = true,
+  feedingDaysReady = true,
   userRole,
   showKpis = true,
 }: {
@@ -31,6 +36,9 @@ export function SbfpCenterWorkspace({
   capacity: CapacityRow | null
   ppmpItems?: PpmpRow[]
   hiringRows?: HiringRow[]
+  dropoffRows?: DropoffRow[]
+  dropoffSchemaReady?: boolean
+  feedingDaysReady?: boolean
   userRole?: string | null
   showKpis?: boolean
 }) {
@@ -42,7 +50,7 @@ export function SbfpCenterWorkspace({
 
   const total = records.length
   const totalPacks = records.reduce((s, r) => s + (r.packs_to_deliver || 0), 0)
-  const totalDelivered = records.reduce((s, r) => s + (r.packs_delivered || 0), 0)
+  const totalDelivered = records.reduce((s, r) => s + totalPacksDelivered(r), 0)
   const statCounts = records.reduce((acc, r) => {
     const st = (r.procurement_status || '').toUpperCase()
     if (st === 'FOR PREPARATION') acc.prep++
@@ -125,8 +133,9 @@ export function SbfpCenterWorkspace({
       <section className="flex flex-col gap-2">
         <h2 className="text-base font-semibold">1. SDO Procurement</h2>
         <p className="text-xs text-muted-foreground">
-          Enter <strong>Raw ₱/L</strong> for the month of <strong>Delivery Start</strong>.
-          Income auto-calculates from <strong>packs delivered</strong> × price — used by PIMD Gross Income from Raw Milk.
+          Add <strong>Delivered as of</strong> dates (encoder-chosen). Enter packs completed each month and that month’s <strong>Raw ₱/L</strong> — prices can change. Income for a month uses only that month’s completed packs. Totals join all months for PIMD.
+          {' '}
+          <a href="#dropoff-points" className="underline font-medium text-primary">Jump to Drop-off Points ↓</a>
         </p>
         <SbfpCenterTable
           center={center}
@@ -135,6 +144,49 @@ export function SbfpCenterWorkspace({
           userRole={userRole}
           allowAdd
         />
+      </section>
+
+      <section id="dropoff-points" className="flex flex-col gap-2 scroll-mt-4">
+        <h2 className="text-base font-semibold">1b. Drop-off Points (Schools)</h2>
+        <p className="text-xs text-muted-foreground">
+          Schools / drop-off points under each SDO. Enter <strong>beneficiaries</strong> and <strong>feeding days</strong> —
+          milk packs and formulations auto-calculate and update the DepEd school masterlist.
+        </p>
+        {!dropoffSchemaReady ? (
+          <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            Drop-off table is not in the database yet. Open{' '}
+            <a className="underline font-semibold" href="/api/apply-dropoff-migration" target="_blank" rel="noreferrer">
+              /api/apply-dropoff-migration
+            </a>
+            , copy the SQL into Supabase → SQL Editor, run it, then refresh this page and run{' '}
+            <code className="text-xs">node scripts/seed_sbfp_dropoffs.js</code>.
+          </div>
+        ) : (
+          <>
+            {!feedingDaysReady && (
+              <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                Run this in Supabase SQL Editor to enable Feeding Days / auto milk packs:
+                <pre className="mt-2 text-xs whitespace-pre-wrap bg-white/70 p-2 rounded border">
+{`ALTER TABLE public.sbfp_dropoff_points
+  ADD COLUMN IF NOT EXISTS feeding_days INTEGER NOT NULL DEFAULT 0;`}
+                </pre>
+              </div>
+            )}
+            <SbfpDropoffTable
+              center={center}
+              year={year}
+              sdoOptions={records.map((r: any) => ({
+                id: r.id,
+                sdo: r.sdo,
+                region: r.region,
+                feeding_days: r.feeding_days,
+                remarks: r.remarks,
+              }))}
+              initialRows={dropoffRows}
+              editable={editable && feedingDaysReady}
+            />
+          </>
+        )}
       </section>
 
       <section className="flex flex-col gap-2">
