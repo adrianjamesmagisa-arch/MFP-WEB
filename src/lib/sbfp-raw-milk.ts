@@ -166,6 +166,28 @@ export function totalPacksDelivered(row: SbfpRawMilkRow): number {
   return Math.max(monthlySum, latestSnap, legacy)
 }
 
+/**
+ * Cumulative packs delivered through `month` (inclusive). Not used for PIMD month filter
+ * (that uses packsForMonth for the selected month only).
+ */
+export function packsDeliveredAsOfMonth(
+  row: SbfpRawMilkRow,
+  month?: number | null,
+  opts?: { allowLegacyFallback?: boolean; year?: number }
+): number {
+  if (month == null || !Number.isFinite(month)) return totalPacksDelivered(row)
+  const mEnd = Math.min(12, Math.max(1, Math.floor(month)))
+  let sum = 0
+  for (let m = 1; m <= mEnd; m++) {
+    sum += packsForMonth(row, m, {
+      ...opts,
+      // Legacy single packs_delivered only applies on the delivery-start month
+      allowLegacyFallback: opts?.allowLegacyFallback,
+    })
+  }
+  return sum
+}
+
 export function priceForMonth(
   row: { raw_milk_prices?: unknown },
   month: number
