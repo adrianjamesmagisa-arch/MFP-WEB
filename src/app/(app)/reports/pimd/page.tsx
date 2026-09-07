@@ -378,6 +378,7 @@ export default function PIMDReportPage() {
     }
 
     let sbfpScoped: any[] = []
+    let sbfpAll: any[] = []  // all SDOs, NOT filtered by month — used for accomplishment %
     let completedSdoKeys = new Set<string>()
     if (includeSbfpForFunder(funder)) {
       let sq = supabase
@@ -390,7 +391,8 @@ export default function PIMDReportPage() {
       if (year) sq = sq.eq('year', parseInt(year))
       const { data: sbfpRows } = await sq
       if (sbfpRows && sbfpRows.length > 0) {
-        sbfpScoped = excludeAuxSbfp(sbfpRows)
+        sbfpAll = excludeAuxSbfp(sbfpRows)   // save full list before month filter
+        sbfpScoped = sbfpAll
         if (month) {
           const m = parseInt(month)
           const yNum = year ? parseInt(year) : undefined
@@ -503,10 +505,13 @@ export default function PIMDReportPage() {
         accomplishment = totalTarget > 0
           ? Math.min(Math.round((totalDelivered / totalTarget) * 1000) / 10, 100)
           : 0
-      } else if (sbfpScoped.length > 0) {
-        // Fallback: center not in sbfp_monitoring (e.g. NHQ) — compute from sbfp_data live
+      } else if (sbfpAll.length > 0) {
+        // Fallback: center not in sbfp_monitoring (e.g. NHQ) — compute from sbfp_data live.
+        // IMPORTANT: use sbfpAll (unfiltered by month) for target, exactly like the
+        // sbfp_monitoring primary path which counts ALL SDOs toward the denominator.
+        // Month only affects which delivered snapshot value is picked, not which SDOs count.
         const { totalPacksDelivered: tpd } = await import('@/lib/sbfp-raw-milk')
-        const usable = sbfpScoped.filter(r =>
+        const usable = sbfpAll.filter(r =>
           String(r.procurement_status || '').toUpperCase() !== 'FAILED'
         )
         const totalTarget = usable.reduce((s, r) => s + (Number(r.packs_to_deliver) || 0), 0)
