@@ -46,6 +46,30 @@ type SdoOption = {
   milk_type?: string | null
 }
 
+/** Default drop-off name; unique per SDO (matches DB index on center, year, sdo, dropoff_name). */
+function nextDefaultDropoffName(
+  sdo: string,
+  rows: DropoffRow[],
+  reservedKeys: Set<string>,
+): string {
+  const sdoKey = (sdo || '').trim().toLowerCase()
+  const taken = new Set<string>()
+  for (const r of rows) {
+    if ((r.sdo || '').trim().toLowerCase() !== sdoKey) continue
+    taken.add((r.dropoff_name || '').trim().toLowerCase())
+  }
+  for (const key of reservedKeys) {
+    if (!key.startsWith(`${sdoKey}\u0000`)) continue
+    taken.add(key.slice(sdoKey.length + 1).toLowerCase())
+  }
+  if (!taken.has('new school')) return 'New school'
+  for (let n = 2; n < 10_000; n++) {
+    const name = `New school ${n}`
+    if (!taken.has(name.toLowerCase())) return name
+  }
+  return `New school ${Date.now()}`
+}
+
 function EditableText({
   value, align = 'left', type = 'text', disabled, onCommit, title, cellStyle,
 }: {
@@ -138,6 +162,8 @@ export function SbfpDropoffTable({
   const [adding, setAdding] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  /** Names reserved while insert is in flight (rapid Add clicks). */
+  const reservedDropoffNamesRef = useRef(new Set<string>())
 
   useEffect(() => { setRows(initialRows || []) }, [initialRows])
 
@@ -232,17 +258,25 @@ export function SbfpDropoffTable({
       return
     }
     setAdding(true)
-    const first = sdoSelectOptions[0]
+    const first =
+      filterSdo !== 'ALL'
+        ? sdoSelectOptions.find(o => o.id === filterSdo) || sdoSelectOptions[0]
+        : sdoSelectOptions[0]
     const inferredDays =
       (first.feeding_days && first.feeding_days > 0 ? first.feeding_days : null) ||
       parseFeedingDaysFromText(first.sdo) ||
       0
+    const sdoLabel = first.sdo
+    const sdoKey = (sdoLabel || '').trim().toLowerCase()
+    const dropoff_name = nextDefaultDropoffName(sdoLabel, rows, reservedDropoffNamesRef.current)
+    const reserveKey = `${sdoKey}\u0000${dropoff_name}`
+    reservedDropoffNamesRef.current.add(reserveKey)
     const payload = {
       year,
       center,
       sbfp_data_id: first.id,
-      sdo: first.sdo,
-      dropoff_name: 'New school',
+      sdo: sdoLabel,
+      dropoff_name,
       beneficiaries: 0,
       feeding_days: inferredDays,
       district: '',
@@ -252,6 +286,7 @@ export function SbfpDropoffTable({
       include_in_masterlist: true,
     }
     const { data, error } = await supabase.from('sbfp_dropoff_points').insert(payload).select().maybeSingle()
+    reservedDropoffNamesRef.current.delete(reserveKey)
     setAdding(false)
     if (error) {
       setMsg(error.message)
