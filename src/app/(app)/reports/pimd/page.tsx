@@ -466,8 +466,10 @@ export default function PIMDReportPage() {
 
     // Quantity cards/charts: for DepEd/SBFP use FULL values of Completed SDOs only
     // (those SDOs ARE the accomplishment %). Do not multiply again by the %.
-    // When a month is selected, scale school packs/bene/volume by
-    // (packs delivered that month ÷ SDO packs_to_deliver) so August ≠ Aug+Sep.
+    // When a month is selected:
+    //   • Packs / volume → scale by packs delivered that month ÷ packs_to_deliver
+    //   • Beneficiaries → FULL SDO headcount if that SDO delivered anything that month
+    //     (not prorated — e.g. Muñoz stays 3,791 in Aug and Sep while ongoing)
     const useCompletedOnly = includeSbfpForFunder(funder) && completedSdoKeys.size > 0
     const qtyRows = useCompletedOnly
       ? rows.filter(r => completedSdoKeys.has(normalizeSdoName(r.division || '')))
@@ -483,6 +485,17 @@ export default function PIMDReportPage() {
       return delivered / target
     }
 
+    /** 1 if SDO is in scope for the month (or no month filter); never prorate headcount. */
+    const monthBeneFactor = (division: string | null | undefined) => {
+      if (monthNum == null || !Number.isFinite(monthNum)) return 1
+      const key = normalizeSdoName(division || '')
+      if (!key) return 0
+      if ((sdoMonthPacks.get(key) || 0) > 0) return 1
+      // Masterlist-only month filter (no SBFP monthly packs): already filtered by date_started
+      if (!sdoMonthPacks.size) return 1
+      return 0
+    }
+
     const rowPacks = (r: any) => {
       const direct = Number(r.milk_packs) || 0
       if (direct > 0) return direct
@@ -494,25 +507,26 @@ export default function PIMDReportPage() {
       return calc?.milkPacks || 0
     }
 
-    const totalBene = qtyRows.reduce((s, r) => s + (r.beneficiaries || 0) * monthQtyFactor(r.division), 0)
+    const totalBene = qtyRows.reduce((s, r) => s + (r.beneficiaries || 0) * monthBeneFactor(r.division), 0)
     const totalPacks = qtyRows.reduce((s, r) => s + rowPacks(r) * monthQtyFactor(r.division), 0)
     const beneByFunder: Record<string, number> = {}
     const packsByFunder: Record<string, number> = {}
     const volumeByType: Record<string, number> = {}
     const packsBySize: Record<string, number> = {}
     qtyRows.forEach(r => {
-      const factor = monthQtyFactor(r.division)
-      if (factor <= 0) return
+      const packFactor = monthQtyFactor(r.division)
+      const beneFactor = monthBeneFactor(r.division)
+      if (packFactor <= 0 && beneFactor <= 0) return
       const rawF = r.funded_by || ''
       const f = rawF === 'DepEd' ? 'DEPED' : rawF === 'LDS' ? 'LDS' : rawF === 'DSWD' ? 'DSWD' : rawF ? rawF.toUpperCase() : 'OTHERS'
-      const packs = rowPacks(r) * factor
-      const bene = (r.beneficiaries || 0) * factor
+      const packs = rowPacks(r) * packFactor
+      const bene = (r.beneficiaries || 0) * beneFactor
       beneByFunder[f] = (beneByFunder[f] || 0) + bene
       packsByFunder[f] = (packsByFunder[f] || 0) + packs
       const t = normalizeMilkTypeCode(r.milk_type || 'PM')
       const litersPerPack = litersPerPackForMilkType(t)
       // Prefer stored volume when it matches milk-type factor; else recompute packs × L/pack
-      const storedVol = (Number(r.total_volume_requirements) || 0) * factor
+      const storedVol = (Number(r.total_volume_requirements) || 0) * packFactor
       const expectedVol = packs > 0 ? packs * litersPerPack : 0
       const vol = expectedVol > 0 ? expectedVol : storedVol
       volumeByType[t] = (volumeByType[t] || 0) + vol
