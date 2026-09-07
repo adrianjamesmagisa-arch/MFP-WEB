@@ -50,14 +50,19 @@ export default function Sidebar({ userRole, userCenter, userName }: {
     if (item.href === '/users'   && userRole !== 'super_admin') return false
     if (item.href === '/centers' && userRole !== 'super_admin') return false
     return true
-    if (item.href === '/data' && userRole === 'encoder' && userCenter) {
-      return { ...item, label: `${userCenter} MFP Data` }
-    }
-    if (item.href === '/sbfp' && userRole === 'encoder' && userCenter) {
-      return { ...item, href: `/sbfp/center/${encodeURIComponent(userCenter)}`, label: `${userCenter} SBFP` }
-    }
-    return item
   })
+
+  // Encoders only see the PIMD Report — hide the summary/narrative reports
+  const ENCODER_HIDDEN_REPORTS = [
+    '/reports/sbfp-narrative',
+    '/reports/summary-deped',
+    '/reports/summary-lds',
+    '/reports/summary-dswd',
+    '/reports/packs',
+  ]
+  const visibleReportItems = userRole === 'encoder'
+    ? reportItems.filter(item => !ENCODER_HIDDEN_REPORTS.includes(item.href))
+    : reportItems
 
   return (
     <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`} style={{ height: '100vh', overflowY: 'auto', flexShrink: 0, transition: 'width 0.2s ease' }}>
@@ -121,7 +126,7 @@ export default function Sidebar({ userRole, userCenter, userName }: {
 
             {reportsOpen && (
               <div style={{ paddingLeft: '0.75rem' }}>
-                {reportItems.map(item => {
+                {visibleReportItems.map(item => {
                   const Icon = item.icon
                   const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
                   return (
@@ -143,7 +148,7 @@ export default function Sidebar({ userRole, userCenter, userName }: {
         )}
 
         {/* Collapsed: show report icons */}
-        {isCollapsed && reportItems.map(item => {
+        {isCollapsed && visibleReportItems.map(item => {
           const Icon = item.icon
           const isActive = pathname === item.href
           return (
