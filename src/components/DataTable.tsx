@@ -105,16 +105,17 @@ export function DataTable({ records }: { records: any[] }) {
     // index[i] = { firstInGroup: bool, rowspan: number, target: number, delivered: number }
     const result: { firstInGroup: boolean; rowspan: number; target: number; delivered: number }[] = []
 
-    // Step 1: collect target/delivered per division key (from whichever row has the value)
+    // Step 1: collect target/delivered per division key.
+    // target and delivered are tracked independently so that a row with only target=X and
+    // another row with only delivered=Y both contribute their values correctly.
     const keyData: Record<string, { target: number; delivered: number }> = {}
     localRecords.forEach(r => {
       const key = `${r.year}|${r.center}|${r.division}`
-      if (!keyData[key] && ((r.target_milk_packs_to_deliver || 0) > 0 || (r.total_milk_packs_delivered || 0) > 0)) {
-        keyData[key] = {
-          target: r.target_milk_packs_to_deliver || 0,
-          delivered: r.total_milk_packs_delivered || 0,
-        }
-      }
+      if (!keyData[key]) keyData[key] = { target: 0, delivered: 0 }
+      const t = Number(r.target_milk_packs_to_deliver) || 0
+      const d = Number(r.total_milk_packs_delivered) || 0
+      if (t > keyData[key].target) keyData[key].target = t
+      if (d > keyData[key].delivered) keyData[key].delivered = d
     })
 
     // Step 2: walk the records in order, tracking consecutive groups

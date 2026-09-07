@@ -50,7 +50,8 @@ if (!existsSync(EXCEL_PATH)) {
 }
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
-const CENTER_SHEETS = ['UPLB', 'CSU', 'DMMMSU', 'MMSU', 'CLSU', 'WVSU', 'LCSF', 'USF', 'VSU', 'MLPC', 'CMU', 'USM']
+// NHQ is the SBFP Excel sheet name for the NIZ / NHQGP (NIZ) center — same operational unit.
+const CENTER_SHEETS = ['UPLB', 'CSU', 'DMMMSU', 'MMSU', 'CLSU', 'WVSU', 'LCSF', 'USF', 'VSU', 'MLPC', 'CMU', 'USM', 'NHQ']
 
 function safeNum(v) {
   if (v === null || v === undefined || v === '') return 0

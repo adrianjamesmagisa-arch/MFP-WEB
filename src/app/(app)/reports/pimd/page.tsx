@@ -382,7 +382,7 @@ export default function PIMDReportPage() {
     if (includeSbfpForFunder(funder)) {
       let sq = supabase
         .from('sbfp_data')
-        .select('sdo,procurement_status,contract_amount,amount,packs_delivered,delivery_start,delivery_end,delivery_snapshots,milk_type,remarks,monthly_packs_delivered,raw_milk_prices,raw_milk_month,include_in_report')
+        .select('sdo,procurement_status,contract_amount,amount,packs_to_deliver,packs_delivered,delivery_start,delivery_end,delivery_snapshots,milk_type,remarks,monthly_packs_delivered,raw_milk_prices,raw_milk_month,include_in_report')
       if (center && center !== ALL_CENTERS_VALUE) {
         const aliases = sbfpCenterAliases(center)
         sq = aliases.length === 1 ? sq.eq('center', aliases[0]) : sq.in('center', aliases)
@@ -469,6 +469,8 @@ export default function PIMDReportPage() {
     // DONE rows are stored with latest_delivered = target (100%).
     // FAILED rows are excluded from both sums.
     // SBFP accomplishment only applies for All / DepEd funder filter.
+    // Fallback: if sbfp_monitoring has no rows for this center (e.g. NHQ not seeded),
+    // compute from sbfp_data packs_to_deliver / totalPacksDelivered instead.
     const useSbfpMonitoring = includeSbfpForFunder(funder) && (!year || year === '2026')
     let accomplishment = 0
     if (useSbfpMonitoring) {
@@ -482,6 +484,7 @@ export default function PIMDReportPage() {
       }
       const { data: monRows, error: monErr } = await mq
       if (!monErr && monRows?.length) {
+        // Primary path: use pre-computed monitoring snapshot data
         const usable = monRows.filter(r => String(r.status || '').toUpperCase() !== 'FAILED')
         const totalTarget = usable.reduce((s, r) => s + (r.target_packs || 0), 0)
         const totalDelivered = usable.reduce((s, r) => {
@@ -497,6 +500,17 @@ export default function PIMDReportPage() {
           }
           return s + latest
         }, 0)
+        accomplishment = totalTarget > 0
+          ? Math.min(Math.round((totalDelivered / totalTarget) * 1000) / 10, 100)
+          : 0
+      } else if (sbfpScoped.length > 0) {
+        // Fallback: center not in sbfp_monitoring (e.g. NHQ) — compute from sbfp_data live
+        const { totalPacksDelivered: tpd } = await import('@/lib/sbfp-raw-milk')
+        const usable = sbfpScoped.filter(r =>
+          String(r.procurement_status || '').toUpperCase() !== 'FAILED'
+        )
+        const totalTarget = usable.reduce((s, r) => s + (Number(r.packs_to_deliver) || 0), 0)
+        const totalDelivered = usable.reduce((s, r) => s + tpd(r), 0)
         accomplishment = totalTarget > 0
           ? Math.min(Math.round((totalDelivered / totalTarget) * 1000) / 10, 100)
           : 0
