@@ -9,7 +9,6 @@ import {
   parseFeedingDaysFromText,
   normalizeSdoName,
   baseSdoName,
-  pickPreferredSdoVariant,
 } from '@/lib/sbfp-dropoff-sync'
 import { calcMilkFormulations, litersPerPackForMilkType } from '@/lib/mfp-formulas'
 import { inferSbfpMilkType, normalizeSbfpMilkType } from '@/lib/sbfp-pack-price'
@@ -143,7 +142,7 @@ export function SbfpDropoffTable({
   useEffect(() => { setRows(initialRows || []) }, [initialRows])
 
   const sdoSelectOptions = useMemo(() => {
-    // "Nueva Ecija (PM)" + "Nueva Ecija (SM)" → one option "Nueva Ecija"
+    // Count how many variants each base SDO name has
     const byBase = new Map<string, SdoOption[]>()
     for (const o of sdoOptions) {
       const key = normalizeSdoName(o.sdo)
@@ -151,30 +150,35 @@ export function SbfpDropoffTable({
       if (!byBase.has(key)) byBase.set(key, [])
       byBase.get(key)!.push(o)
     }
-    return [...byBase.values()]
-      .map(variants => {
-        const preferred = pickPreferredSdoVariant(variants) || variants[0]
-        return {
-          ...preferred,
-          sdo: baseSdoName(preferred.sdo) || preferred.sdo,
-          variantIds: variants.map(v => v.id),
-        }
-      })
-      .sort((a, b) => a.sdo.localeCompare(b.sdo))
+
+    const result: (SdoOption & { displayLabel: string; variantIds: string[] })[]=  []
+    for (const variants of byBase.values()) {
+      const isDuplicate = variants.length > 1
+      for (const v of variants) {
+        // For duplicate SDOs (same base, different milk type), keep the (PM)/(SM) suffix
+        // so encoders can tell them apart. For unique SDOs, strip to base name.
+        const label = isDuplicate ? (v.sdo || '') : (baseSdoName(v.sdo) || v.sdo)
+        result.push({
+          ...v,
+          displayLabel: label,
+          variantIds: variants.map(x => x.id),
+        })
+      }
+    }
+    return result.sort((a, b) => a.displayLabel.localeCompare(b.displayLabel))
   }, [sdoOptions])
 
   const visible = useMemo(() => {
     if (filterSdo === 'ALL') return rows
-    const opt = sdoSelectOptions.find(o => o.id === filterSdo || (o as any).variantIds?.includes(filterSdo))
+    const opt = sdoSelectOptions.find(o => o.id === filterSdo)
     if (opt) {
-      const ids = new Set([opt.id, ...((opt as any).variantIds || [])])
-      const base = normalizeSdoName(opt.sdo)
+      const base = normalizeSdoName(baseSdoName(opt.displayLabel) || opt.displayLabel)
       return rows.filter(r =>
-        (r.sbfp_data_id && ids.has(r.sbfp_data_id)) ||
+        r.sbfp_data_id === opt.id ||
         normalizeSdoName(r.sdo) === base,
       )
     }
-    return rows.filter(r => r.sdo === filterSdo || r.sbfp_data_id === filterSdo)
+    return rows.filter(r => r.sbfp_data_id === filterSdo)
   }, [rows, filterSdo, sdoSelectOptions])
 
   const syncRow = async (row: DropoffRow) => {
@@ -308,7 +312,7 @@ export function SbfpDropoffTable({
           >
             <option value="ALL">All SDOs ({rows.length})</option>
             {sdoSelectOptions.map(o => (
-              <option key={o.id} value={o.sdo}>{o.sdo}</option>
+              <option key={o.id} value={o.id}>{o.displayLabel}</option>
             ))}
           </select>
           {msg && <span className="text-xs text-red-600">{msg}</span>}
@@ -424,7 +428,17 @@ export function SbfpDropoffTable({
                 } : null)
                 const calc = calcMilkFormulations(Number(r.beneficiaries) || 0, days, milkType)
                 const fmt4 = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 4 })
-                const displaySdo = baseSdoName(r.sdo || '') || r.sdo || '—'
+                // Show (PM)/(SM) label when the SDO has duplicates (multiple milk types)
+                const isDuplicateSdo = sdoSelectOptions.filter(o =>
+                  normalizeSdoName(o.displayLabel) === normalizeSdoName(baseSdoName(parentOpt?.sdo || '') || parentOpt?.sdo || '')
+                  || normalizeSdoName(o.displayLabel) === normalizeSdoName(r.sdo || '')
+                ).length > 1 || (parentOpt && sdoSelectOptions.filter(o =>
+                  normalizeSdoName(baseSdoName(o.displayLabel) || o.displayLabel) ===
+                  normalizeSdoName(baseSdoName(parentOpt.sdo) || parentOpt.sdo)
+                ).length > 1)
+                const displaySdo = isDuplicateSdo
+                  ? (parentOpt?.sdo || baseSdoName(r.sdo || '') || r.sdo || '—')
+                  : (baseSdoName(r.sdo || '') || r.sdo || '—')
                 const volFactor = litersPerPackForMilkType(milkType)
                 return (
                   <tr key={r.id} style={{ background: bg }}>
@@ -459,7 +473,7 @@ export function SbfpDropoffTable({
                             {selectValue ? '—' : (displaySdo !== '—' ? `${displaySdo} (not linked)` : '—')}
                           </option>
                           {sdoSelectOptions.map(o => (
-                            <option key={o.id} value={o.id}>{o.sdo}</option>
+                            <option key={o.id} value={o.id}>{o.displayLabel}</option>
                           ))}
                         </select>
                       ) : displaySdo}
