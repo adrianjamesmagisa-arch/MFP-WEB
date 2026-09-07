@@ -22,10 +22,12 @@ export default async function SbfpLayout({ children }: { children: React.ReactNo
 
   return (
     <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
-      <Suspense fallback={<aside style={{ width: 200, flexShrink: 0 }} />}>
-        <SbfpSubSidebar schoolYears={schoolYears} encoderCenter={encoderCenter} />
-      </Suspense>
-      <main style={{ flex: 1, overflowY: 'auto', padding: '1.5rem' }}>
+      {!encoderCenter && (
+        <Suspense fallback={<aside style={{ width: 200, flexShrink: 0 }} />}>
+          <SbfpSubSidebar schoolYears={schoolYears} encoderCenter={encoderCenter} />
+        </Suspense>
+      )}
+      <main style={{ flex: 1, overflowY: 'auto', padding: encoderCenter ? '0.25rem 0.5rem 1.5rem' : '1.5rem' }}>
         {children}
       </main>
     </div>

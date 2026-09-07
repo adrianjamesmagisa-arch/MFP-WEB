@@ -31,7 +31,7 @@ export default async function SbfpSummaryPage({
     .single()
 
   if (profile?.role === 'encoder') {
-    redirect(sbfpEncoderHomePath(profile.center, sy))
+    redirect(sbfpEncoderHomePath(profile.center))
   }
 
   await recomputeAllSummariesForYear(supabase, year)

@@ -2,7 +2,8 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import { SbfpCenterWorkspace } from '@/components/SbfpCenterWorkspace'
-import { loadSchoolYears } from '@/lib/sbfp-school-years'
+import { SbfpCenterSchoolYearsHub } from '@/components/SbfpCenterSchoolYearsHub'
+import { loadCenterSchoolYearCards, loadSchoolYears } from '@/lib/sbfp-school-years'
 import { parseSchoolYear, schoolYearLabel, schoolYearToDbYear } from '@/lib/sbfp-year'
 import { encoderCanAccessSbfpCenter, sbfpNavCenter } from '@/lib/center-aliases'
 import { excludeAuxSbfp, SBFP_HIRING_TYPE, SBFP_PPMP_TYPE, toHiringRow, toPpmpRow } from '@/lib/sbfp-aux'
@@ -13,6 +14,7 @@ export default async function SbfpNhqPage({
   searchParams: Promise<{ sy?: string }>
 }) {
   const { sy: syParam } = await searchParams
+  const workspaceBase = '/sbfp/nhq'
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -23,8 +25,23 @@ export default async function SbfpNhqPage({
   if (profile?.role === 'encoder' && profile.center) {
     if (!encoderCanAccessSbfpCenter(profile.center, 'NHQ')) {
       const nav = sbfpNavCenter(profile.center) || 'CSU'
-      redirect(`/sbfp/center/${encodeURIComponent(nav)}?sy=${syParam || '2026-2027'}`)
+      redirect(`/sbfp/center/${encodeURIComponent(nav)}`)
     }
+  }
+
+  if (!syParam?.trim()) {
+    const yearCards = await loadCenterSchoolYearCards('NHQ')
+    return (
+      <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading…</div>}>
+        <SbfpCenterSchoolYearsHub
+          center="NHQ"
+          centerLabel="NHQ Procurement Activities"
+          years={yearCards}
+          workspaceBasePath={workspaceBase}
+          userRole={profile?.role}
+        />
+      </Suspense>
+    )
   }
 
   const schoolYears = await loadSchoolYears()
@@ -85,6 +102,7 @@ export default async function SbfpNhqPage({
         dropoffSchemaReady={dropoffSchemaReady}
         feedingDaysReady={feedingDaysReady}
         userRole={profile?.role}
+        schoolYearsHubHref={workspaceBase}
       />
     </Suspense>
   )

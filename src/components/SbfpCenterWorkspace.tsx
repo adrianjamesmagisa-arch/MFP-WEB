@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { SbfpCenterTable } from '@/components/SbfpCenterTable'
 import { SbfpCenterBudgetForm, type BudgetRow } from '@/components/SbfpCenterBudgetForm'
@@ -27,6 +28,7 @@ export function SbfpCenterWorkspace({
   feedingDaysReady = true,
   userRole,
   showKpis = true,
+  schoolYearsHubHref,
 }: {
   center: string
   title: string
@@ -42,6 +44,8 @@ export function SbfpCenterWorkspace({
   feedingDaysReady?: boolean
   userRole?: string | null
   showKpis?: boolean
+  /** Link back to school-year list (no ?sy=). */
+  schoolYearsHubHref?: string
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -73,6 +77,14 @@ export function SbfpCenterWorkspace({
     <div className="flex flex-col gap-5">
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
         <div>
+          {schoolYearsHubHref && (
+            <Link
+              href={schoolYearsHubHref}
+              className="text-sm text-muted-foreground hover:text-foreground mb-1 inline-block"
+            >
+              ← All school years
+            </Link>
+          )}
           <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
           {subtitle && <p className="text-muted-foreground text-sm mt-1">{subtitle}</p>}
         </div>

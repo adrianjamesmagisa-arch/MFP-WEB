@@ -2,7 +2,8 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import { SbfpCenterWorkspace } from '@/components/SbfpCenterWorkspace'
-import { loadSchoolYears } from '@/lib/sbfp-school-years'
+import { SbfpCenterSchoolYearsHub } from '@/components/SbfpCenterSchoolYearsHub'
+import { loadCenterSchoolYearCards, loadSchoolYears } from '@/lib/sbfp-school-years'
 import { parseSchoolYear, schoolYearLabel, schoolYearToDbYear } from '@/lib/sbfp-year'
 import { encoderCanAccessSbfpCenter, sbfpNavCenter } from '@/lib/center-aliases'
 import { excludeAuxSbfp, SBFP_HIRING_TYPE, SBFP_PPMP_TYPE, toHiringRow, toPpmpRow } from '@/lib/sbfp-aux'
@@ -17,6 +18,7 @@ export default async function SbfpCenterPage({
   const { center } = await params
   const { sy: syParam } = await searchParams
   const decodedCenter = decodeURIComponent(center)
+  const workspaceBase = `/sbfp/center/${encodeURIComponent(decodedCenter)}`
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -27,8 +29,23 @@ export default async function SbfpCenterPage({
   if (profile?.role === 'encoder') {
     if (!encoderCanAccessSbfpCenter(profile.center, decodedCenter)) {
       const nav = sbfpNavCenter(profile.center) || 'CSU'
-      redirect(nav === 'NHQ' ? `/sbfp/nhq?sy=${syParam || '2026-2027'}` : `/sbfp/center/${encodeURIComponent(nav)}?sy=${syParam || '2026-2027'}`)
+      redirect(nav === 'NHQ' ? '/sbfp/nhq' : `/sbfp/center/${encodeURIComponent(nav)}`)
     }
+  }
+
+  if (!syParam?.trim()) {
+    const yearCards = await loadCenterSchoolYearCards(decodedCenter)
+    return (
+      <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading…</div>}>
+        <SbfpCenterSchoolYearsHub
+          center={decodedCenter}
+          centerLabel={decodedCenter}
+          years={yearCards}
+          workspaceBasePath={workspaceBase}
+          userRole={profile?.role}
+        />
+      </Suspense>
+    )
   }
 
   const schoolYears = await loadSchoolYears()
@@ -87,6 +104,7 @@ export default async function SbfpCenterPage({
         dropoffSchemaReady={dropoffSchemaReady}
         feedingDaysReady={feedingDaysReady}
         userRole={profile?.role}
+        schoolYearsHubHref={workspaceBase}
       />
     </Suspense>
   )

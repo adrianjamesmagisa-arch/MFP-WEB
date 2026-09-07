@@ -9,7 +9,6 @@ import {
   Building2, LogOut, ChevronRight, ChevronDown,
   FileBarChart2, BarChart3, BookOpenCheck, HeartHandshake, Church, Package, Milk
 } from 'lucide-react'
-import { DEFAULT_SCHOOL_YEAR } from '@/lib/sbfp-year'
 import { sbfpEncoderHomePath } from '@/lib/center-aliases'
 
 const navItems = [
@@ -54,7 +53,7 @@ export default function Sidebar({ userRole, userCenter, userName }: {
     return true
   }).map(item => {
     if (item.href === '/sbfp' && userRole === 'encoder') {
-      return { ...item, href: sbfpEncoderHomePath(userCenter, DEFAULT_SCHOOL_YEAR) }
+      return { ...item, href: sbfpEncoderHomePath(userCenter) }
     }
     return item
   })

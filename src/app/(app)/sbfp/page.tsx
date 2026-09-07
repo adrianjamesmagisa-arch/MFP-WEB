@@ -13,7 +13,7 @@ export default async function SbfpPage() {
       .eq('id', user.id)
       .single()
     if (profile?.role === 'encoder') {
-      redirect(sbfpEncoderHomePath(profile.center, DEFAULT_SCHOOL_YEAR))
+      redirect(sbfpEncoderHomePath(profile.center))
     }
   }
   redirect(`/sbfp/summary?sy=${DEFAULT_SCHOOL_YEAR}`)

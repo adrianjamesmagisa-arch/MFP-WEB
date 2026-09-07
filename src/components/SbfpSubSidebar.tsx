@@ -1,10 +1,10 @@
-﻿'use client'
+'use client'
 
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
   BarChart3, List, DollarSign, CheckSquare,
-  Building, ChevronRight, FileText
+  Building, ChevronRight, FileText, CalendarDays
 } from 'lucide-react'
 import { DEFAULT_SCHOOL_YEAR, parseSchoolYear, schoolYearLabel, FALLBACK_SCHOOL_YEARS } from '@/lib/sbfp-year'
 
@@ -47,6 +47,11 @@ export function SbfpSubSidebar({
     ? CENTER_SHEETS.filter(c => c.toUpperCase() === encoderCenter.toUpperCase())
     : CENTER_SHEETS
 
+  const encoderHubHref = encoderCenter
+    ? (encoderCenter === 'NHQ' ? '/sbfp/nhq' : `/sbfp/center/${encodeURIComponent(encoderCenter)}`)
+    : null
+  const hasSyInUrl = Boolean(searchParams.get('sy')?.trim())
+
   // Encoders: center monitoring only — hide national nav, SBFP Report, and center picker
   const navMain = encoderCenter ? [] : mainItems
   const navReports = encoderCenter ? [] : reportItems
@@ -68,27 +73,50 @@ export function SbfpSubSidebar({
         <div style={{ fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#64748b' }}>
           SBFP Monitoring
         </div>
-        <label style={{ display: 'block', fontSize: '0.62rem', color: '#64748b', marginTop: 8, marginBottom: 4 }}>
-          School Year
-        </label>
-        <select
-          value={sy}
-          onChange={e => onSyChange(e.target.value)}
-          style={{
-            width: '100%',
-            fontSize: '0.75rem',
-            fontWeight: 600,
-            color: '#e2e8f0',
-            background: 'rgba(15,23,42,0.8)',
-            border: '1px solid rgba(255,255,255,0.12)',
-            borderRadius: 6,
-            padding: '0.35rem 0.4rem',
-          }}
-        >
-          {years.map(y => (
-            <option key={y} value={y}>{schoolYearLabel(y)}</option>
-          ))}
-        </select>
+        {encoderCenter && encoderHubHref ? (
+          <nav style={{ paddingTop: 8 }}>
+            <Link
+              href={encoderHubHref}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                padding: '0.45rem 0',
+                fontSize: '0.78rem',
+                fontWeight: !hasSyInUrl ? 600 : 400,
+                color: !hasSyInUrl ? 'var(--gold, #f59e0b)' : '#94a3b8',
+                textDecoration: 'none',
+              }}
+            >
+              <CalendarDays size={13} />
+              <span>School years</span>
+            </Link>
+          </nav>
+        ) : (
+          <>
+            <label style={{ display: 'block', fontSize: '0.62rem', color: '#64748b', marginTop: 8, marginBottom: 4 }}>
+              School Year
+            </label>
+            <select
+              value={sy}
+              onChange={e => onSyChange(e.target.value)}
+              style={{
+                width: '100%',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                color: '#e2e8f0',
+                background: 'rgba(15,23,42,0.8)',
+                border: '1px solid rgba(255,255,255,0.12)',
+                borderRadius: 6,
+                padding: '0.35rem 0.4rem',
+              }}
+            >
+              {years.map(y => (
+                <option key={y} value={y}>{schoolYearLabel(y)}</option>
+              ))}
+            </select>
+          </>
+        )}
       </div>
 
       <nav style={{ padding: '0.5rem 0' }}>
@@ -164,7 +192,7 @@ export function SbfpSubSidebar({
           return (
             <Link
               key={center}
-              href={withSy(href)}
+              href={center === 'NHQ' ? '/sbfp/nhq' : `/sbfp/center/${center}`}
               style={{
                 display: 'flex',
                 alignItems: 'center',
