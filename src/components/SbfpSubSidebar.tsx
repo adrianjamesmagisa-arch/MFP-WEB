@@ -47,11 +47,10 @@ export function SbfpSubSidebar({
     ? CENTER_SHEETS.filter(c => c.toUpperCase() === encoderCenter.toUpperCase())
     : CENTER_SHEETS
 
-  // Encoders: hide national rollups; keep Summary (scoped) + their center + report
-  const navMain = encoderCenter
-    ? mainItems.filter(i => i.href === '/sbfp/summary')
-    : mainItems
-  const navReports = reportItems
+  // Encoders: center monitoring only — hide national nav, SBFP Report, and center picker
+  const navMain = encoderCenter ? [] : mainItems
+  const navReports = encoderCenter ? [] : reportItems
+  const showCentersNav = !encoderCenter
 
   return (
     <aside
@@ -122,31 +121,38 @@ export function SbfpSubSidebar({
         })}
       </nav>
 
-      <div style={{ padding: '0.5rem 1rem', fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#475569', borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: '0.25rem', paddingTop: '0.75rem' }}>
-        Reports
-      </div>
-      <nav style={{ padding: '0.125rem 0 0.25rem' }}>
-        {navReports.map(item => {
-          const Icon = item.icon
-          const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
-          return (
-            <Link key={item.href} href={withSy(item.href)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '0.4rem',
-                padding: '0.35rem 1rem 0.35rem 1.25rem', fontSize: '0.74rem',
-                fontWeight: isActive ? 600 : 400,
-                color: isActive ? 'var(--gold, #f59e0b)' : '#94a3b8',
-                background: isActive ? 'rgba(245,158,11,0.1)' : 'transparent',
-                borderLeft: isActive ? '2px solid var(--gold, #f59e0b)' : '2px solid transparent',
-                textDecoration: 'none', transition: 'all 0.15s ease',
-              }}>
-              <Icon size={11} />
-              <span>{item.label}</span>
-              {isActive && <ChevronRight size={11} style={{ marginLeft: 'auto', opacity: 0.5 }} />}
-            </Link>
-          )
-        })}
-      </nav>
+      {navReports.length > 0 && (
+        <>
+          <div style={{ padding: '0.5rem 1rem', fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#475569', borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: '0.25rem', paddingTop: '0.75rem' }}>
+            Reports
+          </div>
+          <nav style={{ padding: '0.125rem 0 0.25rem' }}>
+            {navReports.map(item => {
+              const Icon = item.icon
+              const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+              return (
+                <Link key={item.href} href={withSy(item.href)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.4rem',
+                    padding: '0.35rem 1rem 0.35rem 1.25rem', fontSize: '0.74rem',
+                    fontWeight: isActive ? 600 : 400,
+                    color: isActive ? 'var(--gold, #f59e0b)' : '#94a3b8',
+                    background: isActive ? 'rgba(245,158,11,0.1)' : 'transparent',
+                    borderLeft: isActive ? '2px solid var(--gold, #f59e0b)' : '2px solid transparent',
+                    textDecoration: 'none', transition: 'all 0.15s ease',
+                  }}>
+                  <Icon size={11} />
+                  <span>{item.label}</span>
+                  {isActive && <ChevronRight size={11} style={{ marginLeft: 'auto', opacity: 0.5 }} />}
+                </Link>
+              )
+            })}
+          </nav>
+        </>
+      )}
+
+      {showCentersNav && (
+        <>
       <div style={{ padding: '0.5rem 1rem', fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#475569', borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: '0.25rem', paddingTop: '0.75rem' }}>
         Centers
       </div>
@@ -179,6 +185,8 @@ export function SbfpSubSidebar({
           )
         })}
       </nav>
+        </>
+      )}
     </aside>
   )
 }

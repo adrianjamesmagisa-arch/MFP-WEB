@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation'
 import { recomputeAllSummariesForYear } from '@/lib/sbfp-compute'
 import { loadSchoolYears } from '@/lib/sbfp-school-years'
 import { parseSchoolYear, schoolYearLabel, schoolYearToDbYear } from '@/lib/sbfp-year'
-import { sbfpCenterAliases } from '@/lib/center-aliases'
+import { sbfpCenterAliases, sbfpEncoderHomePath } from '@/lib/center-aliases'
 
 function fmt(n: number | null | undefined) {
   if (n == null || n === 0) return '—'
@@ -29,6 +29,10 @@ export default async function SbfpSummaryPage({
     .select('role,center')
     .eq('id', user.id)
     .single()
+
+  if (profile?.role === 'encoder') {
+    redirect(sbfpEncoderHomePath(profile.center, sy))
+  }
 
   await recomputeAllSummariesForYear(supabase, year)
 

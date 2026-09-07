@@ -9,6 +9,8 @@ import {
   Building2, LogOut, ChevronRight, ChevronDown,
   FileBarChart2, BarChart3, BookOpenCheck, HeartHandshake, Church, Package, Milk
 } from 'lucide-react'
+import { DEFAULT_SCHOOL_YEAR } from '@/lib/sbfp-year'
+import { sbfpEncoderHomePath } from '@/lib/center-aliases'
 
 const navItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -50,6 +52,11 @@ export default function Sidebar({ userRole, userCenter, userName }: {
     if (item.href === '/users'   && userRole !== 'super_admin') return false
     if (item.href === '/centers' && userRole !== 'super_admin') return false
     return true
+  }).map(item => {
+    if (item.href === '/sbfp' && userRole === 'encoder') {
+      return { ...item, href: sbfpEncoderHomePath(userCenter, DEFAULT_SCHOOL_YEAR) }
+    }
+    return item
   })
 
   // Encoders only see the PIMD Report — hide the summary/narrative reports

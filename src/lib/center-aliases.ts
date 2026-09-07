@@ -29,6 +29,17 @@ export function sbfpNavCenter(profileCenter: string | null | undefined): string 
   return profileCenter.trim()
 }
 
+/** Default SBFP landing path for an encoder (center monitoring workspace). */
+export function sbfpEncoderHomePath(
+  profileCenter: string | null | undefined,
+  sy = '2026-2027',
+): string {
+  const nav = sbfpNavCenter(profileCenter)
+  if (!nav) return `/sbfp/summary?sy=${sy}`
+  if (nav === 'NHQ') return `/sbfp/nhq?sy=${sy}`
+  return `/sbfp/center/${encodeURIComponent(nav)}?sy=${sy}`
+}
+
 /** Whether an encoder may view this SBFP center page / row. */
 export function encoderCanAccessSbfpCenter(
   profileCenter: string | null | undefined,
