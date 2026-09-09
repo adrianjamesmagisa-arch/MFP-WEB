@@ -7,6 +7,8 @@ import type { MonitoringProgramId } from '@/lib/monitoring-programs'
 import type { ProgramDropoffRow, ProgramProcurementRow } from '@/lib/program-dropoff-sync'
 import { calcMilkFormulations } from '@/lib/mfp-formulas'
 import { normalizeSbfpMilkType } from '@/lib/sbfp-pack-price'
+import { useAsyncTask } from '@/components/loading/AsyncFeedback'
+import { Spinner } from '@/components/loading/Spinner'
 
 async function apiSync(dropoff: ProgramDropoffRow): Promise<string | null> {
   const res = await fetch('/api/monitoring/sync-dropoff', {
@@ -41,6 +43,7 @@ export function ProgramDropoffTable({
   parentOptions,
   initialRows,
   editable,
+  onRowsChange,
 }: {
   programId: MonitoringProgramId
   center: string
@@ -50,14 +53,21 @@ export function ProgramDropoffTable({
   parentOptions: ParentOption[]
   initialRows: ProgramDropoffRow[]
   editable: boolean
+  onRowsChange?: (rows: ProgramDropoffRow[]) => void
 }) {
   const supabase = createClient()
+  const runTask = useAsyncTask('Saving…')
   const [rows, setRows] = useState(initialRows)
   const [filterParent, setFilterParent] = useState<string>('')
+  const [busyRowId, setBusyRowId] = useState<string | null>(null)
+  const [adding, setAdding] = useState(false)
 
   useEffect(() => {
     setRows(initialRows)
   }, [initialRows])
+  useEffect(() => {
+    onRowsChange?.(rows)
+  }, [rows])
 
   const filtered = useMemo(() => {
     if (!filterParent) return rows
@@ -69,62 +79,83 @@ export function ProgramDropoffTable({
   }
 
   const save = async (row: ProgramDropoffRow, field: string, value: unknown) => {
-    const { error } = await supabase.from('mfp_program_dropoffs').update({ [field]: value }).eq('id', row.id)
-    if (error) {
-      alert(error.message)
-      return
-    }
-    const next = { ...row, [field]: value } as ProgramDropoffRow
-    updateLocal(row.id, { [field]: value } as Partial<ProgramDropoffRow>)
-    if (['beneficiaries', 'feeding_days', 'include_in_masterlist', 'dropoff_name', 'municipality', 'province', 'procurement_id'].includes(field)) {
-      const err = await apiSync(next)
-      if (err) alert(err)
+    setBusyRowId(row.id)
+    try {
+      await runTask(async () => {
+        const { error } = await supabase.from('mfp_program_dropoffs').update({ [field]: value }).eq('id', row.id)
+        if (error) {
+          alert(error.message)
+          return
+        }
+        const next = { ...row, [field]: value } as ProgramDropoffRow
+        updateLocal(row.id, { [field]: value } as Partial<ProgramDropoffRow>)
+        if (['beneficiaries', 'feeding_days', 'include_in_masterlist', 'dropoff_name', 'municipality', 'province', 'procurement_id'].includes(field)) {
+          const err = await apiSync(next)
+          if (err) alert(err)
+        }
+      }, 'Saving drop-off…')
+    } finally {
+      setBusyRowId(null)
     }
   }
 
   const addMunicipality = async () => {
-    const parent = parentOptions[0]
+    const parent = (filterParent && parentOptions.find(p => p.id === filterParent)) || parentOptions[0]
     if (!parent) {
-      alert(`Add a ${areaColumnLabel.toLowerCase()} in section 1 first.`)
+      alert(`Add a ${areaColumnLabel.toLowerCase()} in section 1 first, then you can add a municipality.`)
       return
     }
-    const baseName = 'New Municipality'
-    const { data, error } = await supabase
-      .from('mfp_program_dropoffs')
-      .insert({
-        year,
-        month,
-        center,
-        program: programId,
-        procurement_id: parent.id,
-        province: parent.province || parent.label,
-        municipality: baseName,
-        dropoff_name: baseName,
-        region: parent.region || '',
-        beneficiaries: 0,
-        feeding_days: 0,
-      })
-      .select('*')
-      .single()
-    if (error) {
-      alert(error.message)
-      return
+    setAdding(true)
+    try {
+      await runTask(async () => {
+        const baseName = 'New Municipality'
+        const { data, error } = await supabase
+          .from('mfp_program_dropoffs')
+          .insert({
+            year,
+            month,
+            center,
+            program: programId,
+            procurement_id: parent.id,
+            province: parent.province || parent.label,
+            municipality: baseName,
+            dropoff_name: baseName,
+            region: parent.region || '',
+            beneficiaries: 0,
+            feeding_days: 0,
+          })
+          .select('*')
+          .single()
+        if (error) {
+          alert(error.message)
+          return
+        }
+        const row = data as ProgramDropoffRow
+        setRows(p => [...p, row])
+        const err = await apiSync(row)
+        if (err) alert(err)
+      }, 'Adding municipality…')
+    } finally {
+      setAdding(false)
     }
-    const row = data as ProgramDropoffRow
-    setRows(p => [...p, row])
-    const err = await apiSync(row)
-    if (err) alert(err)
   }
 
   const remove = async (id: string) => {
     if (!confirm('Remove municipality drop-off and masterlist row?')) return
-    await apiUnlink(id)
-    const { error } = await supabase.from('mfp_program_dropoffs').delete().eq('id', id)
-    if (error) {
-      alert(error.message)
-      return
+    setBusyRowId(id)
+    try {
+      await runTask(async () => {
+        await apiUnlink(id)
+        const { error } = await supabase.from('mfp_program_dropoffs').delete().eq('id', id)
+        if (error) {
+          alert(error.message)
+          return
+        }
+        setRows(p => p.filter(r => r.id !== id))
+      }, 'Removing…', { blocking: true })
+    } finally {
+      setBusyRowId(null)
     }
-    setRows(p => p.filter(r => r.id !== id))
   }
 
   const milkTypeFor = (row: ProgramDropoffRow) => {
@@ -138,17 +169,28 @@ export function ProgramDropoffTable({
         <label style={{ fontSize: '0.8rem' }}>
           Filter {areaColumnLabel}:{' '}
           <select value={filterParent} onChange={e => setFilterParent(e.target.value)} style={{ marginLeft: 4 }}>
-            <option value="">All ({rows.length})</option>
+            <option value="">All ({parentOptions.length} {areaColumnLabel.toLowerCase()}{parentOptions.length === 1 ? '' : 's'})</option>
             {parentOptions.map(p => (
               <option key={p.id} value={p.id}>
-                {p.label}
+                {p.label || 'Untitled'}
               </option>
             ))}
           </select>
         </label>
         {editable && (
-          <button type="button" className="btn btn-outline" onClick={addMunicipality} style={{ marginLeft: 'auto', fontSize: '0.8rem' }}>
-            <Plus size={14} /> Add municipality
+          <button
+            type="button"
+            className="btn btn-outline"
+            onClick={addMunicipality}
+            disabled={adding || parentOptions.length === 0}
+            title={parentOptions.length === 0 ? `Add a ${areaColumnLabel.toLowerCase()} in section 1 first` : undefined}
+            style={{
+              marginLeft: 'auto',
+              fontSize: '0.8rem',
+              cursor: adding ? 'wait' : parentOptions.length === 0 ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {adding ? <Spinner size={14} /> : <Plus size={14} />} {adding ? 'Adding…' : 'Add municipality'}
           </button>
         )}
       </div>
@@ -175,7 +217,7 @@ export function ProgramDropoffTable({
             const calc = calcMilkFormulations(Number(r.beneficiaries) || 0, Number(r.feeding_days) || 0, mt)
             const parentLabel = parentOptions.find(p => p.id === r.procurement_id)?.label || r.province || '—'
             return (
-              <tr key={r.id}>
+              <tr key={r.id} style={{ opacity: busyRowId === r.id ? 0.7 : 1 }}>
                 <td>{parentLabel}</td>
                 <td>
                   {editable ? (

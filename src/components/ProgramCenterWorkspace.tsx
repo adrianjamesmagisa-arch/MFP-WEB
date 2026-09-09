@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { BarChart3 } from 'lucide-react'
 import { MONITORING_PROGRAMS, type MonitoringProgramId } from '@/lib/monitoring-programs'
@@ -39,11 +40,20 @@ export function ProgramCenterWorkspace({
   const program = MONITORING_PROGRAMS[programId]
   const editable = userRole !== 'viewer'
   const areaColumnLabel = areaLabel(programId)
+  const [liveProcurement, setLiveProcurement] = useState(procurementRows)
+  const [liveDropoffs, setLiveDropoffs] = useState(dropoffRows)
 
-  const totalAreas = procurementRows.length
-  const totalPacks = procurementRows.reduce((s, r) => s + (Number(r.packs_to_deliver) || 0), 0)
-  const totalDelivered = procurementRows.reduce((s, r) => s + (Number(r.packs_delivered) || 0), 0)
-  const statCounts = procurementRows.reduce(
+  useEffect(() => {
+    setLiveProcurement(procurementRows)
+  }, [procurementRows])
+  useEffect(() => {
+    setLiveDropoffs(dropoffRows)
+  }, [dropoffRows])
+
+  const totalAreas = liveProcurement.length
+  const totalPacks = liveProcurement.reduce((s, r) => s + (Number(r.packs_to_deliver) || 0), 0)
+  const totalDelivered = liveProcurement.reduce((s, r) => s + (Number(r.packs_delivered) || 0), 0)
+  const statCounts = liveProcurement.reduce(
     (acc, r) => {
       const st = (r.procurement_status || '').toUpperCase()
       if (st === 'FOR PREPARATION') acc.prep++
@@ -60,7 +70,7 @@ export function ProgramCenterWorkspace({
     program.pimdFunder ? `&funder=${encodeURIComponent(program.pimdFunder)}` : ''
   }`
 
-  const parentOptions = procurementRows.map(r => ({
+  const parentOptions = liveProcurement.map(r => ({
     id: r.id,
     label: r.label || r.province || '',
     region: r.region,
@@ -126,7 +136,7 @@ export function ProgramCenterWorkspace({
               <div className="text-xs text-emerald-700 mt-1">Completed</div>
             </div>
             <div className="rounded-lg border bg-card p-3 text-center">
-              <div className="text-lg font-bold">{dropoffRows.length}</div>
+              <div className="text-lg font-bold">{liveDropoffs.length}</div>
               <div className="text-xs text-muted-foreground mt-1">Municipalities</div>
             </div>
             <div className="rounded-lg border bg-card p-3 text-center">
@@ -151,8 +161,9 @@ export function ProgramCenterWorkspace({
               center={center}
               year={year}
               areaColumnLabel={areaColumnLabel}
-              initialRows={procurementRows}
+              initialRows={liveProcurement}
               editable={editable}
+              onRowsChange={setLiveProcurement}
             />
           </section>
 
@@ -168,8 +179,9 @@ export function ProgramCenterWorkspace({
               year={year}
               areaColumnLabel={areaColumnLabel}
               parentOptions={parentOptions}
-              initialRows={dropoffRows}
+              initialRows={liveDropoffs}
               editable={editable}
+              onRowsChange={setLiveDropoffs}
             />
           </section>
         </>

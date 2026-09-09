@@ -6,6 +6,8 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { formatCurrency, formatNumber, formatDate } from '@/lib/utils'
 import { Edit2, Trash2 } from 'lucide-react'
+import { Spinner } from '@/components/loading/Spinner'
+import { useAsyncTask } from '@/components/loading/AsyncFeedback'
 
 function EditableCell({ id, field, value, type = 'text', className, style, format, render, onSave }: { id: string, field: string, value: any, type?: string, className?: string, style?: any, format?: (v: any) => any, render?: (v: any) => any, onSave?: (id: string, field: string, oldVal: any, newVal: any) => void }) {
   const [isEditing, setIsEditing] = useState(false);
@@ -78,10 +80,15 @@ function EditableCell({ id, field, value, type = 'text', className, style, forma
   return (
     <td 
       className={className} 
-      style={{ ...style, cursor: 'text', opacity: isSaving ? 0.5 : 1 }} 
-      onClick={() => setIsEditing(true)}
+      style={{ ...style, cursor: 'text', position: 'relative', opacity: isSaving ? 0.85 : 1 }} 
+      onClick={() => !isSaving && setIsEditing(true)}
     >
       {(val === null || val === undefined || val === '') ? 'N/A' : render ? render(val) : format ? format(val) : val}
+      {isSaving && (
+        <div className="cell-saving-overlay">
+          <Spinner size={12} />
+        </div>
+      )}
     </td>
   )
 }
@@ -95,6 +102,7 @@ export function DataTable({
 }) {
   const router = useRouter()
   const supabase = createClient()
+  const runTask = useAsyncTask('Syncing delivery totals…')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [localRecords, setLocalRecords] = useState(records)
   const [undoStack, setUndoStack] = useState<any[]>([])
@@ -160,18 +168,24 @@ export function DataTable({
     let cancelled = false
     ;(async () => {
       try {
-        const res = await fetch('/api/sbfp/sync-dropoff', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'resync-center-delivery',
-            center: resyncDelivery.center,
-            year: resyncDelivery.year,
-          }),
-        })
-        if (!res.ok || cancelled) return
-        sessionStorage.setItem(storageKey, '1')
-        router.refresh()
+        await runTask(
+          async () => {
+            const res = await fetch('/api/sbfp/sync-dropoff', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                action: 'resync-center-delivery',
+                center: resyncDelivery.center,
+                year: resyncDelivery.year,
+              }),
+            })
+            if (!res.ok || cancelled) return
+            sessionStorage.setItem(storageKey, '1')
+            router.refresh()
+          },
+          'Syncing delivery totals…',
+          { blocking: true },
+        )
       } catch {
         // ignore — table still shows best available DB values
       }

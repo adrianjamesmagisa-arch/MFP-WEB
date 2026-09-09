@@ -11,6 +11,8 @@ import {
 } from 'lucide-react'
 import { sbfpEncoderHomePath, monitoringEncoderHomePath } from '@/lib/center-aliases'
 import type { MonitoringProgramId } from '@/lib/monitoring-programs'
+import { useAsyncFeedback } from '@/components/loading/AsyncFeedback'
+import { Spinner } from '@/components/loading/Spinner'
 
 const navItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -44,15 +46,29 @@ export default function Sidebar({ userRole, userCenter, userName }: {
   const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()
+  const { runAsync } = useAsyncFeedback()
+  const [signingOut, setSigningOut] = useState(false)
   const isCollapsed = pathname.includes('/edit') || pathname.includes('/add') || pathname.includes('/new') || pathname.includes('/bulk-edit')
 
   const isInReports = pathname.startsWith('/reports')
   const [reportsOpen, setReportsOpen] = useState(isInReports)
 
   async function handleSignOut() {
-    await supabase.auth.signOut()
-    router.push('/login')
-    router.refresh()
+    if (signingOut) return
+    setSigningOut(true)
+    try {
+      await runAsync(
+        'Signing out…',
+        async () => {
+          await supabase.auth.signOut()
+          router.push('/login')
+          router.refresh()
+        },
+        { blocking: true },
+      )
+    } finally {
+      setSigningOut(false)
+    }
   }
 
   const visibleItems = navItems.filter(item => {
@@ -238,11 +254,20 @@ export default function Sidebar({ userRole, userCenter, userName }: {
         </div>}
         <button
           onClick={handleSignOut}
+          disabled={signingOut}
           className="btn btn-outline"
-          style={{ width: '100%', justifyContent: 'center', fontSize: '0.8rem', color: '#94a3b8', borderColor: 'rgba(255,255,255,0.1)' }}
+          style={{
+            width: '100%',
+            justifyContent: 'center',
+            fontSize: '0.8rem',
+            color: '#94a3b8',
+            borderColor: 'rgba(255,255,255,0.1)',
+            cursor: signingOut ? 'wait' : 'pointer',
+            opacity: signingOut ? 0.75 : 1,
+          }}
         >
-          <LogOut size={14} />
-          {!isCollapsed && <span>Sign Out</span>}
+          {signingOut ? <Spinner size={14} className="border-slate-400 border-t-transparent" /> : <LogOut size={14} />}
+          {!isCollapsed && <span>{signingOut ? 'Signing out…' : 'Sign Out'}</span>}
         </button>
       </div>
     </aside>

@@ -25,6 +25,7 @@ import {
   totalPacksDelivered,
   SBFP_RAW_MILK_MONTHS,
 } from '@/lib/sbfp-raw-milk'
+import { useAsyncTask } from '@/components/loading/AsyncFeedback'
 import {
   fixedPackPriceForMilkType,
   normalizeSbfpMilkType,
@@ -111,6 +112,7 @@ export function ProgramProcurementTable({
   areaColumnLabel,
   initialRows,
   editable,
+  onRowsChange,
 }: {
   programId: MonitoringProgramId
   center: string
@@ -119,8 +121,10 @@ export function ProgramProcurementTable({
   areaColumnLabel: string
   initialRows: ProgramProcurementRow[]
   editable: boolean
+  onRowsChange?: (rows: ProgramProcurementRow[]) => void
 }) {
   const supabase = createClient()
+  const runTask = useAsyncTask('Saving…')
   const [rows, setRows] = useState(initialRows)
   const [extraSnapDates, setExtraSnapDates] = useState<string[]>([])
   const [adding, setAdding] = useState(false)
@@ -131,6 +135,9 @@ export function ProgramProcurementTable({
   useEffect(() => {
     setRows(initialRows)
   }, [initialRows])
+  useEffect(() => {
+    onRowsChange?.(rows)
+  }, [rows])
   useEffect(() => {
     supabase
       .from('cooperatives')
@@ -143,8 +150,10 @@ export function ProgramProcurementTable({
 
   const cascadeIfNeeded = async (row: ProgramProcurementRow, field: string) => {
     if (CASCADE_FIELDS.has(field) || field === 'label' || field === 'region') {
-      const err = await apiCascade(row)
-      if (err) console.warn(err)
+      await runTask(async () => {
+        const err = await apiCascade(row)
+        if (err) console.warn(err)
+      }, 'Syncing to masterlist…')
     }
   }
 
@@ -255,28 +264,34 @@ export function ProgramProcurementTable({
     )
     if (!ok) return
     setExtraSnapDates(p => p.filter(d => d !== date))
-    await Promise.all(
-      rows.map(async r => {
-        const oldSnaps = [...((r.delivery_snapshots as { date?: string }[]) || [])]
-        if (!oldSnaps.some(s => s.date === date)) return
-        const newSnaps = oldSnaps.filter(s => s.date !== date)
-        const nextRow = { ...r, delivery_snapshots: newSnaps }
-        const total = totalPacksDelivered(rawMilkRow(nextRow))
-        const { error } = await supabase
-          .from(PROC_TABLE)
-          .update({ delivery_snapshots: newSnaps, packs_delivered: total })
-          .eq('id', r.id)
-        if (!error) {
-          setRows(p =>
-            p.map(row =>
-              row.id === r.id
-                ? { ...row, delivery_snapshots: newSnaps, packs_delivered: total }
-                : row,
-            ),
-          )
-          await apiCascade(nextRow as ProgramProcurementRow)
-        }
-      }),
+    await runTask(
+      async () => {
+        await Promise.all(
+          rows.map(async r => {
+            const oldSnaps = [...((r.delivery_snapshots as { date?: string }[]) || [])]
+            if (!oldSnaps.some(s => s.date === date)) return
+            const newSnaps = oldSnaps.filter(s => s.date !== date)
+            const nextRow = { ...r, delivery_snapshots: newSnaps }
+            const total = totalPacksDelivered(rawMilkRow(nextRow))
+            const { error } = await supabase
+              .from(PROC_TABLE)
+              .update({ delivery_snapshots: newSnaps, packs_delivered: total })
+              .eq('id', r.id)
+            if (!error) {
+              setRows(p =>
+                p.map(row =>
+                  row.id === r.id
+                    ? { ...row, delivery_snapshots: newSnaps, packs_delivered: total }
+                    : row,
+                ),
+              )
+              await apiCascade(nextRow as ProgramProcurementRow)
+            }
+          }),
+        )
+      },
+      'Updating delivery columns…',
+      { blocking: true },
     )
   }
 

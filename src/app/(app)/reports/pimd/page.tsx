@@ -11,6 +11,7 @@ import { calcMilkFormulations, litersPerPackForMilkType, packagingSizeForMilkTyp
 import { APP_YEAR_STRINGS } from '@/lib/app-years'
 import { mfpCenterAliases, sbfpCenterAliases, centerDisplayLabel } from '@/lib/center-aliases'
 import { Download, Filter, Printer, ZoomIn, ZoomOut, Maximize2, AlignCenter } from 'lucide-react'
+import { Spinner } from '@/components/loading/Spinner'
 
 const NAVY      = '#002C65'
 const HDR_NAVY  = '#12476A'
@@ -1016,7 +1017,10 @@ export default function PIMDReportPage() {
       </div>
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '5rem', color: '#64748b' }}>Loading data…</div>
+        <div style={{ textAlign: 'center', padding: '5rem', color: '#64748b', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+          <Spinner size={36} label="Loading report data" />
+          <p style={{ fontWeight: 600 }}>Loading report data…</p>
+        </div>
       ) : !stats ? (
         <div style={{
           textAlign: 'center', padding: '5rem 2rem', color: '#64748b',

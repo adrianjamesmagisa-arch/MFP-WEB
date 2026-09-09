@@ -290,3 +290,99 @@ h1, h2, h3 {
   outline: 3px solid var(--gold);
   outline-offset: 3px;
 }
+
+/* Global async / navigation loading */
+.global-loading-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 9999;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+  opacity: 0;
+  transform: scaleX(0.2);
+  transform-origin: left center;
+  transition: opacity 0.15s ease;
+}
+.global-loading-bar[data-active='true'] {
+  opacity: 1;
+  animation: global-loading-bar 1.1s ease-in-out infinite;
+}
+@keyframes global-loading-bar {
+  0% { transform: scaleX(0.08) translateX(0); }
+  50% { transform: scaleX(0.55) translateX(40%); }
+  100% { transform: scaleX(0.08) translateX(100%); }
+}
+
+.async-loading-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgba(10, 22, 40, 0.62);
+}
+.async-loading-modal__card {
+  width: min(440px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.65rem;
+  padding: 2.25rem 2rem 1.85rem;
+  background: #fff;
+  border-radius: 16px;
+  border: 3px solid var(--gold);
+  box-shadow: 0 20px 56px rgba(10, 22, 40, 0.35);
+}
+.async-loading-modal__spinner {
+  width: 88px;
+  height: 88px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #fff8e6;
+  margin-bottom: 0.35rem;
+}
+.async-loading-modal__spinner span {
+  border-width: 6px;
+}
+.async-loading-modal__title {
+  margin: 0;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 1.65rem;
+  font-weight: 800;
+  color: var(--navy);
+  line-height: 1.2;
+}
+.async-loading-modal__message {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--gray-800);
+  line-height: 1.4;
+}
+.async-loading-modal__hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--gray-600);
+}
+
+.app-main-navigating {
+  cursor: wait;
+}
+.cell-saving-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.65);
+  border-radius: 2px;
+}

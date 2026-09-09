@@ -26,6 +26,8 @@ import {
   fixedPackPriceForMilkType,
   inferSbfpMilkType,
 } from '@/lib/sbfp-pack-price'
+import { useAsyncTask } from '@/components/loading/AsyncFeedback'
+
 async function apiDropoffMasterlist(body: Record<string, unknown>): Promise<string | null> {
   const res = await fetch('/api/sbfp/sync-dropoff', {
     method: 'POST',
@@ -562,6 +564,13 @@ export function SbfpCenterTable({
   const addSnapRef                = useRef<HTMLInputElement>(null)
   const editable                  = userRole !== 'viewer'
   const dbYear                    = year ?? (initialRecords[0]?.year as number | undefined)
+  const runTask                   = useAsyncTask('Saving…')
+
+  const cascadeWithFeedback = async (row: Record<string, unknown>) => {
+    await runTask(async () => {
+      await cascadeMasterlistFromSdo(row)
+    }, 'Syncing to masterlist…')
+  }
 
   useEffect(() => { setRows(initialRecords) }, [initialRecords])
   useEffect(() => {
@@ -626,7 +635,7 @@ export function SbfpCenterTable({
         nextRow = { ...nextRow, packs_delivered: total }
         setRows(p => p.map(r => r.id === id ? { ...r, packs_delivered: total } : r))
       }
-      await cascadeMasterlistFromSdo(nextRow)
+      await cascadeWithFeedback(nextRow)
     }
 
     // Amount / milk type / CM pack ₱ → packs_to_deliver = amount ÷ ₱ per pack
@@ -660,7 +669,7 @@ export function SbfpCenterTable({
         if (!packErr) {
           nextRow = { ...nextRow, packs_to_deliver: nextPacks }
           setRows(p => p.map(r => r.id === id ? { ...r, packs_to_deliver: nextPacks } : r))
-          await cascadeMasterlistFromSdo(nextRow)
+          await cascadeWithFeedback(nextRow)
         } else {
           alert(`Could not update Packs to Deliver: ${packErr.message}`)
         }
@@ -689,13 +698,15 @@ export function SbfpCenterTable({
           setRows(p => p.map(r => r.id === id ? { ...r, packs_to_deliver: derived } : r))
         }
       }
-      const err = await apiDropoffMasterlist({
-        action: 'cascade-rename',
-        sbfpDataId: id,
-        newSdoName: String(newV || ''),
-        parent: nextRow,
-      })
-      if (err) alert(err)
+      await runTask(async () => {
+        const err = await apiDropoffMasterlist({
+          action: 'cascade-rename',
+          sbfpDataId: id,
+          newSdoName: String(newV || ''),
+          parent: nextRow,
+        })
+        if (err) alert(err)
+      }, 'Syncing to masterlist…')
     } else if (
       nextRow &&
       (field === 'region' ||
@@ -709,12 +720,14 @@ export function SbfpCenterTable({
         field === 'packs_delivered' ||
         field === 'supplier_id')
     ) {
-      const err = await apiDropoffMasterlist({
-        action: 'cascade-fields',
-        sbfpDataId: id,
-        parent: nextRow,
-      })
-      if (err) alert(err)
+      await runTask(async () => {
+        const err = await apiDropoffMasterlist({
+          action: 'cascade-fields',
+          sbfpDataId: id,
+          parent: nextRow,
+        })
+        if (err) alert(err)
+      }, 'Syncing to masterlist…')
     }
     await maybeRecompute(field === 'amount' || field === 'milk_type' || field === 'pack_unit_price' ? 'packs_to_deliver' : field)
   }
@@ -769,6 +782,7 @@ export function SbfpCenterTable({
 
     setExtraSnapDates(p => p.filter(d => d !== date))
 
+    await runTask(async () => {
     await Promise.all(rows.map(async r => {
       const oldSnaps = [...(r.delivery_snapshots || [])]
       if (!oldSnaps.some((s: any) => s.date === date)) return
@@ -783,26 +797,29 @@ export function SbfpCenterTable({
         setRows(p => p.map(row =>
           row.id === r.id ? { ...row, delivery_snapshots: newSnaps, packs_delivered: total } : row
         ))
-        await cascadeMasterlistFromSdo(nextRow)
+        await cascadeWithFeedback(nextRow)
       }
     }))
     await maybeRecompute('delivery_snapshots')
+    }, 'Updating delivery columns…', { blocking: true })
   }
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this record? Linked drop-off schools and their masterlist rows will also be removed.')) return
-    const { data: children } = await supabase
-      .from('sbfp_dropoff_points')
-      .select('id')
-      .eq('sbfp_data_id', id)
-    for (const child of children || []) {
-      const err = await apiDropoffMasterlist({ action: 'unlink', dropoffId: child.id })
-      if (err) { alert(err); return }
-      await supabase.from('sbfp_dropoff_points').delete().eq('id', child.id)
-    }
-    await supabase.from('sbfp_data').delete().eq('id', id)
-    setRows(p => p.filter(r => r.id !== id))
-    await maybeRecompute('packs_to_deliver')
+    await runTask(async () => {
+      const { data: children } = await supabase
+        .from('sbfp_dropoff_points')
+        .select('id')
+        .eq('sbfp_data_id', id)
+      for (const child of children || []) {
+        const err = await apiDropoffMasterlist({ action: 'unlink', dropoffId: child.id })
+        if (err) { alert(err); return }
+        await supabase.from('sbfp_dropoff_points').delete().eq('id', child.id)
+      }
+      await supabase.from('sbfp_data').delete().eq('id', id)
+      setRows(p => p.filter(r => r.id !== id))
+      await maybeRecompute('packs_to_deliver')
+    }, 'Deleting record…', { blocking: true })
   }
 
   const handleAdd = async () => {

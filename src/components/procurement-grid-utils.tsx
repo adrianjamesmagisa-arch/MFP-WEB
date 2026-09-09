@@ -3,7 +3,17 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Trash2 } from 'lucide-react'
+import { Spinner } from '@/components/loading/Spinner'
 import { formatDeliveredAsOf, parseSnapshotDate, toDateInputValue } from '@/lib/sbfp-raw-milk'
+
+function CellSavingOverlay({ show }: { show: boolean }) {
+  if (!show) return null
+  return (
+    <div className="cell-saving-overlay">
+      <Spinner size={12} />
+    </div>
+  )
+}
 
 export function ProcEditableCell({
   table,
@@ -123,10 +133,11 @@ export function ProcEditableCell({
     return (
       <td
         title={title}
-        style={{ cursor: 'text', opacity: saving ? 0.5 : 1, ...cellStyle }}
-        onClick={() => setEditing(true)}
+        style={{ cursor: 'text', position: 'relative', opacity: saving ? 0.85 : 1, ...cellStyle }}
+        onClick={() => !saving && setEditing(true)}
       >
         {display}
+        <CellSavingOverlay show={saving} />
       </td>
     )
   }
@@ -212,10 +223,11 @@ export function ProcEditableCell({
   return (
     <td
       title={title}
-      style={{ cursor: 'text', textAlign: align, opacity: saving ? 0.5 : 1, ...cellStyle }}
-      onClick={() => setEditing(true)}
+      style={{ cursor: 'text', textAlign: align, position: 'relative', opacity: saving ? 0.85 : 1, ...cellStyle }}
+      onClick={() => !saving && setEditing(true)}
     >
       {display}
+      <CellSavingOverlay show={saving} />
     </td>
   )
 }
