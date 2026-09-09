@@ -40,6 +40,7 @@ export type SbfpParentSdo = {
   packs_delivered?: number | null
   monthly_packs_delivered?: unknown
   delivery_snapshots?: unknown
+  supplier_id?: string | null
 }
 
 export type MfpMasterRow = {
@@ -212,6 +213,8 @@ export function buildMasterlistIdentity(
       delivery_snapshots: parent.delivery_snapshots,
       packs_delivered: parent.packs_delivered,
     } as SbfpRawMilkRow)
+    // SDO coop is the source of truth for every school under this procurement row
+    payload.supplier_id = parent.supplier_id || null
   }
 
   const calc = calcMilkFormulations(beneficiaries, feedingDays, milkType || 'PM')
@@ -368,6 +371,31 @@ export async function cascadeSdoFieldSync(
     if (res.error) return { error: res.error, updated }
     updated++
   }
+
+  const first = (children || [])[0] as SbfpDropoffRow | undefined
+  let year = first?.year
+  let center = first?.center
+  let division = String(first?.sdo || parent.sdo || '').trim()
+  if ((!year || !center) && parent.id) {
+    const { data: sdoRow } = await supabase
+      .from('sbfp_data')
+      .select('year,center,sdo')
+      .eq('id', parent.id)
+      .maybeSingle()
+    year = year ?? sdoRow?.year
+    center = center ?? sdoRow?.center
+    division = division || String(sdoRow?.sdo || '').trim()
+  }
+  if (year && center && division) {
+    await supabase
+      .from('mfp_data')
+      .update({ supplier_id: parent.supplier_id || null })
+      .eq('year', year)
+      .eq('center', center)
+      .eq('funded_by', 'DepEd')
+      .eq('division', division)
+  }
+
   return { error: null, updated }
 }
 
@@ -403,7 +431,7 @@ export async function loadParentSdo(
   const { data, error } = await supabase
     .from('sbfp_data')
     .select(
-      'id,sdo,region,milk_type,batch,feeding_days,remarks,delivery_start,delivery_end,packs_to_deliver,packs_delivered,monthly_packs_delivered,delivery_snapshots',
+      'id,sdo,region,milk_type,batch,feeding_days,remarks,delivery_start,delivery_end,packs_to_deliver,packs_delivered,monthly_packs_delivered,delivery_snapshots,supplier_id',
     )
     .eq('id', sbfpDataId)
     .maybeSingle()

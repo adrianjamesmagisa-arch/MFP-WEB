@@ -7,6 +7,7 @@ import { toDateInputValue, totalPacksDelivered } from '@/lib/sbfp-raw-milk'
 import { classifyDswdMasterlistPatch, MFP_GEO_NA } from '@/lib/mfp-record-classification'
 import {
   MONITORING_PROGRAMS,
+  programMonthStartDate,
   rowMatchesMonitoringProgram,
   type MonitoringProgramId,
 } from '@/lib/monitoring-programs'
@@ -15,8 +16,10 @@ import { normalizeSbfpMilkType } from '@/lib/sbfp-pack-price'
 export type ProgramProcurementRow = {
   id: string
   year: number
+  month?: number | null
   center: string
   program: MonitoringProgramId
+  supplier_id?: string | null
   region?: string | null
   province?: string | null
   label?: string | null
@@ -48,6 +51,7 @@ export type ProgramDropoffRow = {
   id: string
   procurement_id?: string | null
   year: number
+  month?: number | null
   center: string
   program: MonitoringProgramId
   province?: string | null
@@ -107,7 +111,11 @@ export function buildProgramMasterlistIdentity(
   }
 
   if (parent) {
-    payload.date_started = toDateInputValue(parent.delivery_start) || null
+    const monthKey = Number(dropoff.month) || Number(parent.month) || 0
+    payload.date_started =
+      toDateInputValue(parent.delivery_start) ||
+      programMonthStartDate(dropoff.year, monthKey) ||
+      null
     payload.date_completed = toDateInputValue(parent.delivery_end) || null
     payload.target_milk_packs_to_deliver = Number(parent.packs_to_deliver) || 0
     payload.total_milk_packs_delivered =
@@ -120,6 +128,7 @@ export function buildProgramMasterlistIdentity(
       payload.milk_cost = contract
     }
     if (parent.mode_of_procurement) payload.mode_of_procurement = parent.mode_of_procurement
+    payload.supplier_id = parent.supplier_id || null
   }
 
   const calc = calcMilkFormulations(beneficiaries, feedingDays, milkType)
@@ -236,14 +245,16 @@ export async function loadProgramProcurement(
   programId: MonitoringProgramId,
   center: string,
   year: number,
+  month?: number,
 ): Promise<ProgramProcurementRow[]> {
-  const { data, error } = await supabase
+  let q = supabase
     .from('mfp_program_procurement')
     .select('*')
     .eq('center', center)
     .eq('year', year)
     .eq('program', programId)
-    .order('label')
+  if (month != null) q = q.eq('month', month)
+  const { data, error } = await q.order('label')
   if (error || !data) return []
   return data as ProgramProcurementRow[]
 }
@@ -253,15 +264,16 @@ export async function loadProgramDropoffs(
   programId: MonitoringProgramId,
   center: string,
   year: number,
+  month?: number,
 ): Promise<ProgramDropoffRow[]> {
-  const { data, error } = await supabase
+  let q = supabase
     .from('mfp_program_dropoffs')
     .select('*')
     .eq('center', center)
     .eq('year', year)
     .eq('program', programId)
-    .order('province')
-    .order('dropoff_name')
+  if (month != null) q = q.eq('month', month)
+  const { data, error } = await q.order('province').order('dropoff_name')
   if (error || !data) return []
   return data as ProgramDropoffRow[]
 }
@@ -282,44 +294,145 @@ export type ProgramYearCard = {
   deliveredPacks: number
 }
 
+export type ProgramMonthCard = ProgramYearCard & { month: number }
+
+function periodKey(year: number, month: number) {
+  return `${year}-${month}`
+}
+
+function isMissingMonthsTable(message: string | undefined) {
+  return /mfp_program_months/i.test(message || '') || /schema cache/i.test(message || '')
+}
+
+export async function ensureProgramMonth(
+  supabase: SupabaseLike,
+  programId: MonitoringProgramId,
+  center: string,
+  year: number,
+  month: number,
+): Promise<{ error: string | null }> {
+  const { error } = await supabase.from('mfp_program_months').upsert(
+    { year, month, center, program: programId },
+    { onConflict: 'center,program,year,month' },
+  )
+  if (error && !isMissingMonthsTable(error.message)) return { error: error.message }
+  return { error: null }
+}
+
+/** Register a calendar year workspace (2026, not SY 2026–2027). */
+export async function ensureProgramYear(
+  supabase: SupabaseLike,
+  programId: MonitoringProgramId,
+  center: string,
+  year: number,
+): Promise<{ error: string | null }> {
+  return ensureProgramMonth(supabase, programId, center, year, 1)
+}
+
 export async function loadProgramYearCards(
   supabase: SupabaseLike,
   programId: MonitoringProgramId,
   center: string,
 ): Promise<ProgramYearCard[]> {
-  const { data: proc, error: e1 } = await supabase
-    .from('mfp_program_procurement')
-    .select('year,packs_to_deliver,packs_delivered')
-    .eq('center', center)
-    .eq('program', programId)
-  const { data: drops, error: e2 } = await supabase
-    .from('mfp_program_dropoffs')
-    .select('year,beneficiaries')
-    .eq('center', center)
-    .eq('program', programId)
-  if (e1 || e2) return []
-
+  const months = await loadProgramMonthCards(supabase, programId, center)
   const byYear = new Map<number, ProgramYearCard>()
+  const { data: periodYears } = await supabase
+    .from('mfp_program_months')
+    .select('year')
+    .eq('center', center)
+    .eq('program', programId)
+  for (const r of periodYears || []) {
+    const y = Number(r.year) || 0
+    if (!y || byYear.has(y)) continue
+    byYear.set(y, {
+      year: y,
+      areaCount: 0,
+      municipalityCount: 0,
+      beneficiaries: 0,
+      targetPacks: 0,
+      deliveredPacks: 0,
+    })
+  }
+  for (const m of months) {
+    if (!byYear.has(m.year)) {
+      byYear.set(m.year, {
+        year: m.year,
+        areaCount: 0,
+        municipalityCount: 0,
+        beneficiaries: 0,
+        targetPacks: 0,
+        deliveredPacks: 0,
+      })
+    }
+    const c = byYear.get(m.year)!
+    c.areaCount += m.areaCount
+    c.municipalityCount += m.municipalityCount
+    c.beneficiaries += m.beneficiaries
+    c.targetPacks += m.targetPacks
+    c.deliveredPacks += m.deliveredPacks
+  }
+  return [...byYear.values()].sort((a, b) => b.year - a.year)
+}
+
+export async function loadProgramMonthCards(
+  supabase: SupabaseLike,
+  programId: MonitoringProgramId,
+  center: string,
+): Promise<ProgramMonthCard[]> {
+  const { data: periods } = await supabase
+    .from('mfp_program_months')
+    .select('year,month')
+    .eq('center', center)
+    .eq('program', programId)
+  const { data: proc } = await supabase
+    .from('mfp_program_procurement')
+    .select('year,month,packs_to_deliver,packs_delivered')
+    .eq('center', center)
+    .eq('program', programId)
+  const { data: drops } = await supabase
+    .from('mfp_program_dropoffs')
+    .select('year,month,beneficiaries')
+    .eq('center', center)
+    .eq('program', programId)
+
+  const byPeriod = new Map<string, ProgramMonthCard>()
+  const addPeriod = (year: number, month: number) => {
+    const key = periodKey(year, month)
+    if (!byPeriod.has(key)) {
+      byPeriod.set(key, {
+        year,
+        month,
+        areaCount: 0,
+        municipalityCount: 0,
+        beneficiaries: 0,
+        targetPacks: 0,
+        deliveredPacks: 0,
+      })
+    }
+    return byPeriod.get(key)!
+  }
+
+  for (const r of periods || []) {
+    const y = Number(r.year) || 0
+    const m = Number(r.month) || 0
+    if (y && m) addPeriod(y, m)
+  }
   for (const r of proc || []) {
     const y = Number(r.year) || 0
+    const m = Number(r.month) || 8
     if (!y) continue
-    if (!byYear.has(y)) {
-      byYear.set(y, { year: y, areaCount: 0, municipalityCount: 0, beneficiaries: 0, targetPacks: 0, deliveredPacks: 0 })
-    }
-    const c = byYear.get(y)!
+    const c = addPeriod(y, m)
     c.areaCount++
     c.targetPacks += Number(r.packs_to_deliver) || 0
     c.deliveredPacks += Number(r.packs_delivered) || 0
   }
   for (const r of drops || []) {
     const y = Number(r.year) || 0
+    const m = Number(r.month) || 8
     if (!y) continue
-    if (!byYear.has(y)) {
-      byYear.set(y, { year: y, areaCount: 0, municipalityCount: 0, beneficiaries: 0, targetPacks: 0, deliveredPacks: 0 })
-    }
-    const c = byYear.get(y)!
+    const c = addPeriod(y, m)
     c.municipalityCount++
     c.beneficiaries += Number(r.beneficiaries) || 0
   }
-  return [...byYear.values()].sort((a, b) => b.year - a.year)
+  return [...byPeriod.values()].sort((a, b) => b.year - a.year || b.month - a.month)
 }

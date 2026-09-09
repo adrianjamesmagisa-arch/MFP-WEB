@@ -73,7 +73,7 @@ export function ProgramCenterWorkspace({
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
         <div>
           <Link href={hubPath} className="text-sm text-muted-foreground hover:text-foreground mb-1 inline-block">
-            ← Program years
+            ← Years
           </Link>
           <h1 className="text-2xl font-bold tracking-tight" style={{ color: program.accent }}>
             {program.shortLabel} · {centerLabel} · {year}
@@ -140,8 +140,8 @@ export function ProgramCenterWorkspace({
           <section className="flex flex-col gap-2">
             <h2 className="text-base font-semibold">1. Procurement status</h2>
             <p className="text-xs text-muted-foreground">
-              One row per {areaColumnLabel.toLowerCase()} (MOA grouping). Contract amount and target milk packs match SBFP columns L / packs to deliver.
-              Updates cascade to linked masterlist rows.{' '}
+              Same layout as SBFP SDO procurement, for calendar year {year}. One row per {areaColumnLabel.toLowerCase()}.
+              Coop, deliveries, and dates sync to every municipality under that row.{' '}
               <a href="#program-dropoffs" className="underline font-medium text-primary">
                 Jump to drop-off points ↓
               </a>

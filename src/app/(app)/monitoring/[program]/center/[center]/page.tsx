@@ -3,7 +3,6 @@ import { redirect, notFound } from 'next/navigation'
 import { Suspense } from 'react'
 import { MfpProgramYearHub } from '@/components/MfpProgramYearHub'
 import { ProgramCenterWorkspace } from '@/components/ProgramCenterWorkspace'
-import { loadMfpProgramYearCards } from '@/lib/mfp-program-monitoring'
 import {
   isProgramMonitoringSchemaReady,
   loadProgramDropoffs,
@@ -22,7 +21,7 @@ export default async function MonitoringCenterPage({
   searchParams,
 }: {
   params: Promise<{ program: string; center: string }>
-  searchParams: Promise<{ year?: string }>
+  searchParams: Promise<{ year?: string; month?: string }>
 }) {
   const { program: programParam, center: centerParam } = await params
   const { year: yearParam } = await searchParams
@@ -47,22 +46,15 @@ export default async function MonitoringCenterPage({
 
   const centerLabel = centerDisplayLabel(decodedCenter)
   const schemaReady = await isProgramMonitoringSchemaReady(supabase)
+  const { error: monthsErr } = schemaReady
+    ? await supabase.from('mfp_program_months').select('id').limit(1)
+    : { error: { message: 'not ready' } }
 
-  if (!yearParam?.trim()) {
-    let years = await loadMfpProgramYearCards(supabase, programId, decodedCenter)
-    if (schemaReady) {
-      const cards = await loadProgramYearCards(supabase, programId, decodedCenter)
-      if (cards.length > 0) {
-        years = cards.map(c => ({
-          year: c.year,
-          schoolCount: c.municipalityCount,
-          divisionCount: c.areaCount,
-          beneficiaries: c.beneficiaries,
-          targetPacks: c.targetPacks,
-          deliveredPacks: c.deliveredPacks,
-        }))
-      }
-    }
+  const year = yearParam ? parseInt(yearParam, 10) : NaN
+  if (!Number.isFinite(year)) {
+    const years = schemaReady
+      ? await loadProgramYearCards(supabase, programId, decodedCenter)
+      : []
     return (
       <Suspense fallback={<div className="p-6">Loading…</div>}>
         <MfpProgramYearHub
@@ -71,13 +63,12 @@ export default async function MonitoringCenterPage({
           centerLabel={centerLabel}
           years={years}
           workspaceBasePath={workspaceBase}
+          userRole={profile?.role}
+          monthsTableReady={!monthsErr}
         />
       </Suspense>
     )
   }
-
-  const year = parseInt(yearParam, 10)
-  if (!Number.isFinite(year)) redirect(workspaceBase)
 
   const [procurementRows, dropoffRows] = schemaReady
     ? await Promise.all([

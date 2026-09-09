@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, Fragment, type CSSProperties } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Trash2, Plus, CalendarPlus } from 'lucide-react'
+import type { Cooperative } from '@/lib/types'
 import { recomputeCenterSummary } from '@/lib/sbfp-compute'
 import {
   SBFP_RAW_MILK_MONTHS,
@@ -216,6 +217,64 @@ function EditableCell({
       onClick={() => setEditing(true)}
     >
       {display}
+    </td>
+  )
+}
+
+function CoopSelectCell({
+  id,
+  value,
+  cooperatives,
+  editable,
+  onSave,
+}: {
+  id: string
+  value: string | null | undefined
+  cooperatives: Cooperative[]
+  editable: boolean
+  onSave: (id: string, field: string, oldV: any, newV: any) => void
+}) {
+  const supabase = createClient()
+  const [saving, setSaving] = useState(false)
+  const [val, setVal] = useState(value || '')
+  useEffect(() => { setVal(value || '') }, [value])
+  const label = cooperatives.find(c => c.id === val)?.name
+
+  if (!editable) {
+    return <td title={label}>{label || 'N/A'}</td>
+  }
+
+  return (
+    <td title="Applies to every drop-off school under this SDO in the masterlist" style={{ padding: 2, opacity: saving ? 0.5 : 1 }}>
+      <select
+        value={val}
+        disabled={saving}
+        onChange={async e => {
+          const next = e.target.value || null
+          setVal(next || '')
+          setSaving(true)
+          const { error } = await supabase.from('sbfp_data').update({ supplier_id: next }).eq('id', id)
+          if (!error) onSave(id, 'supplier_id', value || null, next)
+          else {
+            setVal(value || '')
+            alert(
+              error.message.includes('supplier_id')
+                ? 'Coop column is not in the database yet. Run supabase/migrations/20260909120000_sbfp_supplier_id.sql in Supabase SQL Editor, then refresh.'
+                : error.message,
+            )
+          }
+          setSaving(false)
+        }}
+        style={{
+          width: '100%', minWidth: 140, border: '1px solid transparent', background: 'transparent',
+          fontSize: 'inherit', cursor: 'pointer', boxSizing: 'border-box',
+        }}
+      >
+        <option value="">—</option>
+        {cooperatives.map(c => (
+          <option key={c.id} value={c.id}>{c.name}</option>
+        ))}
+      </select>
     </td>
   )
 }
@@ -499,11 +558,22 @@ export function SbfpCenterTable({
   const [redoStack, setRedoStack] = useState<any[]>([])
   const [adding, setAdding]       = useState(false)
   const [extraSnapDates, setExtraSnapDates] = useState<string[]>([])
+  const [cooperatives, setCooperatives] = useState<Cooperative[]>([])
   const addSnapRef                = useRef<HTMLInputElement>(null)
   const editable                  = userRole !== 'viewer'
   const dbYear                    = year ?? (initialRecords[0]?.year as number | undefined)
 
   useEffect(() => { setRows(initialRecords) }, [initialRecords])
+  useEffect(() => {
+    supabase
+      .from('cooperatives')
+      .select('id, name, short_name, region, is_active, created_at')
+      .order('name')
+      .then(({ data }) => {
+        const list = (data || []) as Cooperative[]
+        setCooperatives(list.filter(c => c.is_active !== false))
+      })
+  }, [])
 
   const maybeRecompute = async (field?: string) => {
     if (!dbYear || center === 'OVERALL') return
@@ -636,7 +706,8 @@ export function SbfpCenterTable({
         field === 'delivery_start' ||
         field === 'delivery_end' ||
         field === 'packs_to_deliver' ||
-        field === 'packs_delivered')
+        field === 'packs_delivered' ||
+        field === 'supplier_id')
     ) {
       const err = await apiDropoffMasterlist({
         action: 'cascade-fields',
@@ -756,6 +827,7 @@ export function SbfpCenterTable({
       delivery_snapshots: [],
       monthly_packs_delivered: {},
       raw_milk_prices: {},
+      supplier_id: null,
     }
     const { data, error } = await supabase.from('sbfp_data').insert(payload).select().maybeSingle()
     setAdding(false)
@@ -879,6 +951,13 @@ export function SbfpCenterTable({
                   — Pack ₱
                 </th>
                 <th rowSpan={2} style={{ minWidth: 145, whiteSpace: 'normal', lineHeight: 1.2 }}>E — Mode of Procurement</th>
+                <th
+                  rowSpan={2}
+                  style={{ minWidth: 180, whiteSpace: 'normal', lineHeight: 1.2 }}
+                  title="Cooperative for this SDO. Saved to every drop-off school under this SDO on the masterlist (PIMD coop count)."
+                >
+                  — Coop
+                </th>
                 <th rowSpan={2} style={{ minWidth: 110, whiteSpace: 'normal', lineHeight: 1.2 }}>F — Date Recd (Proc)</th>
                 <th rowSpan={2} style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2 }}>G — PR Number</th>
                 <th rowSpan={2} style={{ minWidth: 110, whiteSpace: 'normal', lineHeight: 1.2 }}>H — ORS Date</th>
@@ -964,7 +1043,7 @@ export function SbfpCenterTable({
             <tbody>
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={19 + snapDates.length + visibleRawMonths.length * 3 + 3 + (editable ? 1 : 0)} style={{ textAlign: 'center', padding: '3rem', color: 'var(--gray-400)' }}>
+                  <td colSpan={20 + snapDates.length + visibleRawMonths.length * 3 + 3 + (editable ? 1 : 0)} style={{ textAlign: 'center', padding: '3rem', color: 'var(--gray-400)' }}>
                     No records for {center}.
                   </td>
                 </tr>
@@ -1051,6 +1130,13 @@ export function SbfpCenterTable({
                       ? <EditableCell id={r.id} field="mode_of_procurement" value={r.mode_of_procurement} type="select" options={MODES} onSave={handleSave} />
                       : <td>{r.mode_of_procurement || 'N/A'}</td>
                     }
+                    <CoopSelectCell
+                      id={r.id}
+                      value={r.supplier_id}
+                      cooperatives={cooperatives}
+                      editable={editable}
+                      onSave={handleSave}
+                    />
                     {/* F — PR Date */}
                     {editable
                       ? <EditableCell id={r.id} field="pr_date_received" value={r.pr_date_received} type="date" format={fmtDate} onSave={handleSave} />

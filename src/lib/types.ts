@@ -86,6 +86,8 @@ export interface SbfpRecord {
   delivery_snapshots?: Array<{ date?: string; packs?: number | null }>
   /** Active month key for Raw ₱/L / Income on this SDO. "8".."12". */
   raw_milk_month?: string | null
+  /** Cooperative supplying this SDO — synced to all drop-off schools on the masterlist. */
+  supplier_id?: string | null
   center: string
   created_by: string
   created_at: string

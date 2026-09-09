@@ -36,6 +36,7 @@ export function ProgramDropoffTable({
   programId,
   center,
   year,
+  month = 8,
   areaColumnLabel,
   parentOptions,
   initialRows,
@@ -44,6 +45,7 @@ export function ProgramDropoffTable({
   programId: MonitoringProgramId
   center: string
   year: number
+  month?: number
   areaColumnLabel: string
   parentOptions: ParentOption[]
   initialRows: ProgramDropoffRow[]
@@ -91,6 +93,7 @@ export function ProgramDropoffTable({
       .from('mfp_program_dropoffs')
       .insert({
         year,
+        month,
         center,
         program: programId,
         procurement_id: parent.id,

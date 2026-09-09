@@ -87,3 +87,28 @@ export function monitoringBasePath(programId: MonitoringProgramId): string {
 export function monitoringCenterPath(programId: MonitoringProgramId, center: string): string {
   return `${monitoringBasePath(programId)}/center/${encodeURIComponent(center)}`
 }
+
+export const PROGRAM_MONTHS: { value: number; label: string; short: string }[] = [
+  { value: 1, label: 'January', short: 'Jan' },
+  { value: 2, label: 'February', short: 'Feb' },
+  { value: 3, label: 'March', short: 'Mar' },
+  { value: 4, label: 'April', short: 'Apr' },
+  { value: 5, label: 'May', short: 'May' },
+  { value: 6, label: 'June', short: 'Jun' },
+  { value: 7, label: 'July', short: 'Jul' },
+  { value: 8, label: 'August', short: 'Aug' },
+  { value: 9, label: 'September', short: 'Sep' },
+  { value: 10, label: 'October', short: 'Oct' },
+  { value: 11, label: 'November', short: 'Nov' },
+  { value: 12, label: 'December', short: 'Dec' },
+]
+
+export function programMonthLabel(month: number, year?: number): string {
+  const m = PROGRAM_MONTHS.find(x => x.value === month)?.label || `Month ${month}`
+  return year ? `${m} ${year}` : m
+}
+
+export function programMonthStartDate(year: number, month: number): string | null {
+  if (!year || !month || month < 1 || month > 12) return null
+  return `${year}-${String(month).padStart(2, '0')}-01`
+}

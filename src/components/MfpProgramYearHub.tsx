@@ -1,10 +1,13 @@
 'use client'
 
+import type { ReactNode } from 'react'
 import Link from 'next/link'
 import { ArrowRight, CalendarDays, Package, School, Users } from 'lucide-react'
 import { MONITORING_PROGRAMS, type MonitoringProgramId } from '@/lib/monitoring-programs'
-import type { MfpProgramYearCard } from '@/lib/mfp-program-monitoring'
+import type { ProgramYearCard } from '@/lib/program-dropoff-sync'
+import { ProgramCreateYearButton } from '@/components/ProgramCreateYearButton'
 import { formatNumber } from '@/lib/utils'
+import { MFP_GEO_NA } from '@/lib/mfp-record-classification'
 
 export function MfpProgramYearHub({
   programId,
@@ -12,14 +15,20 @@ export function MfpProgramYearHub({
   centerLabel,
   years,
   workspaceBasePath,
+  userRole,
+  monthsTableReady = true,
 }: {
   programId: MonitoringProgramId
   center: string
   centerLabel: string
-  years: MfpProgramYearCard[]
+  years: ProgramYearCard[]
   workspaceBasePath: string
+  userRole?: string | null
+  monthsTableReady?: boolean
 }) {
   const program = MONITORING_PROGRAMS[programId]
+  const editable = userRole !== 'viewer'
+
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto' }}>
       <header
@@ -63,14 +72,28 @@ export function MfpProgramYearHub({
             {centerLabel}
           </h1>
           <p style={{ margin: '10px 0 0', fontSize: 17, lineHeight: 1.5, color: '#dbe4f0', maxWidth: 640 }}>
-            {program.subtitle}. Pick a calendar year to update sites and sync division delivery to the
-            masterlist (feeds PIMD when you filter by funder, center, year, and month).
-            {programId === 'dswd' && (
-              <> DSWD uses province + municipality; Division (F) and School (H) stay N/A in the masterlist.</>
-            )}
+            Same as SBFP: open a year for procurement and drop-off tables. Years are calendar years
+            (2026, 2027) — not school years (2026–2027). Masterlist Division and School stay {MFP_GEO_NA}.
           </p>
         </div>
+        {editable && (
+          <ProgramCreateYearButton
+            programId={programId}
+            center={center}
+            existingYears={years.map(y => y.year)}
+          />
+        )}
       </header>
+
+      {!monthsTableReady && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900" style={{ marginBottom: 20 }}>
+          The year registry table is not in the database yet. Open{' '}
+          <a className="underline font-semibold" href="/api/apply-program-monitoring-migration" target="_blank" rel="noreferrer">
+            /api/apply-program-monitoring-migration
+          </a>
+          , paste the SQL in Supabase → SQL Editor, then refresh. You can still click Create year and work in 2026.
+        </div>
+      )}
 
       {years.length === 0 ? (
         <div
@@ -79,18 +102,14 @@ export function MfpProgramYearHub({
             padding: '64px 28px',
             background: 'white',
             borderRadius: 16,
-            border: '1px solid var(--gray-200)',
+            border: '2px dashed #cbd5e1',
           }}
         >
-          <CalendarDays size={40} style={{ color: program.accent, marginBottom: 12 }} />
-          <p style={{ fontWeight: 600, color: 'var(--navy)' }}>No {program.fundedBy} records yet</p>
-          <p style={{ color: 'var(--gray-500)', fontSize: '0.9rem', maxWidth: 420, margin: '8px auto 0' }}>
-            Add schools in MFP Data with Funded By = {program.fundedBy === 'Others' ? 'your funder' : program.fundedBy}{' '}
-            and Center = {centerLabel}, then return here.
+          <CalendarDays size={40} style={{ color: program.accent, margin: '0 auto 12px' }} />
+          <p style={{ fontWeight: 800, fontSize: 22, color: 'var(--navy)' }}>No years yet</p>
+          <p style={{ color: 'var(--gray-500)', fontSize: '0.95rem', maxWidth: 440, margin: '8px auto 0' }}>
+            Create 2026 (or 2027, 2028) to start a blank {program.shortLabel} workspace.
           </p>
-          <Link href="/data/new" className="btn btn-gold" style={{ marginTop: 20, display: 'inline-flex' }}>
-            Add masterlist record
-          </Link>
         </div>
       ) : (
         <div
@@ -114,7 +133,6 @@ export function MfpProgramYearHub({
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 14,
-                transition: 'box-shadow 0.15s, border-color 0.15s',
               }}
               className="card-hover"
             >
@@ -123,19 +141,13 @@ export function MfpProgramYearHub({
                 <ArrowRight size={20} style={{ color: program.accent }} />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, fontSize: '0.82rem' }}>
-                <Stat icon={<School size={14} />} label={programId === 'dswd' ? 'Municipalities' : 'Schools'} value={formatNumber(y.schoolCount)} />
+                <Stat icon={<School size={14} />} label="Municipalities" value={formatNumber(y.municipalityCount)} />
                 <Stat icon={<Users size={14} />} label="Beneficiaries" value={formatNumber(y.beneficiaries)} />
                 <Stat icon={<Package size={14} />} label="Target packs" value={formatNumber(y.targetPacks)} />
-                <Stat
-                  icon={<Package size={14} />}
-                  label="Delivered"
-                  value={formatNumber(y.deliveredPacks)}
-                />
+                <Stat icon={<Package size={14} />} label="Delivered" value={formatNumber(y.deliveredPacks)} />
               </div>
               <div style={{ fontSize: '0.75rem', color: 'var(--gray-500)' }}>
-                {programId === 'dswd'
-                  ? `${y.divisionCount} province${y.divisionCount === 1 ? '' : 's'}`
-                  : `${y.divisionCount} division${y.divisionCount === 1 ? '' : 's'}`}
+                {y.areaCount} {programId === 'dswd' ? 'province' : 'area'}{y.areaCount === 1 ? '' : 's'}
               </div>
             </Link>
           ))}

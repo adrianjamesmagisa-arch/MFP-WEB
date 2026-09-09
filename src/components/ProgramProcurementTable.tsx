@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { CalendarPlus, Plus, Trash2 } from 'lucide-react'
 import type { MonitoringProgramId } from '@/lib/monitoring-programs'
 import type { ProgramProcurementRow } from '@/lib/program-dropoff-sync'
+import type { Cooperative } from '@/lib/types'
 import {
   ProcEditableCell,
   ProcMonthlyPriceCell,
@@ -70,6 +71,7 @@ const CASCADE_FIELDS = new Set([
   'mode_of_procurement',
   'delivery_snapshots',
   'monthly_packs_delivered',
+  'supplier_id',
 ])
 
 async function apiCascade(parent: ProgramProcurementRow): Promise<string | null> {
@@ -105,6 +107,7 @@ export function ProgramProcurementTable({
   programId,
   center,
   year,
+  month = 8,
   areaColumnLabel,
   initialRows,
   editable,
@@ -112,6 +115,7 @@ export function ProgramProcurementTable({
   programId: MonitoringProgramId
   center: string
   year: number
+  month?: number
   areaColumnLabel: string
   initialRows: ProgramProcurementRow[]
   editable: boolean
@@ -120,12 +124,22 @@ export function ProgramProcurementTable({
   const [rows, setRows] = useState(initialRows)
   const [extraSnapDates, setExtraSnapDates] = useState<string[]>([])
   const [adding, setAdding] = useState(false)
+  const [cooperatives, setCooperatives] = useState<Cooperative[]>([])
   const addSnapRef = useRef<HTMLInputElement>(null)
   const dbYear = year
 
   useEffect(() => {
     setRows(initialRows)
   }, [initialRows])
+  useEffect(() => {
+    supabase
+      .from('cooperatives')
+      .select('id, name, short_name, region, is_active, created_at')
+      .order('name')
+      .then(({ data }) => {
+        setCooperatives(((data || []) as Cooperative[]).filter(c => c.is_active !== false))
+      })
+  }, [])
 
   const cascadeIfNeeded = async (row: ProgramProcurementRow, field: string) => {
     if (CASCADE_FIELDS.has(field) || field === 'label' || field === 'region') {
@@ -272,6 +286,7 @@ export function ProgramProcurementTable({
       .from(PROC_TABLE)
       .insert({
         year,
+        month,
         center,
         program: programId,
         label: 'New Province',
@@ -305,7 +320,7 @@ export function ProgramProcurementTable({
   }
 
   const colSpan =
-    18 + snapDates.length + visibleRawMonths.length * 3 + 3 + (editable ? 1 : 0)
+    19 + snapDates.length + visibleRawMonths.length * 3 + 3 + (editable ? 1 : 0)
 
   return (
     <div className="card" style={{ overflow: 'hidden' }}>
@@ -374,6 +389,9 @@ export function ProgramProcurementTable({
                 — Pack ₱
               </th>
               <th rowSpan={2}>E — Mode of Procurement</th>
+              <th rowSpan={2} title="Applies to every municipality under this row in the masterlist">
+                — Coop
+              </th>
               <th rowSpan={2}>F — Date Recd (Proc)</th>
               <th rowSpan={2}>G — PR Number</th>
               <th rowSpan={2}>H — ORS Date</th>
@@ -560,6 +578,34 @@ export function ProgramProcurementTable({
                   ) : (
                     <td>{r.mode_of_procurement || 'N/A'}</td>
                   )}
+                  <td style={{ padding: 2 }}>
+                    {editable ? (
+                      <select
+                        value={r.supplier_id || ''}
+                        onChange={async e => {
+                          const next = e.target.value || null
+                          const { error } = await supabase.from(PROC_TABLE).update({ supplier_id: next }).eq('id', r.id)
+                          if (error) {
+                            alert(
+                              error.message.includes('supplier_id')
+                                ? 'Run supabase/migrations/20260909140000_mfp_program_months.sql in Supabase, then refresh.'
+                                : error.message,
+                            )
+                            return
+                          }
+                          await handleSave(r.id, 'supplier_id', r.supplier_id || null, next)
+                        }}
+                        style={{ width: '100%', minWidth: 140, fontSize: 'inherit', background: 'transparent', border: 0 }}
+                      >
+                        <option value="">—</option>
+                        {cooperatives.map(c => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      cooperatives.find(c => c.id === r.supplier_id)?.name || 'N/A'
+                    )}
+                  </td>
                   {editable ? (
                     <ProcEditableCell
                       table={PROC_TABLE}
