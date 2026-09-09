@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { PCC_CENTERS } from '@/lib/types'
 import { parseSnapshotDate, sumGrossIncomeRawMilk, packsForMonth, totalPacksDelivered } from '@/lib/sbfp-raw-milk'
@@ -216,8 +217,63 @@ function monitoringPacksForMonth(
   return 0
 }
 
+function isFailedSbfp(r: { procurement_status?: string | null }) {
+  return String(r.procurement_status || '').toUpperCase() === 'FAILED'
+}
+
+function sbfpCountsInReport(r: { include_in_report?: boolean | null }) {
+  return r.include_in_report !== false
+}
+
+/** Live SBFP SDO rows — same source as the center procurement page. */
+function sbfpDeliveredPacks(
+  rows: Array<Record<string, unknown>>,
+  monthNum: number | null,
+  yNum?: number,
+) {
+  return rows.reduce((s, r) => {
+    if (isFailedSbfp(r) || !sbfpCountsInReport(r)) return s
+    if (monthNum == null || !Number.isFinite(monthNum)) return s + totalPacksDelivered(r)
+    return s + packsForMonth(r, monthNum, { year: yNum })
+  }, 0)
+}
+
+function sbfpTargetPacks(rows: Array<Record<string, unknown>>) {
+  return rows.reduce((s, r) => {
+    if (isFailedSbfp(r) || !sbfpCountsInReport(r)) return s
+    return s + (Number(r.packs_to_deliver) || 0)
+  }, 0)
+}
+
+function accomplishmentPct(delivered: number, target: number) {
+  return target > 0 ? Math.min(Math.round((delivered / target) * 1000) / 10, 100) : 0
+}
+
+function chartsFromSbfp(
+  rows: Array<Record<string, unknown>>,
+  monthNum: number | null,
+  yNum?: number,
+) {
+  const volumeByType: Record<string, number> = {}
+  const packsBySize: Record<string, number> = {}
+  for (const r of rows) {
+    if (isFailedSbfp(r) || !sbfpCountsInReport(r)) continue
+    const packs =
+      monthNum == null || !Number.isFinite(monthNum)
+        ? totalPacksDelivered(r)
+        : packsForMonth(r, monthNum, { year: yNum })
+    if (packs <= 0) continue
+    const t = normalizeMilkTypeCode(r.milk_type || 'PM')
+    volumeByType[t] = (volumeByType[t] || 0) + packs * litersPerPackForMilkType(t)
+    const size = packagingSizeForMilkType(t)
+    packsBySize[size] = (packsBySize[size] || 0) + packs
+  }
+  return { volumeByType, packsBySize }
+}
+
 export default function PIMDReportPage() {
   const supabase = createClient()
+  const searchParams = useSearchParams()
   const [center, setCenter] = useState(ALL_CENTERS_VALUE)
   const [year, setYear] = useState('')
   const [month, setMonth] = useState('')
@@ -275,7 +331,13 @@ export default function PIMDReportPage() {
   useEffect(() => {
     const p = new URLSearchParams(window.location.search)
     if (p.get('compare') === '1') setShowReference(true)
-  }, [])
+    const f = searchParams.get('funder')
+    const y = searchParams.get('year')
+    const c = searchParams.get('center')
+    if (f) setFunder(f)
+    if (y) setYear(y)
+    if (c) setCenter(c)
+  }, [searchParams])
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -437,32 +499,64 @@ export default function PIMDReportPage() {
       }
     }
 
-    // Masterlist month scope: schools under SDOs that delivered in that month
-    // (or legacy date_started match when SBFP has no month packs yet).
+    // Masterlist month scope: schools under SDOs that delivered in that month (DepEd/SBFP),
+    // or date_started / date_completed for other funders.
     if (monthNum != null && Number.isFinite(monthNum) && rows.length) {
-      rows = rows.filter(r => {
-        const key = normalizeSdoName(r.division || '')
-        if (key && (sdoMonthPacks.get(key) || 0) > 0) return true
-        if (!sdoMonthPacks.size && r.date_started) {
-          return (new Date(r.date_started).getMonth() + 1) === monthNum
-        }
-        return false
-      })
+      if (includeSbfpForFunder(funder) && sdoMonthPacks.size > 0) {
+        rows = rows.filter(r => {
+          const key = normalizeSdoName(r.division || '')
+          if (key && (sdoMonthPacks.get(key) || 0) > 0) return true
+          if (!sdoMonthPacks.size && r.date_started) {
+            return (new Date(r.date_started).getMonth() + 1) === monthNum
+          }
+          return false
+        })
+      } else if (!includeSbfpForFunder(funder)) {
+        rows = rows.filter(r => {
+          if (r.date_started && (new Date(r.date_started).getMonth() + 1) === monthNum) return true
+          if (r.date_completed && (new Date(r.date_completed).getMonth() + 1) === monthNum) return true
+          return false
+        })
+      }
     }
 
     // GROSS REVENUE OF THE MILK FEEDING PROGRAM (client formula):
-    //   = total of SBFP Contract Amount (Excel column L)
-    const grossRevenue = sbfpScoped.reduce((s, r) => {
-      const contract = Number(r.contract_amount) || 0
-      const amount = Number(r.amount) || 0
-      return s + (contract > 0 ? contract : amount)
-    }, 0)
+    //   DepEd/SBFP → Contract Amount from sbfp_data; other funders → masterlist total funds / milk cost
+    const grossRevenue = includeSbfpForFunder(funder)
+      ? sbfpScoped.reduce((s, r) => {
+          const contract = Number(r.contract_amount) || 0
+          const amount = Number(r.amount) || 0
+          return s + (contract > 0 ? contract : amount)
+        }, 0)
+      : rows.reduce((s, r) => {
+          const funds = Number(r.total_funds_transferred) || 0
+          const cost = Number(r.milk_cost) || 0
+          return s + (funds > 0 ? funds : cost)
+        }, 0)
+
+    const rowPacks = (r: any) => {
+      const direct = Number(r.milk_packs) || 0
+      if (direct > 0) return direct
+      const calc = calcMilkFormulations(
+        Number(r.beneficiaries) || 0,
+        Number(r.feeding_days) || 0,
+        r.milk_type || 'PM',
+      )
+      return calc?.milkPacks || 0
+    }
 
     // GROSS INCOME FROM THE RAW MILK:
     //   Each month: only packs completed that month × that month’s Raw ₱/L
     //   Raw Milk used (L) = (packs / 5) × 0.2
     //   Month filter = that month only; otherwise sum of all months on the row
-    const grossIncome = sumGrossIncomeRawMilk(sbfpScoped, monthNum, { year: yNum })
+    const grossIncome = includeSbfpForFunder(funder)
+      ? sumGrossIncomeRawMilk(sbfpScoped, monthNum, { year: yNum })
+      : rows.reduce((s, r) => {
+          const packs = rowPacks(r)
+          const price = Number(r.price) || 0
+          const liters = Number(r.raw_milk_liters) || (packs > 0 ? (packs / 5) * 0.2 : 0)
+          return s + liters * (price > 0 ? price : 0)
+        }, 0)
 
     // Quantity cards/charts: for DepEd/SBFP use FULL values of Completed SDOs only
     // (those SDOs ARE the accomplishment %). Do not multiply again by the %.
@@ -477,6 +571,7 @@ export default function PIMDReportPage() {
 
     const monthQtyFactor = (division: string | null | undefined) => {
       if (monthNum == null || !Number.isFinite(monthNum)) return 1
+      if (!includeSbfpForFunder(funder) || sdoMonthPacks.size === 0) return 1
       const key = normalizeSdoName(division || '')
       if (!key) return 0
       const target = sdoTargetPacks.get(key) || 0
@@ -488,27 +583,15 @@ export default function PIMDReportPage() {
     /** 1 if SDO is in scope for the month (or no month filter); never prorate headcount. */
     const monthBeneFactor = (division: string | null | undefined) => {
       if (monthNum == null || !Number.isFinite(monthNum)) return 1
+      if (!includeSbfpForFunder(funder) || sdoMonthPacks.size === 0) return 1
       const key = normalizeSdoName(division || '')
       if (!key) return 0
       if ((sdoMonthPacks.get(key) || 0) > 0) return 1
-      // Masterlist-only month filter (no SBFP monthly packs): already filtered by date_started
-      if (!sdoMonthPacks.size) return 1
       return 0
     }
 
-    const rowPacks = (r: any) => {
-      const direct = Number(r.milk_packs) || 0
-      if (direct > 0) return direct
-      const calc = calcMilkFormulations(
-        Number(r.beneficiaries) || 0,
-        Number(r.feeding_days) || 0,
-        r.milk_type || 'PM',
-      )
-      return calc?.milkPacks || 0
-    }
-
     const totalBene = qtyRows.reduce((s, r) => s + (r.beneficiaries || 0) * monthBeneFactor(r.division), 0)
-    const totalPacks = qtyRows.reduce((s, r) => s + rowPacks(r) * monthQtyFactor(r.division), 0)
+    let totalPacks = qtyRows.reduce((s, r) => s + rowPacks(r) * monthQtyFactor(r.division), 0)
     const beneByFunder: Record<string, number> = {}
     const packsByFunder: Record<string, number> = {}
     const volumeByType: Record<string, number> = {}
@@ -534,11 +617,35 @@ export default function PIMDReportPage() {
       const size = packagingSizeForMilkType(t)
       packsBySize[size] = (packsBySize[size] || 0) + packs
     })
-    // Accomplishment % comes from SBFP FY 2026 Monitoring (sbfp_monitoring),
-    // not from the MFP masterlist AD/AE columns.
-    // With a month filter: sum(packs delivered THAT month only) / sum(target_packs) × 100
-    // (September = 18,955 only, not August+September). No month = latest cumulative.
-    // FAILED rows are excluded from both sums.
+    // Live SBFP procurement (same numbers as USM/CSU center pages). Used when
+    // masterlist milk_packs are empty or sbfp_monitoring snapshots were never filled.
+    const sbfpDelivered = includeSbfpForFunder(funder)
+      ? sbfpDeliveredPacks(sbfpAll, monthNum, yNum)
+      : 0
+    const sbfpTarget = includeSbfpForFunder(funder) ? sbfpTargetPacks(sbfpAll) : 0
+    const sbfpAccomp = accomplishmentPct(sbfpDelivered, sbfpTarget)
+
+    if (includeSbfpForFunder(funder) && sbfpDelivered > 0) {
+      const currentDeped = packsByFunder['DEPED'] || 0
+      if (currentDeped <= 0) {
+        packsByFunder['DEPED'] = Math.round(sbfpDelivered)
+        totalPacks = Math.round(totalPacks - currentDeped + sbfpDelivered)
+      }
+      const volSum = Object.values(volumeByType).reduce((a, b) => a + (Number(b) || 0), 0)
+      if (volSum <= 0) {
+        const charts = chartsFromSbfp(sbfpAll, monthNum, yNum)
+        for (const [k, v] of Object.entries(charts.volumeByType)) {
+          volumeByType[k] = (volumeByType[k] || 0) + v
+        }
+        for (const [k, v] of Object.entries(charts.packsBySize)) {
+          packsBySize[k] = (packsBySize[k] || 0) + v
+        }
+      }
+    }
+
+    // Accomplishment %: prefer sbfp_monitoring when it has real monthly deliveries.
+    // If that sheet is empty (USM) fall back to live sbfp_data, then masterlist AD/AE.
+    // With a month filter: packs delivered THAT month only / target × 100.
     const useSbfpMonitoring = includeSbfpForFunder(funder) && (!year || year === '2026')
     let accomplishment = 0
     if (useSbfpMonitoring) {
@@ -558,30 +665,19 @@ export default function PIMDReportPage() {
           if (!monthNum || !Number.isFinite(monthNum)) return s + (r.latest_delivered || 0)
           return s + monitoringPacksForMonth(r, monthNum)
         }, 0)
-        accomplishment = totalTarget > 0
-          ? Math.min(Math.round((totalDelivered / totalTarget) * 1000) / 10, 100)
-          : 0
+        accomplishment = accomplishmentPct(totalDelivered, totalTarget)
+        if ((totalDelivered <= 0 || totalTarget <= 0) && sbfpDelivered > 0 && sbfpTarget > 0) {
+          accomplishment = sbfpAccomp
+        }
       } else if (sbfpAll.length > 0) {
-        const usable = sbfpAll.filter(r =>
-          String(r.procurement_status || '').toUpperCase() !== 'FAILED'
-        )
-        const totalTarget = usable.reduce((s, r) => s + (Number(r.packs_to_deliver) || 0), 0)
-        const totalDelivered = usable.reduce((s, r) => {
-          if (monthNum == null || !Number.isFinite(monthNum)) {
-            return s + totalPacksDelivered(r)
-          }
-          return s + packsForMonth(r, monthNum, { year: yNum })
-        }, 0)
-        accomplishment = totalTarget > 0
-          ? Math.min(Math.round((totalDelivered / totalTarget) * 1000) / 10, 100)
-          : 0
+        accomplishment = sbfpAccomp
       }
+    } else if (includeSbfpForFunder(funder) && sbfpAll.length > 0) {
+      accomplishment = sbfpAccomp
     } else {
       const totalTarget = rows.reduce((s, r) => s + (r.target_milk_packs_to_deliver || 0), 0)
       const totalDelivered = rows.reduce((s, r) => s + (r.total_milk_packs_delivered || 0), 0)
-      accomplishment = totalTarget > 0
-        ? Math.min(Math.round((totalDelivered / totalTarget) * 1000) / 10, 100)
-        : 0
+      accomplishment = accomplishmentPct(totalDelivered, totalTarget)
     }
 
     setStats({

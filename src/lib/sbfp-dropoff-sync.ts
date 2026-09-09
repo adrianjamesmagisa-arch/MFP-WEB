@@ -6,7 +6,7 @@
  */
 
 import { calcMilkFormulations } from '@/lib/mfp-formulas'
-import { toDateInputValue } from '@/lib/sbfp-raw-milk'
+import { toDateInputValue, totalPacksDelivered, type SbfpRawMilkRow } from '@/lib/sbfp-raw-milk'
 import { inferSbfpMilkType, normalizeSbfpMilkType } from '@/lib/sbfp-pack-price'
 
 export type SbfpDropoffRow = {
@@ -36,6 +36,10 @@ export type SbfpParentSdo = {
   remarks?: string | null
   delivery_start?: string | Date | null
   delivery_end?: string | Date | null
+  packs_to_deliver?: number | null
+  packs_delivered?: number | null
+  monthly_packs_delivered?: unknown
+  delivery_snapshots?: unknown
 }
 
 export type MfpMasterRow = {
@@ -200,6 +204,14 @@ export function buildMasterlistIdentity(
     const end = toDateInputValue(parent.delivery_end)
     payload.date_started = start || null
     payload.date_completed = end || null
+
+    const sdoTarget = Number(parent.packs_to_deliver) || 0
+    payload.target_milk_packs_to_deliver = sdoTarget
+    payload.total_milk_packs_delivered = totalPacksDelivered({
+      monthly_packs_delivered: parent.monthly_packs_delivered,
+      delivery_snapshots: parent.delivery_snapshots,
+      packs_delivered: parent.packs_delivered,
+    } as SbfpRawMilkRow)
   }
 
   const calc = calcMilkFormulations(beneficiaries, feedingDays, milkType || 'PM')
@@ -211,7 +223,6 @@ export function buildMasterlistIdentity(
     payload.whole_milk_kg = Number(calc.wholeMilk.toFixed(4))
     payload.skimmed_milk_kg = Number(calc.skimMilk.toFixed(4))
     payload.sugar = Number(calc.sugar.toFixed(4))
-    payload.target_milk_packs_to_deliver = calc.milkPacks
   } else if (beneficiaries <= 0 || feedingDays <= 0) {
     payload.milk_packs = 0
     payload.total_volume_requirements = 0
@@ -219,7 +230,6 @@ export function buildMasterlistIdentity(
     payload.whole_milk_kg = 0
     payload.skimmed_milk_kg = 0
     payload.sugar = 0
-    payload.target_milk_packs_to_deliver = 0
   }
 
   return payload
@@ -361,6 +371,30 @@ export async function cascadeSdoFieldSync(
   return { error: null, updated }
 }
 
+/** Push SDO packs target + delivered totals to every drop-off-linked masterlist row for a center/year. */
+export async function resyncMasterlistDeliveryForCenter(
+  supabase: SupabaseLike,
+  center: string,
+  year: number,
+): Promise<{ error: string | null; updated: number }> {
+  const { data: sdos, error: listErr } = await supabase
+    .from('sbfp_data')
+    .select('id')
+    .eq('center', center)
+    .eq('year', year)
+  if (listErr) return { error: listErr.message, updated: 0 }
+
+  let updated = 0
+  for (const row of sdos || []) {
+    const parent = await loadParentSdo(supabase, row.id)
+    if (!parent) continue
+    const res = await cascadeSdoFieldSync(supabase, row.id, parent)
+    if (res.error) return { error: res.error, updated }
+    updated += res.updated
+  }
+  return { error: null, updated }
+}
+
 export async function loadParentSdo(
   supabase: SupabaseLike,
   sbfpDataId: string | null | undefined,
@@ -368,7 +402,9 @@ export async function loadParentSdo(
   if (!sbfpDataId) return null
   const { data, error } = await supabase
     .from('sbfp_data')
-    .select('id,sdo,region,milk_type,batch,feeding_days,remarks,delivery_start,delivery_end')
+    .select(
+      'id,sdo,region,milk_type,batch,feeding_days,remarks,delivery_start,delivery_end,packs_to_deliver,packs_delivered,monthly_packs_delivered,delivery_snapshots',
+    )
     .eq('id', sbfpDataId)
     .maybeSingle()
   if (error || !data) return null

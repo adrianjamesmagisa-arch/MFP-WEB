@@ -7,6 +7,7 @@ import {
   cascadeSdoRename,
   cascadeSdoFieldSync,
   loadParentSdo,
+  resyncMasterlistDeliveryForCenter,
   type SbfpDropoffRow,
   type SbfpParentSdo,
 } from '@/lib/sbfp-dropoff-sync'
@@ -21,12 +22,14 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => null) as
     | {
-        action?: 'sync' | 'unlink' | 'cascade-rename' | 'cascade-fields'
+        action?: 'sync' | 'unlink' | 'cascade-rename' | 'cascade-fields' | 'resync-center-delivery'
         dropoff?: SbfpDropoffRow
         dropoffId?: string
         sbfpDataId?: string
         newSdoName?: string
         parent?: SbfpParentSdo
+        center?: string
+        year?: number
       }
     | null
 
@@ -59,6 +62,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'sbfpDataId and parent required' }, { status: 400 })
     }
     const res = await cascadeSdoFieldSync(admin, body.sbfpDataId, body.parent)
+    if (res.error) return NextResponse.json({ error: res.error }, { status: 500 })
+    return NextResponse.json({ ok: true, updated: res.updated })
+  }
+
+  if (body.action === 'resync-center-delivery') {
+    const center = String(body.center || '').trim()
+    const year = Number(body.year)
+    if (!center || !Number.isFinite(year)) {
+      return NextResponse.json({ error: 'center and year required' }, { status: 400 })
+    }
+    const res = await resyncMasterlistDeliveryForCenter(admin, center, year)
     if (res.error) return NextResponse.json({ error: res.error }, { status: 500 })
     return NextResponse.json({ ok: true, updated: res.updated })
   }

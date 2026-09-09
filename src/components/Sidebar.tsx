@@ -7,9 +7,10 @@ import { createClient } from '@/lib/supabase/client'
 import {
   LayoutDashboard, Database, Users,
   Building2, LogOut, ChevronRight, ChevronDown,
-  FileBarChart2, BarChart3, BookOpenCheck, HeartHandshake, Church, Package, Milk
+  FileBarChart2, BarChart3, BookOpenCheck, HeartHandshake, Church, Package, Milk, Landmark, Layers
 } from 'lucide-react'
-import { sbfpEncoderHomePath } from '@/lib/center-aliases'
+import { sbfpEncoderHomePath, monitoringEncoderHomePath } from '@/lib/center-aliases'
+import type { MonitoringProgramId } from '@/lib/monitoring-programs'
 
 const navItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -17,6 +18,13 @@ const navItems = [
   { href: '/sbfp',      icon: Milk,             label: 'SBFP' },
   { href: '/centers',   icon: Building2,         label: 'Centers' },
   { href: '/users',     icon: Users,             label: 'Users' },
+]
+
+const monitoringNavItems: { program: MonitoringProgramId; icon: typeof HeartHandshake; label: string }[] = [
+  { program: 'dswd', icon: HeartHandshake, label: 'DSWD' },
+  { program: 'lds', icon: Church, label: 'LDS' },
+  { program: 'lgu', icon: Landmark, label: 'LGU' },
+  { program: 'others', icon: Layers, label: 'Others' },
 ]
 
 const reportItems = [
@@ -57,6 +65,14 @@ export default function Sidebar({ userRole, userCenter, userName }: {
     }
     return item
   })
+
+  const visibleMonitoringItems = monitoringNavItems.map(item => ({
+    ...item,
+    href:
+      userRole === 'encoder'
+        ? monitoringEncoderHomePath(item.program, userCenter)
+        : `/monitoring/${item.program}`,
+  }))
 
   // Encoders only see the PIMD Report — hide the summary/narrative reports
   const ENCODER_HIDDEN_REPORTS = [
@@ -99,6 +115,37 @@ export default function Sidebar({ userRole, userCenter, userName }: {
           return (
             <Link
               key={item.href}
+              href={item.href}
+              className={`sidebar-link ${isActive ? 'active' : ''}`}
+            >
+              <Icon size={16} />
+              {!isCollapsed && <span>{item.label}</span>}
+              {isActive && !isCollapsed && <ChevronRight size={14} style={{ marginLeft: 'auto' }} />}
+            </Link>
+          )
+        })}
+
+        {!isCollapsed && (
+          <div
+            style={{
+              padding: '0.75rem 1.25rem 0.35rem',
+              fontSize: '0.62rem',
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              color: '#475569',
+            }}
+          >
+            Program monitoring
+          </div>
+        )}
+
+        {visibleMonitoringItems.map(item => {
+          const Icon = item.icon
+          const isActive = pathname.startsWith(`/monitoring/${item.program}`)
+          return (
+            <Link
+              key={item.program}
               href={item.href}
               className={`sidebar-link ${isActive ? 'active' : ''}`}
             >
@@ -154,6 +201,16 @@ export default function Sidebar({ userRole, userCenter, userName }: {
         )}
 
         {/* Collapsed: show report icons */}
+        {isCollapsed && visibleMonitoringItems.map(item => {
+          const Icon = item.icon
+          const isActive = pathname.startsWith(`/monitoring/${item.program}`)
+          return (
+            <Link key={item.program} href={item.href} className={`sidebar-link ${isActive ? 'active' : ''}`}>
+              <Icon size={16} />
+            </Link>
+          )
+        })}
+
         {isCollapsed && visibleReportItems.map(item => {
           const Icon = item.icon
           const isActive = pathname === item.href

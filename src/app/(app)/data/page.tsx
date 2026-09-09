@@ -129,7 +129,14 @@ export default async function DataPage({
       <DataFilters filterOptions={filterOptions} />
 
             {/* Table */}
-      <DataTable records={records ?? []} />
+      <DataTable
+        records={records ?? []}
+        resyncDelivery={
+          profile?.role === 'encoder' && profile?.center
+            ? { center: profile.center, year: APP_YEARS[0] ?? 2026 }
+            : null
+        }
+      />
 
       {records?.length === 0 && (
         <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--gray-400)', background: 'white', borderRadius: 12, border: '1px solid var(--gray-200)', marginTop: '-1rem', borderTop: 'none', borderTopLeftRadius: 0, borderTopRightRadius: 0 }}>

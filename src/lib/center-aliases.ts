@@ -37,6 +37,31 @@ export function sbfpEncoderHomePath(profileCenter: string | null | undefined): s
   return `/sbfp/center/${encodeURIComponent(nav)}`
 }
 
+/** MFP center slug for monitoring URLs (uses profile center / NIZ family). */
+export function monitoringNavCenter(profileCenter: string | null | undefined): string | null {
+  if (!profileCenter) return null
+  const c = profileCenter.trim()
+  if (isNizFamily(c)) return 'NIZ'
+  return c
+}
+
+export function monitoringEncoderHomePath(
+  program: string,
+  profileCenter: string | null | undefined,
+): string {
+  const nav = monitoringNavCenter(profileCenter) || 'CSU'
+  return `/monitoring/${program}/center/${encodeURIComponent(nav)}`
+}
+
+export function encoderCanAccessMonitoringCenter(
+  profileCenter: string | null | undefined,
+  targetCenter: string,
+): boolean {
+  if (!profileCenter) return false
+  const allowed = new Set(mfpCenterAliases(profileCenter).map(c => c.toUpperCase()))
+  return allowed.has(targetCenter.trim().toUpperCase())
+}
+
 /** Whether an encoder may view this SBFP center page / row. */
 export function encoderCanAccessSbfpCenter(
   profileCenter: string | null | undefined,

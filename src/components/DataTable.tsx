@@ -86,7 +86,13 @@ function EditableCell({ id, field, value, type = 'text', className, style, forma
   )
 }
 
-export function DataTable({ records }: { records: any[] }) {
+export function DataTable({
+  records,
+  resyncDelivery,
+}: {
+  records: any[]
+  resyncDelivery?: { center: string; year: number } | null
+}) {
   const router = useRouter()
   const supabase = createClient()
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -98,18 +104,22 @@ export function DataTable({ records }: { records: any[] }) {
     setLocalRecords(records)
   }, [records])
 
-  // Build a per-row index for the AD/AE merged-cell display.
-  // Matches Excel's merged cells: value shown once per division group (year+center+division),
-  // spanning all rows in that consecutive group.
-  const divisionRowSpan = useMemo(() => {
-    // index[i] = { firstInGroup: bool, rowspan: number, target: number, delivered: number }
-    const result: { firstInGroup: boolean; rowspan: number; target: number; delivered: number }[] = []
+  const displayRecords = useMemo(() => {
+    return [...localRecords].sort((a, b) => {
+      const y = (Number(b.year) || 0) - (Number(a.year) || 0)
+      if (y !== 0) return y
+      const c = String(a.center || '').localeCompare(String(b.center || ''))
+      if (c !== 0) return c
+      const d = String(a.division || '').localeCompare(String(b.division || ''))
+      if (d !== 0) return d
+      return String(a.elementary_school || '').localeCompare(String(b.elementary_school || ''))
+    })
+  }, [localRecords])
 
-    // Step 1: collect target/delivered per division key.
-    // target and delivered are tracked independently so that a row with only target=X and
-    // another row with only delivered=Y both contribute their values correctly.
+  // SDO-level AD/AE (one target + delivered total per year+center+division)
+  const divisionDelivery = useMemo(() => {
     const keyData: Record<string, { target: number; delivered: number }> = {}
-    localRecords.forEach(r => {
+    displayRecords.forEach(r => {
       const key = `${r.year}|${r.center}|${r.division}`
       if (!keyData[key]) keyData[key] = { target: 0, delivered: 0 }
       const t = Number(r.target_milk_packs_to_deliver) || 0
@@ -117,20 +127,23 @@ export function DataTable({ records }: { records: any[] }) {
       if (t > keyData[key].target) keyData[key].target = t
       if (d > keyData[key].delivered) keyData[key].delivered = d
     })
+    return keyData
+  }, [displayRecords])
 
-    // Step 2: walk the records in order, tracking consecutive groups
+  // One merged AD/AE block per consecutive SDO group (Excel-style), using division totals.
+  const divisionRowSpan = useMemo(() => {
+    const result: { firstInGroup: boolean; rowspan: number; target: number; delivered: number }[] = []
     let i = 0
-    while (i < localRecords.length) {
-      const r = localRecords[i]
+    while (i < displayRecords.length) {
+      const r = displayRecords[i]
       const key = `${r.year}|${r.center}|${r.division}`
-      // Count how many consecutive rows share the same key
       let span = 1
-      while (i + span < localRecords.length) {
-        const nr = localRecords[i + span]
+      while (i + span < displayRecords.length) {
+        const nr = displayRecords[i + span]
         if (`${nr.year}|${nr.center}|${nr.division}` === key) span++
         else break
       }
-      const data = keyData[key] ?? { target: 0, delivered: 0 }
+      const data = divisionDelivery[key] ?? { target: 0, delivered: 0 }
       result.push({ firstInGroup: true, rowspan: span, ...data })
       for (let j = 1; j < span; j++) {
         result.push({ firstInGroup: false, rowspan: 0, ...data })
@@ -138,7 +151,33 @@ export function DataTable({ records }: { records: any[] }) {
       i += span
     }
     return result
-  }, [localRecords])
+  }, [displayRecords, divisionDelivery])
+
+  useEffect(() => {
+    if (!resyncDelivery?.center || !resyncDelivery?.year) return
+    const storageKey = `mfp-delivery-resync:${resyncDelivery.center}:${resyncDelivery.year}`
+    if (typeof window !== 'undefined' && sessionStorage.getItem(storageKey)) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch('/api/sbfp/sync-dropoff', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'resync-center-delivery',
+            center: resyncDelivery.center,
+            year: resyncDelivery.year,
+          }),
+        })
+        if (!res.ok || cancelled) return
+        sessionStorage.setItem(storageKey, '1')
+        router.refresh()
+      } catch {
+        // ignore — table still shows best available DB values
+      }
+    })()
+    return () => { cancelled = true }
+  }, [resyncDelivery?.center, resyncDelivery?.year, router])
 
   const handleCellSave = (id: string, field: string, oldVal: any, newVal: any) => {
     setLocalRecords(prev => prev.map(r => r.id === id ? { ...r, [field]: newVal } : r))
@@ -258,7 +297,7 @@ export function DataTable({ records }: { records: any[] }) {
               </tr>
             </thead>
                         <tbody>
-              {localRecords?.map((r, rIdx) => (
+              {displayRecords?.map((r, rIdx) => (
                 <tr key={r.id} style={{ background: selectedIds.has(r.id) ? '#e0e7ff' : undefined }}>
                   <td className="col-check" style={{ textAlign: 'center' }}>
                     <input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => toggleRow(r.id)} style={{ cursor: 'pointer' }} />
@@ -298,27 +337,35 @@ export function DataTable({ records }: { records: any[] }) {
                   <EditableCell onSave={handleCellSave} id={r.id} field="date_completed" value={r.date_completed} type="date" format={formatDate} />
                   <EditableCell onSave={handleCellSave} id={r.id} field="liquidation" value={r.liquidation} type="date" format={formatDate} />
 
-                  {/* AD/AE — merged cell per division group, matching Excel layout */}
+                  {/* AD/AE — one merged cell per SDO (division), like Excel */}
                   {(() => {
                     const info = divisionRowSpan[rIdx]
-                    if (!info) return null
-                    if (!info.firstInGroup) return null // cell is covered by rowspan above
+                    if (!info?.firstInGroup) return null
                     const { rowspan, target, delivered } = info
-                    const pct = target > 0 ? Math.min(Math.round((delivered / target) * 100), 100) : null
-                    const pctColor = pct === null ? '#6b7280' : pct >= 100 ? '#16a34a' : pct >= 75 ? '#d97706' : '#dc2626'
+                    const pct = target > 0 ? Math.round((delivered / target) * 100) : null
+                    const pctColor =
+                      pct === null ? '#6b7280' : pct >= 100 ? '#16a34a' : pct >= 75 ? '#d97706' : '#dc2626'
                     const cellStyle: React.CSSProperties = {
-                      textAlign: 'right', fontSize: '0.78rem', verticalAlign: 'middle',
+                      textAlign: 'right',
+                      fontSize: '0.78rem',
+                      verticalAlign: 'middle',
                       borderLeft: '2px solid #e2e8f0',
                       background: rowspan > 1 ? '#f8faff' : undefined,
                     }
                     return (
                       <>
-                        <td rowSpan={rowspan} title="Target milk packs for this division (one value per division, like merged cell in Excel)"
-                          style={{ ...cellStyle, fontWeight: 600, color: target > 0 ? 'var(--navy)' : '#9ca3af' }}>
+                        <td
+                          rowSpan={rowspan}
+                          title="Target milk packs for this division (from SBFP Packs to Deliver)"
+                          style={{ ...cellStyle, fontWeight: 600, color: target > 0 ? 'var(--navy)' : '#9ca3af' }}
+                        >
                           {target > 0 ? formatNumber(target) : 'N/A'}
                         </td>
-                        <td rowSpan={rowspan} title="Total milk packs delivered for this division"
-                          style={{ ...cellStyle, borderLeft: '1px solid #e2e8f0' }}>
+                        <td
+                          rowSpan={rowspan}
+                          title="Total milk packs delivered for this division (from SBFP delivery)"
+                          style={{ ...cellStyle, borderLeft: '1px solid #e2e8f0' }}
+                        >
                           {delivered > 0 ? (
                             <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
                               <span style={{ fontWeight: 700, color: 'var(--navy)' }}>{formatNumber(delivered)}</span>
@@ -328,7 +375,9 @@ export function DataTable({ records }: { records: any[] }) {
                                 </span>
                               )}
                             </span>
-                          ) : <span style={{ color: '#9ca3af' }}>N/A</span>}
+                          ) : (
+                            <span style={{ color: '#9ca3af' }}>N/A</span>
+                          )}
                         </td>
                       </>
                     )

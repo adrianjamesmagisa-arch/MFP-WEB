@@ -36,6 +36,16 @@ async function apiDropoffMasterlist(body: Record<string, unknown>): Promise<stri
   return null
 }
 
+async function cascadeMasterlistFromSdo(row: Record<string, unknown>): Promise<void> {
+  if (!row?.id) return
+  const err = await apiDropoffMasterlist({
+    action: 'cascade-fields',
+    sbfpDataId: String(row.id),
+    parent: row,
+  })
+  if (err) console.warn('Masterlist delivery cascade:', err)
+}
+
 // ─────────────────────────────────────────────
 // Status badge — PDF-exact values
 // ─────────────────────────────────────────────
@@ -543,8 +553,10 @@ export function SbfpCenterTable({
       const total = totalPacksDelivered(nextRow)
       if (total !== (Number(nextRow.packs_delivered) || 0)) {
         await supabase.from('sbfp_data').update({ packs_delivered: total }).eq('id', id)
+        nextRow = { ...nextRow, packs_delivered: total }
         setRows(p => p.map(r => r.id === id ? { ...r, packs_delivered: total } : r))
       }
+      await cascadeMasterlistFromSdo(nextRow)
     }
 
     // Amount / milk type / CM pack ₱ → packs_to_deliver = amount ÷ ₱ per pack
@@ -578,6 +590,7 @@ export function SbfpCenterTable({
         if (!packErr) {
           nextRow = { ...nextRow, packs_to_deliver: nextPacks }
           setRows(p => p.map(r => r.id === id ? { ...r, packs_to_deliver: nextPacks } : r))
+          await cascadeMasterlistFromSdo(nextRow)
         } else {
           alert(`Could not update Packs to Deliver: ${packErr.message}`)
         }
@@ -621,7 +634,9 @@ export function SbfpCenterTable({
         field === 'feeding_days' ||
         field === 'remarks' ||
         field === 'delivery_start' ||
-        field === 'delivery_end')
+        field === 'delivery_end' ||
+        field === 'packs_to_deliver' ||
+        field === 'packs_delivered')
     ) {
       const err = await apiDropoffMasterlist({
         action: 'cascade-fields',
@@ -697,6 +712,7 @@ export function SbfpCenterTable({
         setRows(p => p.map(row =>
           row.id === r.id ? { ...row, delivery_snapshots: newSnaps, packs_delivered: total } : row
         ))
+        await cascadeMasterlistFromSdo(nextRow)
       }
     }))
     await maybeRecompute('delivery_snapshots')
