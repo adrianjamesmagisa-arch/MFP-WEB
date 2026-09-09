@@ -1,16 +1,22 @@
 import { notFound, redirect } from 'next/navigation'
-import Link from 'next/link'
+import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/server'
-import { MONITORING_PROGRAMS, parseMonitoringProgram, monitoringCenterPath, rowMatchesMonitoringProgram } from '@/lib/monitoring-programs'
-import { PCC_CENTERS } from '@/lib/types'
+import { MONITORING_PROGRAMS, parseMonitoringProgram } from '@/lib/monitoring-programs'
 import { monitoringEncoderHomePath } from '@/lib/center-aliases'
+import { isProgramMonitoringSchemaReady } from '@/lib/program-dropoff-sync'
+import { loadProgramDashboardStats } from '@/lib/program-dashboard'
+import { ProgramOverallDashboard } from '@/components/ProgramOverallDashboard'
+import { ProgramOverallFilter } from '@/components/ProgramOverallFilter'
 
 export default async function MonitoringOverallPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ program: string }>
+  searchParams: Promise<{ year?: string; month?: string; center?: string }>
 }) {
   const { program: programParam } = await params
+  const { year: yearParam, month: monthParam, center: centerParam } = await searchParams
   const programId = parseMonitoringProgram(programParam)
   if (!programId) notFound()
   const program = MONITORING_PROGRAMS[programId]
@@ -26,55 +32,46 @@ export default async function MonitoringOverallPage({
     redirect(monitoringEncoderHomePath(programId, profile.center))
   }
 
-  const { data: rows } = await supabase
-    .from('mfp_data')
-    .select('center,funded_by')
-    .limit(10000)
-
-  const counts = new Map<string, number>()
-  for (const c of PCC_CENTERS) counts.set(c, 0)
-  for (const r of rows || []) {
-    if (!rowMatchesMonitoringProgram(r.funded_by, programId)) continue
-    const center = String(r.center || '').trim()
-    if (counts.has(center)) counts.set(center, (counts.get(center) || 0) + 1)
-  }
+  const year = yearParam ? parseInt(yearParam, 10) : undefined
+  const month = monthParam ? parseInt(monthParam, 10) : undefined
+  const center = centerParam?.trim() || undefined
+  const schemaReady = await isProgramMonitoringSchemaReady(supabase)
+  const stats = await loadProgramDashboardStats(supabase, programId, {
+    year: Number.isFinite(year) ? year : undefined,
+    month: Number.isFinite(month) && month! >= 1 && month! <= 12 ? month : undefined,
+    center,
+  })
 
   return (
     <div>
       <div className="page-header">
         <div>
           <h1 className="page-title" style={{ color: program.accent }}>
-            {program.label}
+            {program.shortLabel} dashboard
           </h1>
-          <p className="page-subtitle">{program.subtitle} — pick a center</p>
+          <p className="page-subtitle">
+            {program.subtitle}. Filter by year, month, and center. Open a center to encode.
+          </p>
         </div>
       </div>
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-          gap: 16,
-        }}
-      >
-        {PCC_CENTERS.map(center => (
-          <Link
-            key={center}
-            href={monitoringCenterPath(programId, center)}
-            className="card"
-            style={{
-              padding: '1.25rem',
-              textDecoration: 'none',
-              color: 'inherit',
-              borderLeft: `4px solid ${program.accent}`,
-            }}
-          >
-            <div style={{ fontWeight: 800, fontSize: '1.1rem', color: 'var(--navy)' }}>{center}</div>
-            <div style={{ fontSize: '0.85rem', color: 'var(--gray-500)', marginTop: 6 }}>
-              {counts.get(center) || 0} record(s)
-            </div>
-          </Link>
-        ))}
-      </div>
+
+      {!schemaReady && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 mb-4">
+          Program monitoring tables are not in the database yet. Figures below use masterlist rows only.
+        </div>
+      )}
+
+      <Suspense fallback={null}>
+        <ProgramOverallFilter />
+      </Suspense>
+
+      <ProgramOverallDashboard
+        program={program}
+        stats={stats}
+        year={Number.isFinite(year) ? year : undefined}
+        month={Number.isFinite(month) && month! >= 1 && month! <= 12 ? month : undefined}
+        center={center}
+      />
     </div>
   )
 }

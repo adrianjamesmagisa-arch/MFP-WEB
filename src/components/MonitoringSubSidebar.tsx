@@ -33,7 +33,7 @@ export function MonitoringSubSidebar({
 
   const navMain = encoderCenter
     ? []
-    : [{ href: `${base}/overall`, icon: BarChart3, label: 'All centers' }]
+    : [{ href: `${base}/overall`, icon: BarChart3, label: 'Dashboard' }]
 
   return (
     <aside
