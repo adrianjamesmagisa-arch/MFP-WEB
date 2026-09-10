@@ -120,7 +120,7 @@ export function AsyncFeedbackProvider({ children }: { children: ReactNode }) {
     (id: string, message = 'Working…', opts?: { blocking?: boolean }) => {
       setTasks(prev => ({
         ...prev,
-        [id]: { message, blocking: opts?.blocking ?? true },
+        [id]: { message, blocking: opts?.blocking ?? false },
       }))
     },
     [],
@@ -150,9 +150,18 @@ export function AsyncFeedbackProvider({ children }: { children: ReactNode }) {
 
   const taskList = useMemo(() => Object.values(tasks), [tasks])
   const pendingCount = taskList.length
-  const statusMessage = taskList.length ? taskList[taskList.length - 1].message : isNavigating ? 'Loading page…' : null
-  const isBlocking = taskList.some(t => t.blocking)
-  const barActive = isNavigating || pendingCount > 0
+  const blockingTasks = taskList.filter(t => t.blocking)
+  const isBlocking = blockingTasks.length > 0
+  // Full-screen modal only for navigation + explicit blocking work (delete, create year, …).
+  // Quiet cell saves must not interrupt encoders.
+  const modalActive = isNavigating || isBlocking
+  const statusMessage = isBlocking
+    ? blockingTasks[blockingTasks.length - 1].message
+    : isNavigating
+      ? 'Loading page…'
+      : null
+  // Top bar only for blocking / navigation — quiet cell saves stay invisible
+  const barActive = modalActive
 
   const value = useMemo(
     () => ({
@@ -171,7 +180,7 @@ export function AsyncFeedbackProvider({ children }: { children: ReactNode }) {
     <AsyncFeedbackContext.Provider value={value}>
       <GlobalLoadingBar active={barActive} />
       {children}
-      <LoadingModal show={barActive} message={statusMessage} />
+      <LoadingModal show={modalActive} message={statusMessage} />
     </AsyncFeedbackContext.Provider>
   )
 }

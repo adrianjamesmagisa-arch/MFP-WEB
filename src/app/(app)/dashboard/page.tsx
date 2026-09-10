@@ -4,15 +4,7 @@ import { formatCurrency, formatNumber } from '@/lib/utils'
 import { Users, Package, DollarSign, Database, BookOpen, HeartHandshake, Church } from 'lucide-react'
 import { DashboardFilter } from '@/components/DashboardFilter'
 import { PCC_CENTERS } from '@/lib/types'
-
-interface FunderStat { funded_by: string; records: number; beneficiaries: number; milk_packs: number; milk_cost: number; total_funds: number }
-interface YearStat   { year: number; records: number; beneficiaries: number; milk_packs: number }
-interface CenterStat { center: string; beneficiaries: number }
-interface DashStats  {
-  total_records: number; total_beneficiaries: number; total_milk_packs: number
-  total_funds: number; total_milk_cost: number
-  by_funder: FunderStat[]; by_year: YearStat[]; top_centers: CenterStat[]
-}
+import { loadDashboardStats } from '@/lib/dashboard-stats'
 
 export default async function DashboardPage(props: { searchParams: Promise<{ year?: string, month?: string, center?: string }> }) {
   const searchParams = await props.searchParams;
@@ -25,89 +17,26 @@ export default async function DashboardPage(props: { searchParams: Promise<{ yea
 
   const isEncoder   = profile?.role === 'encoder'
   const centerFilter = isEncoder ? profile?.center : searchParams.center
+  const year = searchParams.year ? parseInt(searchParams.year, 10) : undefined
+  const month = searchParams.month ? parseInt(searchParams.month, 10) : undefined
 
-  let stats: DashStats | null = null
-
-  // ── FETCH DATA ────────────────────────────────
-  let query = supabase
-    .from('mfp_data')
-    .select('beneficiaries, milk_packs, milk_cost, total_funds_transferred, funded_by, year, center, date_started')
-    .range(0, 49999)
-
-  if (centerFilter) {
-    query = query.eq('center', centerFilter)
-  }
-  if (searchParams.year) {
-    query = query.eq('year', parseInt(searchParams.year))
-  }
-
-  let { data: rows } = await query
-
-  // ── IN-MEMORY MONTH FILTER ────────────────────────────────
-  if (searchParams.month && rows) {
-    const m = parseInt(searchParams.month)
-    rows = rows.filter(r => {
-      if (!r.date_started) return false
-      const d = new Date(r.date_started)
-      return (d.getMonth() + 1) === m
-    })
-  }
-
-  // ── AGGREGATE STATS ────────────────────────────────
-  const _totalRecords       = rows?.length ?? 0
-  const _totalBeneficiaries = rows?.reduce((s, r) => s + (r.beneficiaries || 0), 0) ?? 0
-  const _totalMilkPacks     = rows?.reduce((s, r) => s + (r.milk_packs || 0), 0) ?? 0
-  const _totalFunds         = rows?.reduce((s, r) => s + (r.total_funds_transferred || 0), 0) ?? 0
-  const _totalMilkCost      = rows?.reduce((s, r) => s + (r.milk_cost || 0), 0) ?? 0
-
-  const funderMap: Record<string, FunderStat> = {}
-  rows?.forEach(r => {
-    if (!funderMap[r.funded_by]) funderMap[r.funded_by] = { funded_by: r.funded_by, records: 0, beneficiaries: 0, milk_packs: 0, milk_cost: 0, total_funds: 0 }
-    funderMap[r.funded_by].records      += 1
-    funderMap[r.funded_by].beneficiaries += r.beneficiaries || 0
-    funderMap[r.funded_by].milk_packs   += r.milk_packs || 0
-    funderMap[r.funded_by].milk_cost    += r.milk_cost || 0
-    funderMap[r.funded_by].total_funds  += r.total_funds_transferred || 0
+  const stats = await loadDashboardStats(supabase, {
+    year: Number.isFinite(year) ? year : undefined,
+    month: Number.isFinite(month) && month! >= 1 && month! <= 12 ? month : undefined,
+    center: centerFilter || undefined,
   })
 
-  const yearMap: Record<number, YearStat> = {}
-  rows?.forEach(r => {
-    if (!yearMap[r.year]) yearMap[r.year] = { year: r.year, records: 0, beneficiaries: 0, milk_packs: 0 }
-    yearMap[r.year].records      += 1
-    yearMap[r.year].beneficiaries += r.beneficiaries || 0
-    yearMap[r.year].milk_packs   += r.milk_packs || 0
-  })
-
-  const centerMap: Record<string, CenterStat> = {}
-  rows?.forEach(r => {
-    if (!r.center) return
-    if (!centerMap[r.center]) centerMap[r.center] = { center: r.center, beneficiaries: 0 }
-    centerMap[r.center].beneficiaries += r.beneficiaries || 0
-  })
-  const topCentersArray = Object.values(centerMap).sort((a, b) => b.beneficiaries - a.beneficiaries).slice(0, 5)
-
-  stats = {
-    total_records: _totalRecords,
-    total_beneficiaries: _totalBeneficiaries,
-    total_milk_packs: _totalMilkPacks,
-    total_funds: _totalFunds,
-    total_milk_cost: _totalMilkCost,
-    by_funder: Object.values(funderMap),
-    by_year: Object.values(yearMap).sort((a, b) => a.year - b.year),
-    top_centers: topCentersArray,
-  }
-
-  const totalRecords       = stats?.total_records       ?? 0
-  const totalBeneficiaries = stats?.total_beneficiaries ?? 0
-  const totalMilkPacks     = stats?.total_milk_packs    ?? 0
-  const totalFunds         = stats?.total_funds         ?? 0
-  const byFunder           = stats?.by_funder           ?? []
-  const byYear             = stats?.by_year             ?? []
-  const topCenters         = stats?.top_centers         ?? []
+  const totalRecords       = stats.total_records
+  const totalBeneficiaries = stats.total_beneficiaries
+  const totalMilkPacks     = stats.total_milk_packs
+  const totalFunds         = stats.total_funds
+  const byFunder           = stats.by_funder
+  const byYear             = stats.by_year
+  const topCenters         = stats.top_centers
   const maxBene            = Math.max(...byYear.map(y => y.beneficiaries), 1)
 
   const funderConfig: Record<string, { label: string; icon: typeof BookOpen; color: string; bg: string }> = {
-    DepEd: { label: 'DepEd – School-Based Feeding',  icon: BookOpen,       color: '#1d4ed8', bg: '#dbeafe' },
+    DepEd: { label: 'DepEd – School-Based Feeding (from SBFP)',  icon: BookOpen,       color: '#1d4ed8', bg: '#dbeafe' },
     DSWD:  { label: 'DSWD – Supplementary Feeding',  icon: HeartHandshake, color: '#15803d', bg: '#dcfce7' },
     LDS:   { label: 'LDS – Latter Day Saints',        icon: Church,         color: '#b45309', bg: '#fef3c7' },
   }
@@ -129,8 +58,10 @@ export default async function DashboardPage(props: { searchParams: Promise<{ yea
             {profile?.role && <> · <span style={{ color: 'var(--gold)', textTransform: 'capitalize' }}>{profile.role.replace('_', ' ')}</span></>}
             {profile?.center && <> · {profile.center}</>}
           </p>
+          <p style={{ fontSize: '0.78rem', color: 'var(--gray-600)', marginTop: 6 }}>
+            DepEd figures come from SBFP drop-off schools (encoder-entered beneficiaries). Other funders use the masterlist.
+          </p>
         </div>
-        {/* Center badge for encoders */}
         {centerFilter && (
           <div style={{ background: 'var(--navy)', color: 'white', borderRadius: 10, padding: '0.6rem 1.25rem', fontSize: '0.82rem', fontWeight: 700 }}>
             📍 Showing {centerFilter} data only
@@ -139,7 +70,6 @@ export default async function DashboardPage(props: { searchParams: Promise<{ yea
         <DashboardFilter centers={PCC_CENTERS} isEncoder={isEncoder} />
       </div>
 
-      {/* Top stat cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
         {topCards.map(s => {
           const Icon = s.icon
@@ -157,7 +87,6 @@ export default async function DashboardPage(props: { searchParams: Promise<{ yea
         })}
       </div>
 
-      {/* By Funder */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
         {(['DepEd', 'DSWD', 'LDS'] as const).map(key => {
           const cfg = funderConfig[key]
@@ -186,18 +115,17 @@ export default async function DashboardPage(props: { searchParams: Promise<{ yea
               </div>
               <div style={{ marginTop: '0.75rem', padding: '0.6rem 0.75rem', background: `${cfg.color}10`, borderRadius: 8 }}>
                 <div style={{ fontWeight: 700, fontSize: '0.85rem', color: cfg.color }}>{formatCurrency(d.milk_cost)}</div>
-                <div style={{ fontSize: '0.68rem', color: 'var(--gray-600)' }}>Gross Income · {formatNumber(d.records)} records</div>
+                <div style={{ fontSize: '0.68rem', color: 'var(--gray-600)' }}>Gross Income · {formatNumber(d.records)} {key === 'DepEd' ? 'schools' : 'records'}</div>
               </div>
             </div>
           )
         })}
       </div>
 
-      {/* Bottom: Year Chart + Centers */}
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1rem' }}>
         <div className="card" style={{ padding: '1.5rem' }}>
           <h3 style={{ fontWeight: 700, color: 'var(--navy)', marginBottom: '1.25rem', fontSize: '1rem' }}>
-            Beneficiaries by Fiscal Year {isEncoder && centerFilter && `— ${centerFilter}`}
+            Beneficiaries by Year {isEncoder && centerFilter && `— ${centerFilter}`}
           </h3>
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end', height: 160 }}>
             {byYear.map(yr => {
@@ -208,7 +136,7 @@ export default async function DashboardPage(props: { searchParams: Promise<{ yea
                     {yr.beneficiaries >= 1000 ? `${(yr.beneficiaries/1000).toFixed(0)}K` : yr.beneficiaries}
                   </div>
                   <div style={{ width: '100%', background: 'var(--navy)', borderRadius: '4px 4px 0 0', height: `${pct}%`, minHeight: 4 }} />
-                  <div style={{ fontSize: '0.65rem', fontWeight: 600, color: 'var(--gray-600)' }}>FY{yr.year}</div>
+                  <div style={{ fontSize: '0.65rem', fontWeight: 600, color: 'var(--gray-600)' }}>{yr.year}</div>
                 </div>
               )
             })}
@@ -216,9 +144,14 @@ export default async function DashboardPage(props: { searchParams: Promise<{ yea
         </div>
 
         <div className="card" style={{ padding: '1.5rem' }}>
-          <h3 style={{ fontWeight: 700, color: 'var(--navy)', marginBottom: '1.25rem', fontSize: '1rem' }}>
+          <h3 style={{ fontWeight: 700, color: 'var(--navy)', marginBottom: 4, fontSize: '1rem' }}>
             {isEncoder ? 'Program Breakdown' : 'Top Centers by Beneficiaries'}
           </h3>
+          {!isEncoder && (
+            <p style={{ fontSize: '0.72rem', color: 'var(--gray-600)', marginBottom: '1rem' }}>
+              From SBFP SDO Procurement — column K (Beneficiaries)
+            </p>
+          )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
             {topCenters.map((c, i) => {
               const pct = (c.beneficiaries / (topCenters[0]?.beneficiaries || 1)) * 100

@@ -566,10 +566,9 @@ export function SbfpCenterTable({
   const dbYear                    = year ?? (initialRecords[0]?.year as number | undefined)
   const runTask                   = useAsyncTask('Saving…')
 
-  const cascadeWithFeedback = async (row: Record<string, unknown>) => {
-    await runTask(async () => {
-      await cascadeMasterlistFromSdo(row)
-    }, 'Syncing to masterlist…')
+  const cascadeWithFeedback = (row: Record<string, unknown>) => {
+    // Fire-and-forget — encoders keep editing while masterlist syncs in the background
+    void cascadeMasterlistFromSdo(row).catch(err => console.warn('Masterlist sync:', err))
   }
 
   useEffect(() => { setRows(initialRecords) }, [initialRecords])
@@ -635,7 +634,7 @@ export function SbfpCenterTable({
         nextRow = { ...nextRow, packs_delivered: total }
         setRows(p => p.map(r => r.id === id ? { ...r, packs_delivered: total } : r))
       }
-      await cascadeWithFeedback(nextRow)
+      cascadeWithFeedback(nextRow)
     }
 
     // Amount / milk type / CM pack ₱ → packs_to_deliver = amount ÷ ₱ per pack
@@ -669,7 +668,7 @@ export function SbfpCenterTable({
         if (!packErr) {
           nextRow = { ...nextRow, packs_to_deliver: nextPacks }
           setRows(p => p.map(r => r.id === id ? { ...r, packs_to_deliver: nextPacks } : r))
-          await cascadeWithFeedback(nextRow)
+          cascadeWithFeedback(nextRow)
         } else {
           alert(`Could not update Packs to Deliver: ${packErr.message}`)
         }
@@ -698,15 +697,14 @@ export function SbfpCenterTable({
           setRows(p => p.map(r => r.id === id ? { ...r, packs_to_deliver: derived } : r))
         }
       }
-      await runTask(async () => {
-        const err = await apiDropoffMasterlist({
-          action: 'cascade-rename',
-          sbfpDataId: id,
-          newSdoName: String(newV || ''),
-          parent: nextRow,
-        })
+      void apiDropoffMasterlist({
+        action: 'cascade-rename',
+        sbfpDataId: id,
+        newSdoName: String(newV || ''),
+        parent: nextRow,
+      }).then(err => {
         if (err) alert(err)
-      }, 'Syncing to masterlist…')
+      })
     } else if (
       nextRow &&
       (field === 'region' ||
@@ -720,14 +718,13 @@ export function SbfpCenterTable({
         field === 'packs_delivered' ||
         field === 'supplier_id')
     ) {
-      await runTask(async () => {
-        const err = await apiDropoffMasterlist({
-          action: 'cascade-fields',
-          sbfpDataId: id,
-          parent: nextRow,
-        })
+      void apiDropoffMasterlist({
+        action: 'cascade-fields',
+        sbfpDataId: id,
+        parent: nextRow,
+      }).then(err => {
         if (err) alert(err)
-      }, 'Syncing to masterlist…')
+      })
     }
     await maybeRecompute(field === 'amount' || field === 'milk_type' || field === 'pack_unit_price' ? 'packs_to_deliver' : field)
   }
@@ -797,7 +794,7 @@ export function SbfpCenterTable({
         setRows(p => p.map(row =>
           row.id === r.id ? { ...row, delivery_snapshots: newSnaps, packs_delivered: total } : row
         ))
-        await cascadeWithFeedback(nextRow)
+        cascadeWithFeedback(nextRow)
       }
     }))
     await maybeRecompute('delivery_snapshots')

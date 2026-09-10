@@ -6,6 +6,7 @@
  */
 
 import { calcMilkFormulations } from '@/lib/mfp-formulas'
+import { fetchAllRows } from '@/lib/supabase-paginate'
 import { toDateInputValue, totalPacksDelivered, type SbfpRawMilkRow } from '@/lib/sbfp-raw-milk'
 import { inferSbfpMilkType, normalizeSbfpMilkType } from '@/lib/sbfp-pack-price'
 
@@ -400,6 +401,56 @@ export async function cascadeSdoFieldSync(
 }
 
 /** Push SDO packs target + delivered totals to every drop-off-linked masterlist row for a center/year. */
+/** Sync every included SBFP drop-off into DepEd masterlist rows (all centers). */
+export async function resyncAllSbfpDropoffsToMasterlist(
+  supabase: SupabaseLike,
+  year?: number,
+): Promise<{ error: string | null; synced: number; orphansRemoved: number }> {
+  let dropoffs: SbfpDropoffRow[]
+  try {
+    dropoffs = await fetchAllRows<SbfpDropoffRow>(() => {
+      let q = supabase.from('sbfp_dropoff_points').select('*').neq('include_in_masterlist', false)
+      if (year) q = q.eq('year', year)
+      return q
+    })
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Failed to load drop-offs', synced: 0, orphansRemoved: 0 }
+  }
+  const parentCache = new Map<string, SbfpParentSdo | null>()
+  let synced = 0
+  for (const row of dropoffs) {
+    const pid = row.sbfp_data_id || ''
+    if (pid && !parentCache.has(pid)) parentCache.set(pid, await loadParentSdo(supabase, pid))
+    const parent = pid ? parentCache.get(pid) : null
+    const res = await syncDropoffToMasterlist(supabase, row, parent)
+    if (res.error) return { error: res.error, synced, orphansRemoved: 0 }
+    synced++
+  }
+
+  const keepIds = dropoffs.map(d => d.id)
+  let orphansRemoved = 0
+  let depedRows: { id: string; source_dropoff_id?: string | null }[]
+  try {
+    depedRows = await fetchAllRows(() => {
+      let orphanQ = supabase.from('mfp_data').select('id,source_dropoff_id').eq('funded_by', 'DepEd')
+      if (year) orphanQ = orphanQ.eq('year', year)
+      return orphanQ
+    })
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Failed to load DepEd masterlist', synced, orphansRemoved: 0 }
+  }
+  const keep = new Set(keepIds)
+  const orphans = depedRows.filter(r => !r.source_dropoff_id || !keep.has(r.source_dropoff_id))
+  for (let i = 0; i < orphans.length; i += 100) {
+    const chunk = orphans.slice(i, i + 100).map((r: { id: string }) => r.id)
+    const { error } = await supabase.from('mfp_data').delete().in('id', chunk)
+    if (error) return { error: error.message, synced, orphansRemoved }
+    orphansRemoved += chunk.length
+  }
+
+  return { error: null, synced, orphansRemoved }
+}
+
 export async function resyncMasterlistDeliveryForCenter(
   supabase: SupabaseLike,
   center: string,

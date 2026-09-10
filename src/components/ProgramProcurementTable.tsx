@@ -33,6 +33,7 @@ import {
   resolvePackUnitPrice,
   SBFP_MILK_TYPE_VALUES,
 } from '@/lib/sbfp-pack-price'
+import { nextIncrementedName } from '@/lib/next-incremented-name'
 
 function rawMilkRow(r: ProgramProcurementRow): SbfpRawMilkRow {
   return r as unknown as SbfpRawMilkRow
@@ -130,6 +131,7 @@ export function ProgramProcurementTable({
   const [adding, setAdding] = useState(false)
   const [cooperatives, setCooperatives] = useState<Cooperative[]>([])
   const addSnapRef = useRef<HTMLInputElement>(null)
+  const reservedLabelsRef = useRef<Set<string>>(new Set())
   const dbYear = year
 
   useEffect(() => {
@@ -148,12 +150,12 @@ export function ProgramProcurementTable({
       })
   }, [])
 
-  const cascadeIfNeeded = async (row: ProgramProcurementRow, field: string) => {
+  const cascadeIfNeeded = (row: ProgramProcurementRow, field: string) => {
     if (CASCADE_FIELDS.has(field) || field === 'label' || field === 'region') {
-      await runTask(async () => {
-        const err = await apiCascade(row)
+      // Fire-and-forget — do not block cell editing
+      void apiCascade(row).then(err => {
         if (err) console.warn(err)
-      }, 'Syncing to masterlist…')
+      })
     }
   }
 
@@ -214,7 +216,7 @@ export function ProgramProcurementTable({
       }
     }
 
-    if (nextRow) await cascadeIfNeeded(nextRow, field)
+    if (nextRow) cascadeIfNeeded(nextRow, field)
   }
 
   const snapDates = Array.from(
@@ -296,7 +298,13 @@ export function ProgramProcurementTable({
   }
 
   const addRow = async () => {
+    if (adding) return
     setAdding(true)
+    const defaultLabel = nextIncrementedName(`New ${areaColumnLabel}`, [
+      ...rows.flatMap(r => [r.label, r.province]),
+      ...reservedLabelsRef.current,
+    ])
+    reservedLabelsRef.current.add(defaultLabel.toLowerCase())
     const { data, error } = await supabase
       .from(PROC_TABLE)
       .insert({
@@ -304,8 +312,8 @@ export function ProgramProcurementTable({
         month,
         center,
         program: programId,
-        label: 'New Province',
-        province: 'New Province',
+        label: defaultLabel,
+        province: defaultLabel,
         region: '',
         procurement_status: 'For Preparation',
         mode_of_procurement: 'Sagip Saka',
@@ -316,6 +324,7 @@ export function ProgramProcurementTable({
       })
       .select('*')
       .single()
+    reservedLabelsRef.current.delete(defaultLabel.toLowerCase())
     setAdding(false)
     if (error) {
       alert(error.message)

@@ -207,10 +207,11 @@ export function SbfpDropoffTable({
     return rows.filter(r => r.sbfp_data_id === filterSdo)
   }, [rows, filterSdo, sdoSelectOptions])
 
-  const syncRow = async (row: DropoffRow) => {
-    // Service-role API — browser RLS often cannot update mfp_data for encoders
-    const err = await apiSyncDropoff(row)
-    if (err) setMsg(err)
+  const syncRow = (row: DropoffRow) => {
+    // Background sync — do not block the encoder
+    void apiSyncDropoff(row).then(err => {
+      if (err) setMsg(err)
+    })
   }
 
   const updateField = async (id: string, field: keyof DropoffRow, value: any) => {
@@ -249,7 +250,7 @@ export function SbfpDropoffTable({
       setRows(p => p.map(r => r.id === id ? prev : r))
       return
     }
-    await syncRow(next)
+    syncRow(next)
   }
 
   const handleAdd = async () => {
@@ -294,7 +295,7 @@ export function SbfpDropoffTable({
     }
     if (data) {
       setRows(p => [...p, data as DropoffRow])
-      await syncRow(data as DropoffRow)
+      syncRow(data as DropoffRow)
     }
   }
 

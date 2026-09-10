@@ -107,6 +107,7 @@ export function DataTable({
   const [localRecords, setLocalRecords] = useState(records)
   const [undoStack, setUndoStack] = useState<any[]>([])
   const [redoStack, setRedoStack] = useState<any[]>([])
+  const [bulkDeleting, setBulkDeleting] = useState(false)
 
   useEffect(() => {
     setLocalRecords(records)
@@ -257,6 +258,41 @@ export function DataTable({
   const handleBulkEdit = () => {
     sessionStorage.setItem('bulkEditIds', JSON.stringify(Array.from(selectedIds)))
     router.push('/data/bulk-edit')
+  }
+
+  const handleBulkDelete = async () => {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0 || bulkDeleting) return
+    const ok = confirm(
+      `Delete ${ids.length} selected record${ids.length === 1 ? '' : 's'} from MFP Data? This cannot be undone.`,
+    )
+    if (!ok) return
+
+    setBulkDeleting(true)
+    try {
+      await runTask(
+        async () => {
+          const chunkSize = 100
+          for (let i = 0; i < ids.length; i += chunkSize) {
+            const chunk = ids.slice(i, i + chunkSize)
+            const { error } = await supabase.from('mfp_data').delete().in('id', chunk)
+            if (error) throw error
+          }
+          setLocalRecords(prev => prev.filter(r => !selectedIds.has(r.id)))
+          setSelectedIds(new Set())
+          setUndoStack([])
+          setRedoStack([])
+          router.refresh()
+        },
+        `Deleting ${ids.length} record${ids.length === 1 ? '' : 's'}…`,
+        { blocking: true },
+      )
+    } catch (e) {
+      console.error(e)
+      alert(e instanceof Error ? e.message : 'Could not delete selected records.')
+    } finally {
+      setBulkDeleting(false)
+    }
   }
 
   return (
@@ -433,8 +469,28 @@ export function DataTable({
           <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>
             {selectedIds.size} row{selectedIds.size > 1 ? 's' : ''} selected
           </span>
-          <button onClick={handleBulkEdit} className="btn btn-gold" style={{ padding: '0.5rem 1rem', borderRadius: '50px' }}>
+          <button
+            onClick={handleBulkEdit}
+            disabled={bulkDeleting}
+            className="btn btn-gold"
+            style={{ padding: '0.5rem 1rem', borderRadius: '50px' }}
+          >
             <Edit2 size={16} /> Bulk Edit
+          </button>
+          <button
+            onClick={() => void handleBulkDelete()}
+            disabled={bulkDeleting}
+            className="btn btn-outline"
+            style={{
+              padding: '0.5rem 1rem',
+              borderRadius: '50px',
+              color: '#fecaca',
+              borderColor: 'rgba(254, 202, 202, 0.5)',
+              background: 'rgba(220, 38, 38, 0.15)',
+            }}
+          >
+            {bulkDeleting ? <Spinner size={16} className="border-red-200 border-t-transparent" /> : <Trash2 size={16} />}
+            {bulkDeleting ? 'Deleting…' : 'Bulk Delete'}
           </button>
         </div>
       )}

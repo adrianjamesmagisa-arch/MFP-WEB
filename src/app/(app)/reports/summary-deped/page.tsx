@@ -3,6 +3,8 @@ import { redirect } from 'next/navigation'
 import { DashboardFilter } from '@/components/DashboardFilter'
 import { PCC_CENTERS } from '@/lib/types'
 import { SummaryDepEdClient } from './SummaryDepEdClient'
+import { fetchAllRows } from '@/lib/supabase-paginate'
+import { mfpCenterAliases, sbfpCenterAliases } from '@/lib/center-aliases'
 
 export default async function SummaryDepEdPage(props: {
   searchParams: Promise<{ year?: string; month?: string; center?: string }>
@@ -16,9 +18,19 @@ export default async function SummaryDepEdPage(props: {
   const isEncoder = profile?.role === 'encoder'
   const centerFilter = isEncoder ? profile?.center : sp.center
 
-  let query = supabase
-    .from('mfp_data')
-    .select(`
+  const centerAliases =
+    centerFilter && centerFilter !== '__ALL_CENTERS__'
+      ? [...new Set([...sbfpCenterAliases(centerFilter), ...mfpCenterAliases(centerFilter)])]
+      : null
+
+  let years = [2026, 2027]
+  const yearNum = sp.year && sp.year !== 'All Years' ? parseInt(sp.year, 10) : NaN
+  if (Number.isFinite(yearNum)) years = [yearNum]
+
+  let rawData = await fetchAllRows<any>(() => {
+    let query = supabase
+      .from('mfp_data')
+      .select(`
       beneficiaries, milk_packs, milk_cost, total_funds_transferred, 
       funded_by, year, center, region, province, division, 
       municipality, elementary_school, feeding_days, batch, date_started,
@@ -26,29 +38,12 @@ export default async function SummaryDepEdPage(props: {
       supplier_id,
       cooperatives ( id, name )
     `)
-    .eq('funded_by', 'DepEd')
-    .range(0, 49999)
-
-  // Use dynamic center mapping for NIZ
-  let actualCenterFilter = centerFilter
-  if (centerFilter === '__ALL_CENTERS__') {
-    actualCenterFilter = undefined
-  } else if (centerFilter === 'NHQGP (NIZ)') {
-    actualCenterFilter = 'NIZ'
-  }
-
-  if (actualCenterFilter) query = query.eq('center', actualCenterFilter)
-  
-  // Year filter: If a specific year is chosen, we ONLY fetch that year.
-  // Otherwise, we fetch all years for DepEd.
-  let years = [2026, 2027]
-  if (sp.year && sp.year !== 'All Years') {
-    const y = parseInt(sp.year)
-    query = query.eq('year', y)
-    years = [y]
-  }
-
-  let { data: rawData } = await query
+      .eq('funded_by', 'DepEd')
+    if (Number.isFinite(yearNum)) query = query.eq('year', yearNum)
+    if (centerAliases?.length === 1) query = query.eq('center', centerAliases[0])
+    else if (centerAliases && centerAliases.length > 1) query = query.in('center', centerAliases)
+    return query
+  })
 
   if (sp.month && sp.month !== 'All' && rawData) {
     const m = parseInt(sp.month)

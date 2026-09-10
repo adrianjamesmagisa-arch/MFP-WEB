@@ -8,6 +8,7 @@ import {
   cascadeSdoFieldSync,
   loadParentSdo,
   resyncMasterlistDeliveryForCenter,
+  resyncAllSbfpDropoffsToMasterlist,
   type SbfpDropoffRow,
   type SbfpParentSdo,
 } from '@/lib/sbfp-dropoff-sync'
@@ -22,7 +23,7 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => null) as
     | {
-        action?: 'sync' | 'unlink' | 'cascade-rename' | 'cascade-fields' | 'resync-center-delivery'
+        action?: 'sync' | 'unlink' | 'cascade-rename' | 'cascade-fields' | 'resync-center-delivery' | 'resync-all-deped'
         dropoff?: SbfpDropoffRow
         dropoffId?: string
         sbfpDataId?: string
@@ -64,6 +65,13 @@ export async function POST(req: Request) {
     const res = await cascadeSdoFieldSync(admin, body.sbfpDataId, body.parent)
     if (res.error) return NextResponse.json({ error: res.error }, { status: 500 })
     return NextResponse.json({ ok: true, updated: res.updated })
+  }
+
+  if (body.action === 'resync-all-deped') {
+    const year = body.year != null ? Number(body.year) : undefined
+    const res = await resyncAllSbfpDropoffsToMasterlist(admin, Number.isFinite(year) ? year : undefined)
+    if (res.error) return NextResponse.json({ error: res.error }, { status: 500 })
+    return NextResponse.json({ ok: true, synced: res.synced, orphansRemoved: res.orphansRemoved })
   }
 
   if (body.action === 'resync-center-delivery') {

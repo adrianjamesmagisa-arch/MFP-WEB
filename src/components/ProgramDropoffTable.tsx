@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Plus, Trash2 } from 'lucide-react'
 import type { MonitoringProgramId } from '@/lib/monitoring-programs'
@@ -9,6 +9,7 @@ import { calcMilkFormulations } from '@/lib/mfp-formulas'
 import { normalizeSbfpMilkType } from '@/lib/sbfp-pack-price'
 import { useAsyncTask } from '@/components/loading/AsyncFeedback'
 import { Spinner } from '@/components/loading/Spinner'
+import { nextIncrementedName } from '@/lib/next-incremented-name'
 
 async function apiSync(dropoff: ProgramDropoffRow): Promise<string | null> {
   const res = await fetch('/api/monitoring/sync-dropoff', {
@@ -61,6 +62,7 @@ export function ProgramDropoffTable({
   const [filterParent, setFilterParent] = useState<string>('')
   const [busyRowId, setBusyRowId] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
+  const reservedNamesRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
     setRows(initialRows)
@@ -81,19 +83,17 @@ export function ProgramDropoffTable({
   const save = async (row: ProgramDropoffRow, field: string, value: unknown) => {
     setBusyRowId(row.id)
     try {
-      await runTask(async () => {
-        const { error } = await supabase.from('mfp_program_dropoffs').update({ [field]: value }).eq('id', row.id)
-        if (error) {
-          alert(error.message)
-          return
-        }
-        const next = { ...row, [field]: value } as ProgramDropoffRow
-        updateLocal(row.id, { [field]: value } as Partial<ProgramDropoffRow>)
-        if (['beneficiaries', 'feeding_days', 'include_in_masterlist', 'dropoff_name', 'municipality', 'province', 'procurement_id'].includes(field)) {
-          const err = await apiSync(next)
-          if (err) alert(err)
-        }
-      }, 'Saving drop-off…')
+      const { error } = await supabase.from('mfp_program_dropoffs').update({ [field]: value }).eq('id', row.id)
+      if (error) {
+        alert(error.message)
+        return
+      }
+      const next = { ...row, [field]: value } as ProgramDropoffRow
+      updateLocal(row.id, { [field]: value } as Partial<ProgramDropoffRow>)
+      if (['beneficiaries', 'feeding_days', 'include_in_masterlist', 'dropoff_name', 'municipality', 'province', 'procurement_id'].includes(field)) {
+        const err = await apiSync(next)
+        if (err) alert(err)
+      }
     } finally {
       setBusyRowId(null)
     }
@@ -105,36 +105,54 @@ export function ProgramDropoffTable({
       alert(`Add a ${areaColumnLabel.toLowerCase()} in section 1 first, then you can add a municipality.`)
       return
     }
+    if (adding) return
     setAdding(true)
     try {
       await runTask(async () => {
-        const baseName = 'New Municipality'
-        const { data, error } = await supabase
-          .from('mfp_program_dropoffs')
-          .insert({
-            year,
-            month,
-            center,
-            program: programId,
-            procurement_id: parent.id,
-            province: parent.province || parent.label,
-            municipality: baseName,
-            dropoff_name: baseName,
-            region: parent.region || '',
-            beneficiaries: 0,
-            feeding_days: 0,
-          })
-          .select('*')
-          .single()
-        if (error) {
-          alert(error.message)
-          return
+        const province = parent.province || parent.label || ''
+        const provinceKey = String(province).trim().toLowerCase()
+        const sameProvinceNames = rows
+          .filter(r => String(r.province || '').trim().toLowerCase() === provinceKey)
+          .flatMap(r => [r.dropoff_name, r.municipality])
+        const reservedForProvince = [...reservedNamesRef.current]
+          .filter(k => k.startsWith(`${provinceKey}\u0000`))
+          .map(k => k.slice(provinceKey.length + 1))
+        const baseName = nextIncrementedName('New Municipality', [
+          ...sameProvinceNames,
+          ...reservedForProvince,
+        ])
+        const reserveKey = `${provinceKey}\u0000${baseName.toLowerCase()}`
+        reservedNamesRef.current.add(reserveKey)
+        try {
+          const { data, error } = await supabase
+            .from('mfp_program_dropoffs')
+            .insert({
+              year,
+              month,
+              center,
+              program: programId,
+              procurement_id: parent.id,
+              province,
+              municipality: baseName,
+              dropoff_name: baseName,
+              region: parent.region || '',
+              beneficiaries: 0,
+              feeding_days: 0,
+            })
+            .select('*')
+            .single()
+          if (error) {
+            alert(error.message)
+            return
+          }
+          const row = data as ProgramDropoffRow
+          setRows(p => [...p, row])
+          const err = await apiSync(row)
+          if (err) alert(err)
+        } finally {
+          reservedNamesRef.current.delete(reserveKey)
         }
-        const row = data as ProgramDropoffRow
-        setRows(p => [...p, row])
-        const err = await apiSync(row)
-        if (err) alert(err)
-      }, 'Adding municipality…')
+      }, 'Adding municipality…', { blocking: false })
     } finally {
       setAdding(false)
     }
