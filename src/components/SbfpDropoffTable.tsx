@@ -323,6 +323,7 @@ export function SbfpDropoffTable({
     setSelected(new Set())
   }
 
+  // Sticky: first 3 columns (checkbox + SDO + Drop-off school).
   const stickyTh = (left: number, width: number, edge = false): CSSProperties => ({
     position: 'sticky', left, top: 0, zIndex: 20,
     width, minWidth: width, maxWidth: width,
@@ -335,6 +336,8 @@ export function SbfpDropoffTable({
     background: bg,
     boxShadow: edge ? '3px 0 6px rgba(15,23,42,0.12)' : undefined,
   })
+  const SL = { check: 0, sdo: 36, school: 196 } as const
+  const SW = { check: 36, sdo: 160, school: 220 } as const
 
   return (
     <div className="flex flex-col gap-2">
@@ -382,7 +385,7 @@ export function SbfpDropoffTable({
           <table className="data-table" style={{ minWidth: 1600, fontSize: '0.78rem', borderCollapse: 'separate', borderSpacing: 0 }}>
             <thead>
               <tr>
-                <th style={{ textAlign: 'center', ...stickyTh(0, 36) }}>
+                <th style={{ textAlign: 'center', ...stickyTh(SL.check, SW.check) }}>
                   <input
                     type="checkbox"
                     checked={visible.length > 0 && visible.every(r => selected.has(r.id))}
@@ -403,8 +406,8 @@ export function SbfpDropoffTable({
                     }}
                   />
                 </th>
-                <th style={{ ...stickyTh(36, 160, true) }}>SDO</th>
-                <th style={{ minWidth: 220 }}>Drop-off Point (School)</th>
+                <th style={{ ...stickyTh(SL.sdo, SW.sdo) }}>SDO</th>
+                <th style={{ ...stickyTh(SL.school, SW.school, true) }}>Drop-off Point (School)</th>
                 <th style={{ minWidth: 110, textAlign: 'right' }}>Beneficiaries</th>
                 <th style={{ minWidth: 100, textAlign: 'right' }} title="Encoder input — Milk packs = Beneficiaries × Feeding days">
                   Feeding Days
@@ -478,7 +481,7 @@ export function SbfpDropoffTable({
                 const volFactor = litersPerPackForMilkType(milkType)
                 return (
                   <tr key={r.id} style={{ background: bg }}>
-                    <td style={{ textAlign: 'center', ...stickyTd(0, 36, bg) }}>
+                    <td style={{ textAlign: 'center', ...stickyTd(SL.check, SW.check, bg) }}>
                       <input
                         type="checkbox"
                         checked={selected.has(r.id)}
@@ -491,7 +494,7 @@ export function SbfpDropoffTable({
                         }}
                       />
                     </td>
-                    <td style={stickyTd(36, 160, bg, true)}>
+                    <td style={stickyTd(SL.sdo, SW.sdo, bg)}>
                       {editable ? (
                         <select
                           value={selectValue}
@@ -518,6 +521,7 @@ export function SbfpDropoffTable({
                       value={r.dropoff_name}
                       disabled={!editable}
                       onCommit={v => updateField(r.id, 'dropoff_name', String(v || '').trim() || r.dropoff_name)}
+                      cellStyle={stickyTd(SL.school, SW.school, bg, true)}
                     />
                     <EditableText
                       value={r.beneficiaries}

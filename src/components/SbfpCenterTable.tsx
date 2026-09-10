@@ -880,8 +880,7 @@ export function SbfpCenterTable({
   const fmtPeso = (v: any) => (v != null && v !== 0 && v !== '') ? '₱' + Number(v).toLocaleString() : 'N/A'
   const fmtDate = (v: any) => v ? new Date(v).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A'
 
-  // Sticky through E (Mode of Procurement) so identity/procurement stay visible while scrolling F+.
-  // Keep navy + white text so headers stay readable (globals .data-table th uses color:white).
+  // Sticky: first 4 columns (checkbox + In Report? + Status + SDO).
   const stickyTh = (left: number, width: number, edge = false, z = 20): CSSProperties => ({
     position: 'sticky', left, top: 0, zIndex: z,
     width, minWidth: width, maxWidth: width,
@@ -894,9 +893,8 @@ export function SbfpCenterTable({
     background: bg,
     boxShadow: edge ? '3px 0 6px rgba(15,23,42,0.12)' : undefined,
   })
-  // Checkbox → In Report? → A Status → B SDO → C Region → D Amount → Milk → Pack ₱ → E Mode
-  const SL = { check: 0, report: 36, status: 96, sdo: 246, region: 386, amount: 466, milk: 576, pack: 666, mode: 756 } as const
-  const SW = { check: 36, report: 60, status: 150, sdo: 140, region: 80, amount: 110, milk: 90, pack: 90, mode: 145 } as const
+  const SL = { check: 0, report: 36, status: 96, sdo: 246 } as const
+  const SW = { check: 36, report: 60, status: 150, sdo: 140 } as const
 
   return (
     <>
@@ -943,31 +941,31 @@ export function SbfpCenterTable({
           <table className="data-table sbfp-center-table" style={{ minWidth: 3200, fontSize: '0.78rem', borderCollapse: 'separate', borderSpacing: 0 }}>
             <thead>
               <tr>
-                <th rowSpan={2} style={{ textAlign: 'center', ...stickyTh(SL.check, SW.check, false, 29) }}>
+                <th rowSpan={2} style={{ textAlign: 'center', ...stickyTh(SL.check, SW.check, false, 24) }}>
                   <input type="checkbox"
                     checked={rows.length > 0 && selected.size === rows.length}
                     onChange={toggleAll} style={{ cursor: 'pointer' }} />
                 </th>
-                <th rowSpan={2} style={{ textAlign: 'center', ...stickyTh(SL.report, SW.report, false, 28) }}>In Report?</th>
-                <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, ...stickyTh(SL.status, SW.status, false, 27) }}>A — Status</th>
-                <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, ...stickyTh(SL.sdo, SW.sdo, false, 26) }}>B — SDO</th>
-                <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, ...stickyTh(SL.region, SW.region, false, 25) }}>C — Region</th>
-                <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', ...stickyTh(SL.amount, SW.amount, false, 24) }}>D — Amount (₱)</th>
+                <th rowSpan={2} style={{ textAlign: 'center', ...stickyTh(SL.report, SW.report, false, 23) }}>In Report?</th>
+                <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, ...stickyTh(SL.status, SW.status, false, 22) }}>A — Status</th>
+                <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, ...stickyTh(SL.sdo, SW.sdo, true, 21) }}>B — SDO</th>
+                <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 80 }}>C — Region</th>
+                <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', minWidth: 110 }}>D — Amount (₱)</th>
                 <th
                   rowSpan={2}
-                  style={{ whiteSpace: 'normal', lineHeight: 1.2, ...stickyTh(SL.milk, SW.milk, false, 23) }}
+                  style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 90 }}
                   title="PM → packs = Amount÷25 · SM → Amount÷30 · CM → Amount÷Pack ₱ you type"
                 >
                   — Milk type
                 </th>
                 <th
                   rowSpan={2}
-                  style={{ whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', ...stickyTh(SL.pack, SW.pack, false, 22) }}
+                  style={{ whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', minWidth: 90 }}
                   title="₱ per pack. Fixed for PM (25) / SM (30). For CM, type the commercial pack cost — Packs to Deliver updates automatically."
                 >
                   — Pack ₱
                 </th>
-                <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, ...stickyTh(SL.mode, SW.mode, true, 21) }}>E — Mode of Procurement</th>
+                <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 145 }}>E — Mode of Procurement</th>
                 <th
                   rowSpan={2}
                   style={{ minWidth: 180, whiteSpace: 'normal', lineHeight: 1.2 }}
@@ -1070,37 +1068,37 @@ export function SbfpCenterTable({
                 const rowBg = isSelected ? '#e0e7ff' : !r.include_in_report ? '#fef2f2' : '#fff'
                 return (
                   <tr key={r.id} style={{ background: rowBg }}>
-                    <td style={{ textAlign: 'center', ...stickyTd(SL.check, SW.check, rowBg, false, 14) }}>
+                    <td style={{ textAlign: 'center', ...stickyTd(SL.check, SW.check, rowBg, false, 8) }}>
                       <input type="checkbox" checked={isSelected} onChange={() => toggleRow(r.id)} style={{ cursor: 'pointer' }} />
                     </td>
 
                     {/* In Report? toggle */}
                     {editable
-                      ? <EditableCell id={r.id} field="include_in_report" value={r.include_in_report !== false} type="checkbox" onSave={handleSave} cellStyle={stickyTd(SL.report, SW.report, rowBg, false, 13)} />
-                      : <td style={{ textAlign: 'center', ...stickyTd(SL.report, SW.report, rowBg, false, 13) }}>{r.include_in_report !== false ? '✓' : '✗'}</td>
+                      ? <EditableCell id={r.id} field="include_in_report" value={r.include_in_report !== false} type="checkbox" onSave={handleSave} cellStyle={stickyTd(SL.report, SW.report, rowBg, false, 7)} />
+                      : <td style={{ textAlign: 'center', ...stickyTd(SL.report, SW.report, rowBg, false, 7) }}>{r.include_in_report !== false ? '✓' : '✗'}</td>
                     }
 
                     {/* A — Status */}
                     {editable
                       ? <EditableCell id={r.id} field="procurement_status" value={r.procurement_status}
                           type="select" options={STATUSES} onSave={handleSave}
-                          render={v => statusBadge(v)} cellStyle={stickyTd(SL.status, SW.status, rowBg, false, 12)} />
-                      : <td style={stickyTd(SL.status, SW.status, rowBg, false, 12)}>{statusBadge(r.procurement_status)}</td>
+                          render={v => statusBadge(v)} cellStyle={stickyTd(SL.status, SW.status, rowBg, false, 6)} />
+                      : <td style={stickyTd(SL.status, SW.status, rowBg, false, 6)}>{statusBadge(r.procurement_status)}</td>
                     }
                     {/* B — SDO */}
                     {editable
-                      ? <EditableCell id={r.id} field="sdo" value={r.sdo} onSave={handleSave} cellStyle={stickyTd(SL.sdo, SW.sdo, rowBg, false, 11)} />
-                      : <td style={stickyTd(SL.sdo, SW.sdo, rowBg, false, 11)}>{r.sdo || 'N/A'}</td>
+                      ? <EditableCell id={r.id} field="sdo" value={r.sdo} onSave={handleSave} cellStyle={stickyTd(SL.sdo, SW.sdo, rowBg, true, 5)} />
+                      : <td style={stickyTd(SL.sdo, SW.sdo, rowBg, true, 5)}>{r.sdo || 'N/A'}</td>
                     }
                     {/* C — Region */}
                     {editable
-                      ? <EditableCell id={r.id} field="region" value={r.region} onSave={handleSave} cellStyle={stickyTd(SL.region, SW.region, rowBg, false, 10)} />
-                      : <td style={stickyTd(SL.region, SW.region, rowBg, false, 10)}>{r.region || 'N/A'}</td>
+                      ? <EditableCell id={r.id} field="region" value={r.region} onSave={handleSave} />
+                      : <td>{r.region || 'N/A'}</td>
                     }
                     {/* D — Amount */}
                     {editable
-                      ? <EditableCell id={r.id} field="amount" value={r.amount} type="number" align="right" format={fmtPeso} onSave={handleSave} cellStyle={stickyTd(SL.amount, SW.amount, rowBg, false, 9)} />
-                      : <td style={{ textAlign: 'right', ...stickyTd(SL.amount, SW.amount, rowBg, false, 9) }}>{fmtPeso(r.amount)}</td>
+                      ? <EditableCell id={r.id} field="amount" value={r.amount} type="number" align="right" format={fmtPeso} onSave={handleSave} />
+                      : <td style={{ textAlign: 'right' }}>{fmtPeso(r.amount)}</td>
                     }
                     {/* Milk type PM / SM / CM */}
                     {editable
@@ -1112,9 +1110,8 @@ export function SbfpCenterTable({
                           options={MILK_TYPES}
                           onSave={handleSave}
                           title="PM ₱25 · SM ₱30 · CM type Pack ₱"
-                          cellStyle={stickyTd(SL.milk, SW.milk, rowBg, false, 8)}
                         />
-                      : <td style={stickyTd(SL.milk, SW.milk, rowBg, false, 8)}>{normalizeSbfpMilkType(r.milk_type) || r.milk_type || 'N/A'}</td>
+                      : <td>{normalizeSbfpMilkType(r.milk_type) || r.milk_type || 'N/A'}</td>
                     }
                     {/* Pack ₱ — fixed for PM/SM, editable for CM */}
                     {(() => {
@@ -1131,13 +1128,12 @@ export function SbfpCenterTable({
                             format={v => (v != null && v !== '' ? `₱${Number(v).toLocaleString()}` : '—')}
                             onSave={handleSave}
                             title="Type commercial milk ₱ per pack — packs = Amount ÷ this"
-                            cellStyle={stickyTd(SL.pack, SW.pack, rowBg, false, 7)}
                           />
                         )
                       }
                       return (
                         <td
-                          style={{ textAlign: 'right', color: shown ? undefined : 'var(--gray-400)', ...stickyTd(SL.pack, SW.pack, rowBg, false, 7) }}
+                          style={{ textAlign: 'right', color: shown ? undefined : 'var(--gray-400)' }}
                           title={milk === 'CM' ? 'Set Pack ₱ for commercial milk' : milk === 'PM' ? 'PM fixed ₱25/pack' : milk === 'SM' ? 'SM fixed ₱30/pack' : 'Select milk type'}
                         >
                           {shown ? `₱${shown.toLocaleString()}` : '—'}
@@ -1146,8 +1142,8 @@ export function SbfpCenterTable({
                     })()}
                     {/* E — Mode */}
                     {editable
-                      ? <EditableCell id={r.id} field="mode_of_procurement" value={r.mode_of_procurement} type="select" options={MODES} onSave={handleSave} cellStyle={stickyTd(SL.mode, SW.mode, rowBg, true, 6)} />
-                      : <td style={stickyTd(SL.mode, SW.mode, rowBg, true, 6)}>{r.mode_of_procurement || 'N/A'}</td>
+                      ? <EditableCell id={r.id} field="mode_of_procurement" value={r.mode_of_procurement} type="select" options={MODES} onSave={handleSave} />
+                      : <td>{r.mode_of_procurement || 'N/A'}</td>
                     }
                     <CoopSelectCell
                       id={r.id}

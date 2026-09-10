@@ -346,7 +346,7 @@ export function ProgramProcurementTable({
   const colSpan =
     19 + snapDates.length + visibleRawMonths.length * 3 + 3 + (editable ? 1 : 0)
 
-  // Sticky through E (Mode of Procurement). No row-select checkbox on program tables.
+  // Sticky: first 4 columns (In Report? + Status + Province/Area + Region).
   const stickyTh = (left: number, width: number, edge = false, z = 20): CSSProperties => ({
     position: 'sticky', left, top: 0, zIndex: z,
     width, minWidth: width, maxWidth: width,
@@ -359,8 +359,8 @@ export function ProgramProcurementTable({
     background: bg,
     boxShadow: edge ? '3px 0 6px rgba(15,23,42,0.12)' : undefined,
   })
-  const SL = { report: 0, status: 60, area: 210, region: 350, amount: 430, milk: 540, pack: 630, mode: 720 } as const
-  const SW = { report: 60, status: 150, area: 140, region: 80, amount: 110, milk: 90, pack: 90, mode: 145 } as const
+  const SL = { report: 0, status: 60, area: 210, region: 350 } as const
+  const SW = { report: 60, status: 150, area: 140, region: 80 } as const
 
   return (
     <div className="card" style={{ overflow: 'hidden' }}>
@@ -417,26 +417,26 @@ export function ProgramProcurementTable({
         >
           <thead>
             <tr>
-              <th rowSpan={2} style={{ textAlign: 'center', ...stickyTh(SL.report, SW.report, false, 28) }}>In Report?</th>
-              <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, ...stickyTh(SL.status, SW.status, false, 27) }}>A — Status</th>
-              <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, ...stickyTh(SL.area, SW.area, false, 26) }}>B — {areaColumnLabel}</th>
-              <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, ...stickyTh(SL.region, SW.region, false, 25) }}>C — Region</th>
-              <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', ...stickyTh(SL.amount, SW.amount, false, 24) }}>D — Amount (₱)</th>
+              <th rowSpan={2} style={{ textAlign: 'center', ...stickyTh(SL.report, SW.report, false, 24) }}>In Report?</th>
+              <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, ...stickyTh(SL.status, SW.status, false, 23) }}>A — Status</th>
+              <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, ...stickyTh(SL.area, SW.area, false, 22) }}>B — {areaColumnLabel}</th>
+              <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, ...stickyTh(SL.region, SW.region, true, 21) }}>C — Region</th>
+              <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', minWidth: 110 }}>D — Amount (₱)</th>
               <th
                 rowSpan={2}
-                style={{ whiteSpace: 'normal', lineHeight: 1.2, ...stickyTh(SL.milk, SW.milk, false, 23) }}
+                style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 90 }}
                 title="PM → packs = Amount÷25 · SM → Amount÷30 · CM → Amount÷Pack ₱"
               >
                 — Milk type
               </th>
               <th
                 rowSpan={2}
-                style={{ whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', ...stickyTh(SL.pack, SW.pack, false, 22) }}
+                style={{ whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', minWidth: 90 }}
                 title="₱ per pack"
               >
                 — Pack ₱
               </th>
-              <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, ...stickyTh(SL.mode, SW.mode, true, 21) }}>E — Mode of Procurement</th>
+              <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 145 }}>E — Mode of Procurement</th>
               <th rowSpan={2} title="Applies to every municipality under this row in the masterlist">
                 — Coop
               </th>
@@ -524,10 +524,10 @@ export function ProgramProcurementTable({
                       value={r.include_in_report !== false}
                       type="checkbox"
                       onSave={handleSave}
-                      cellStyle={stickyTd(SL.report, SW.report, rowBg, false, 13)}
+                      cellStyle={stickyTd(SL.report, SW.report, rowBg, false, 8)}
                     />
                   ) : (
-                    <td style={{ textAlign: 'center', ...stickyTd(SL.report, SW.report, rowBg, false, 13) }}>{r.include_in_report !== false ? '✓' : '✗'}</td>
+                    <td style={{ textAlign: 'center', ...stickyTd(SL.report, SW.report, rowBg, false, 8) }}>{r.include_in_report !== false ? '✓' : '✗'}</td>
                   )}
                   {editable ? (
                     <ProcEditableCell
@@ -538,10 +538,10 @@ export function ProgramProcurementTable({
                       type="select"
                       options={[...STATUSES]}
                       onSave={handleSave}
-                      cellStyle={stickyTd(SL.status, SW.status, rowBg, false, 12)}
+                      cellStyle={stickyTd(SL.status, SW.status, rowBg, false, 7)}
                     />
                   ) : (
-                    <td style={stickyTd(SL.status, SW.status, rowBg, false, 12)}>{r.procurement_status || 'N/A'}</td>
+                    <td style={stickyTd(SL.status, SW.status, rowBg, false, 7)}>{r.procurement_status || 'N/A'}</td>
                   )}
                   {editable ? (
                     <ProcEditableCell
@@ -550,10 +550,10 @@ export function ProgramProcurementTable({
                       field="label"
                       value={r.label || r.province}
                       onSave={handleSave}
-                      cellStyle={stickyTd(SL.area, SW.area, rowBg, false, 11)}
+                      cellStyle={stickyTd(SL.area, SW.area, rowBg, false, 6)}
                     />
                   ) : (
-                    <td style={stickyTd(SL.area, SW.area, rowBg, false, 11)}>{r.label || r.province || 'N/A'}</td>
+                    <td style={stickyTd(SL.area, SW.area, rowBg, false, 6)}>{r.label || r.province || 'N/A'}</td>
                   )}
                   {editable ? (
                     <ProcEditableCell
@@ -562,10 +562,10 @@ export function ProgramProcurementTable({
                       field="region"
                       value={r.region}
                       onSave={handleSave}
-                      cellStyle={stickyTd(SL.region, SW.region, rowBg, false, 10)}
+                      cellStyle={stickyTd(SL.region, SW.region, rowBg, true, 5)}
                     />
                   ) : (
-                    <td style={stickyTd(SL.region, SW.region, rowBg, false, 10)}>{r.region || 'N/A'}</td>
+                    <td style={stickyTd(SL.region, SW.region, rowBg, true, 5)}>{r.region || 'N/A'}</td>
                   )}
                   {editable ? (
                     <ProcEditableCell
@@ -577,10 +577,9 @@ export function ProgramProcurementTable({
                       align="right"
                       format={fmtPeso}
                       onSave={handleSave}
-                      cellStyle={stickyTd(SL.amount, SW.amount, rowBg, false, 9)}
                     />
                   ) : (
-                    <td style={{ textAlign: 'right', ...stickyTd(SL.amount, SW.amount, rowBg, false, 9) }}>{fmtPeso(r.amount)}</td>
+                    <td style={{ textAlign: 'right' }}>{fmtPeso(r.amount)}</td>
                   )}
                   {editable ? (
                     <ProcEditableCell
@@ -591,10 +590,9 @@ export function ProgramProcurementTable({
                       type="select"
                       options={MILK_TYPES}
                       onSave={handleSave}
-                      cellStyle={stickyTd(SL.milk, SW.milk, rowBg, false, 8)}
                     />
                   ) : (
-                    <td style={stickyTd(SL.milk, SW.milk, rowBg, false, 8)}>{normalizeSbfpMilkType(r.milk_type) || r.milk_type || 'N/A'}</td>
+                    <td>{normalizeSbfpMilkType(r.milk_type) || r.milk_type || 'N/A'}</td>
                   )}
                   {(() => {
                     const milk = normalizeSbfpMilkType(r.milk_type) || r.milk_type
@@ -610,12 +608,11 @@ export function ProgramProcurementTable({
                           align="right"
                           format={v => (v != null && v !== '' ? `₱${Number(v).toLocaleString()}` : '—')}
                           onSave={handleSave}
-                          cellStyle={stickyTd(SL.pack, SW.pack, rowBg, false, 7)}
                         />
                       )
                     }
                     return (
-                      <td style={{ textAlign: 'right', ...stickyTd(SL.pack, SW.pack, rowBg, false, 7) }}>
+                      <td style={{ textAlign: 'right' }}>
                         {shown ? `₱${shown.toLocaleString()}` : '—'}
                       </td>
                     )
@@ -629,10 +626,9 @@ export function ProgramProcurementTable({
                       type="select"
                       options={MODES}
                       onSave={handleSave}
-                      cellStyle={stickyTd(SL.mode, SW.mode, rowBg, true, 6)}
                     />
                   ) : (
-                    <td style={stickyTd(SL.mode, SW.mode, rowBg, true, 6)}>{r.mode_of_procurement || 'N/A'}</td>
+                    <td>{r.mode_of_procurement || 'N/A'}</td>
                   )}
                   <td style={{ padding: 2 }}>
                     {editable ? (

@@ -94,7 +94,18 @@ export async function loadProgramDashboardStats(
 
   const procurement = (!procErr && procRaw ? procRaw : []) as ProgramProcurementRow[]
   const dropoffs = (!dropErr && dropRaw ? dropRaw : []) as ProgramDropoffRow[]
-  const masterlist = (mfpRaw || []).filter(r => rowMatchesMonitoringProgram(r.funded_by, programId))
+  type MfpDashRow = {
+    center?: string | null
+    year?: number | null
+    beneficiaries?: number | null
+    milk_packs?: number | null
+    target_milk_packs_to_deliver?: number | null
+    total_milk_packs_delivered?: number | null
+    funded_by?: string | null
+    date_started?: string | null
+  }
+  const masterlist = ((mfpRaw || []) as MfpDashRow[])
+    .filter(r => rowMatchesMonitoringProgram(r.funded_by, programId))
     .filter(r => {
       if (!filters.month) return true
       if (!r.date_started) return false
