@@ -1,0 +1,16 @@
+MLPC — Encoder Welcome
+======================
+
+Dear colleague at Mindanao Livestock Production Center (MLPC),
+
+Thank you for encoding data for **MLPC**.
+
+• DepEd → **SBFP**  |  • DSWD → **DSWD**
+
+SBFP → MLPC → school year
+DSWD → MLPC → calendar year
+
+Please refer to ..\SBFP-DepEd-Encoder-Manual.txt and ..\DSWD-Encoder-Manual.txt
+for delivery columns, **Add SDO** / **Add municipality**, and formula fields.
+
+Thank you sincerely.

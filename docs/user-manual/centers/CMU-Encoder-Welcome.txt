@@ -1,0 +1,15 @@
+CMU — Encoder Welcome
+=====================
+
+Dear colleague at Central Mindanao University (CMU),
+
+Thank you for encoding MFP monitoring data for **CMU**.
+
+• DepEd work → **SBFP** (sidebar)
+• DSWD work  → **DSWD** (Program monitoring)
+
+Paths: SBFP → CMU → school year | DSWD → CMU → calendar year
+
+Manuals: ..\SBFP-DepEd-Encoder-Manual.txt and ..\DSWD-Encoder-Manual.txt
+
+Thank you kindly for your service.

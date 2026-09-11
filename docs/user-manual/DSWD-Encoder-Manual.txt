@@ -1,0 +1,121 @@
+DSWD Monitoring — Encoder User Manual
+=====================================
+Philippine Carabao Center · MFP Web Application
+
+Dear Encoder,
+
+Thank you for maintaining DSWD Supplementary Feeding Program monitoring data.
+When your work is funded by **DSWD**, please use **DSWD** under **Program
+monitoring** in the sidebar — not the SBFP (DepEd) module.
+
+This guide mirrors the SBFP layout (procurement + municipalities) but uses
+**Province** instead of SDO and **Municipality** instead of school.
+
+
+1. GETTING STARTED
+------------------
+1. Sign in with your encoder account.
+2. Sidebar → **Program monitoring** → **DSWD**.
+3. Select the **calendar year**, then open your **center** page.
+   Example path pattern: /monitoring/dswd/center/[YourCenter]/[Year]
+4. Summary tiles (provinces, target packs, delivery progress) are **read-only**.
+
+
+2. SECTION 1 — PROCUREMENT STATUS
+---------------------------------
+One row per **Province** (or area label your center uses).
+
+2.1 Buttons
+-----------
+• **Add delivered-as-of date**
+  - Same behavior as SBFP: pick a date, then enter **cumulative packs delivered
+    as of that date** in the new column.
+  - Multiple dates may be added over time; header controls rename or delete
+    a date column when allowed.
+
+• **Add province** (or equivalent add-row control on your screen)
+  - Creates a new procurement row for another province/area.
+
+• Row delete / bulk actions — Only when your role permits; please confirm deletes.
+
+2.2 What YOU should input
+-------------------------
+The columns match SBFP SDO procurement (Status, Region, Amount, milk type,
+mode of procurement, coop, procurement dates and numbers, beneficiaries,
+contract amount, delivery start/end, delivered-as-of packs, Raw ₱/L, payment
+status, remarks). Replace “SDO” mentally with **Province**:
+
+| You type                         | Notes |
+|----------------------------------|-------|
+| In Report?, Status, Province, Region | Identity and procurement stage |
+| Amount (₱), Milk type, Pack ₱ (CM only) | Pack ₱ fixed for PM/SM |
+| Mode, Coop, PR/PO dates & numbers | Procurement trail |
+| Delivery Start / End             | Syncs to municipalities under this province |
+| Delivered-as-of columns          | Cumulative packs per date |
+| Raw ₱/L per month                | When month block is visible |
+| Payment status, Remarks          | As needed |
+
+2.3 Auto-calculated
+-------------------
+| Item | Formula |
+|------|---------|
+| Pack ₱ for PM | ₱25 (fixed, not typed) |
+| Pack ₱ for SM | ₱30 (fixed, not typed) |
+| Packs to Deliver | **F1** — same as SBFP: round(Amount ÷ Pack ₱) |
+| Raw milk used (L) per month | **F2**: (P ÷ 5) × 0.20 where P = packs completed that month |
+| Income per month | **F3**: Raw milk used (L) × Raw ₱/L |
+| Total Income | Sum of monthly incomes |
+| Delivery progress % | Delivered packs ÷ target packs (summary tile) |
+
+F4 (monthly packs from delivered-as-of columns) is the same incremental logic
+described in the SBFP manual.
+
+
+3. SECTION 1b — DROP-OFF POINTS (MUNICIPALITIES)
+------------------------------------------------
+Municipalities under each province.
+
+3.1 Buttons
+-----------
+• **Add municipality** — Select parent province/area, then add the municipality name.
+
+3.2 What YOU should input
+-------------------------
+| Field | What to enter |
+|-------|---------------|
+| Province (parent) | Must match a row from Section 1 |
+| Municipality      | Name of municipality / drop-off |
+| Beneficiaries     | Count of beneficiaries |
+| Feeding days      | Number of feeding days |
+
+3.3 Auto-calculated (sync to MFP Data)
+--------------------------------------
+Same formulation family as SBFP schools (**F5–F9**):
+
+  F5  Milk packs = Beneficiaries × Feeding days
+  F6  Total volume (L) = Milk packs × (0.18 if SM, else 0.20 L/pack)
+  F7  Raw milk = Total volume × 0.20
+  F8  Whole powder = Raw milk × 0.268; Skim powder = Raw milk × 0.274
+  F9  Sugar = Total volume × 0.02
+
+MFP Data rows for DSWD use **Funded By = DSWD** and show **N/A** for DepEd
+Division and Elementary School columns — that is expected.
+
+
+4. REPORTS
+----------
+• **PIMD report** link on the center page filters by your center and year.
+• **Summary DSWD** in the sidebar aggregates DSWD monitoring for reporting.
+
+Please encode monitoring tables first; reports read from your saved data.
+
+
+5. DEPED vs DSWD — QUICK CHOICE
+-------------------------------
+| Funder | Module in sidebar | Primary geography |
+|--------|-------------------|-------------------|
+| DepEd  | SBFP              | SDO → Schools     |
+| DSWD   | DSWD              | Province → Municipalities |
+
+Thank you for your careful encoding. If a municipality or province is missing,
+please add the parent procurement row first, then add drop-offs.

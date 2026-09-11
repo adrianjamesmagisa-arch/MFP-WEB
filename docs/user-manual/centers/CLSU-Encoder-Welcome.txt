@@ -1,0 +1,15 @@
+CLSU — Encoder Welcome
+======================
+
+Dear colleague at Central Luzon State University — CLSU center,
+
+Thank you for encoding data for **CLSU**.
+
+• DepEd → **SBFP**  |  • DSWD → **DSWD**
+
+SBFP → CLSU → school year
+DSWD → CLSU → calendar year
+
+Manuals: ..\SBFP-DepEd-Encoder-Manual.txt, ..\DSWD-Encoder-Manual.txt
+
+Thank you for helping keep our reports accurate.

@@ -1,0 +1,25 @@
+MMSU — Encoder Welcome
+======================
+
+Dear colleague at Mariano Marcos State University (MMSU),
+
+Thank you for encoding MFP monitoring data for **MMSU**.
+
+WHICH MODULE TO USE
+-------------------
+• **DepEd** feeding (School-Based Feeding Program) → open **SBFP** in the sidebar.
+• **DSWD** feeding (Supplementary Feeding Program) → open **DSWD** under Program monitoring.
+
+Please do not enter DepEd schools in DSWD, or DSWD municipalities in SBFP.
+
+YOUR TYPICAL PATHS (after sign-in)
+----------------------------------
+• SBFP (DepEd):  SBFP → MMSU → choose school year
+• DSWD:          DSWD → MMSU → choose calendar year
+
+DETAILED MANUALS (formulas, delivery buttons, input vs auto-calculated)
+-----------------------------------------------------------------------
+..\SBFP-DepEd-Encoder-Manual.txt
+..\DSWD-Encoder-Manual.txt
+
+We sincerely appreciate your patience and accuracy.

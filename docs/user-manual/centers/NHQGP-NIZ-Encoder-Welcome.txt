@@ -1,0 +1,27 @@
+NHQGP (NIZ) — Encoder Welcome
+===============================
+
+Dear colleague at the National Headquarters / NIZ (NHQGP (NIZ)),
+
+Thank you for encoding MFP monitoring data for **NHQGP (NIZ)**.
+
+WHICH MODULE TO USE
+-------------------
+• DepEd → **SBFP** (in the app this hub is often labeled **NHQ**)
+• DSWD → **DSWD** (center slug **NIZ**)
+
+YOUR TYPICAL PATHS
+------------------
+• SBFP (DepEd):  SBFP → **NHQ** → school year
+• DSWD:          DSWD → **NIZ** (or NHQGP (NIZ) as shown on your profile) → year
+
+Note: NHQ and NIZ names refer to the same operational center in the database;
+your coordinator will confirm which label you see after sign-in.
+
+FULL MANUALS
+------------
+..\SBFP-DepEd-Encoder-Manual.txt — includes **Add delivered-as-of date** and
+  raw milk formulas
+..\DSWD-Encoder-Manual.txt
+
+Thank you for supporting national coordination and field centers alike.

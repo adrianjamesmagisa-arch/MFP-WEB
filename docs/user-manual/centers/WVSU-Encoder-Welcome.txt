@@ -1,0 +1,16 @@
+WVSU — Encoder Welcome
+======================
+
+Dear colleague at West Visayas State University (WVSU),
+
+Thank you for encoding data for **WVSU**.
+
+• DepEd → **SBFP**  |  • DSWD → **DSWD**
+
+SBFP → WVSU → school year
+DSWD → WVSU → calendar year
+
+See the SBFP and DSWD encoder manuals in the parent folder for formulas and
+which cells not to re-type.
+
+Thank you for your patience and care.

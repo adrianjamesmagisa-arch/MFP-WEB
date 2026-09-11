@@ -1,0 +1,23 @@
+CSU — Encoder Welcome
+=====================
+
+Dear colleague at Central Luzon State University (CSU),
+
+Thank you for encoding MFP monitoring data for **CSU**.
+
+WHICH MODULE TO USE
+-------------------
+• **DepEd** → **SBFP** in the sidebar.
+• **DSWD** → **DSWD** under Program monitoring.
+
+YOUR TYPICAL PATHS
+------------------
+• SBFP:  SBFP → CSU → school year
+• DSWD:  DSWD → CSU → calendar year
+
+FULL GUIDES
+-----------
+..\SBFP-DepEd-Encoder-Manual.txt
+..\DSWD-Encoder-Manual.txt
+
+Thank you for supporting PCC and our partner communities.

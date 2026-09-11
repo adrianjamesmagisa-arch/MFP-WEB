@@ -1,0 +1,15 @@
+USM — Encoder Welcome
+=====================
+
+Dear colleague at University of Southern Mindanao (USM),
+
+Thank you for encoding data for **USM**.
+
+• DepEd → **SBFP**  |  • DSWD → **DSWD**
+
+SBFP → USM → school year
+DSWD → USM → calendar year
+
+Full encoder guides are in the parent folder (SBFP and DSWD manuals).
+
+Thank you kindly.

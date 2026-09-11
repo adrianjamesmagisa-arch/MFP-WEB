@@ -1,0 +1,16 @@
+DMMMSU — Encoder Welcome
+==========================
+
+Dear colleague at Don Mariano Marcos Memorial State University (DMMMSU),
+
+Thank you for encoding data for **DMMMSU**.
+
+• DepEd → **SBFP**  |  • DSWD → **DSWD**
+
+SBFP → DMMMSU → school year
+DSWD → DMMMSU → calendar year
+
+See ..\SBFP-DepEd-Encoder-Manual.txt and ..\DSWD-Encoder-Manual.txt for
+what to type, auto-calculated columns, and **Add delivered-as-of date**.
+
+We appreciate your careful work.

@@ -1,0 +1,217 @@
+SBFP (DepEd) — Encoder User Manual
+==================================
+Philippine Carabao Center · MFP Web Application
+
+Dear Encoder,
+
+Thank you for your patience and care in updating School-Based Feeding Program
+(SBFP) data for your center. When your work is funded by **DepEd**, please use
+the **SBFP** section of the application (not DSWD monitoring).
+
+This guide explains:
+  • How to open your center and school year
+  • What you should type vs. what the system calculates
+  • Important buttons (deliveries, add SDO, add school)
+  • Formulas used for auto-calculated cells
+
+
+1. GETTING STARTED
+------------------
+1. Sign in with your encoder account.
+2. In the sidebar, click **SBFP**.
+3. Choose the **school year** (e.g. 2025–2026), then open your **center** page.
+   • Most centers: SBFP → Center → [Your center name] → [Year]
+   • NHQ / NIZ staff: SBFP → **NHQ** hub (same operational center as NHQGP (NIZ))
+4. At the top you will see summary tiles (SDOs, target packs, delivery progress).
+   These are **information only** — you do not type into them.
+
+
+2. SECTION 1 — SDO PROCUREMENT
+------------------------------
+One row per **School Division Office (SDO)**. Columns on the left stay visible
+when you scroll sideways (Status, SDO name).
+
+2.1 Buttons (please use these as intended)
+-------------------------------------------
+• **Add delivered-as-of date**
+  - Click the button, then pick a **calendar date** from the date picker.
+  - A new column group appears, labeled like “P — Delivered as of Aug. 18, 2026.”
+  - In that column you enter **cumulative packs delivered as of that date**
+    (running total up to that day, not “packs delivered only on that day”).
+  - You may add **more than one** date column as deliveries progress.
+  - To change the label date, use the small edit control on the column header
+    (if your role allows). To remove a column, use the delete control on the
+    header — you will be asked to confirm; packs stored under that date are cleared.
+
+• **Add SDO**
+  - Adds a new procurement row for another SDO when your center covers a new division.
+  - Please complete Region, Amount, milk type, and procurement fields after adding.
+
+• **Row checkbox + bulk actions** (when shown)
+  - Select rows for bulk operations your coordinator has enabled.
+
+• **Actions (trash icon)** on a row
+  - Deletes that SDO row. Please confirm only when the row was added by mistake.
+
+2.2 What YOU should input (editable cells)
+------------------------------------------
+| Column / area              | What to enter |
+|----------------------------|---------------|
+| In Report?                 | Check if this SDO should appear in reports |
+| A — Status                 | Procurement status (e.g. For Preparation, Ongoing, Awarded, Done) |
+| B — SDO                    | Division name |
+| C — Region                 | Region code (CAR, III, NCR, etc.) |
+| D — Amount (₱)             | DepEd allocation / contract amount in pesos |
+| Milk type                  | PM, SM, or CM |
+| Pack ₱                     | **Only for CM (Commercial milk)** — pesos per pack. PM and SM use fixed prices (see below). |
+| E — Mode of Procurement    | e.g. Bayanihan Act, NP-CP, etc. |
+| Coop                       | Cooperative supplying this SDO (syncs to schools under this SDO on the masterlist) |
+| F — Date Recd (Proc)       | Date documents received for procurement |
+| G — PR Number              | Purchase request number |
+| H — ORS Date               | Obligation request date |
+| I — PO Number              | Purchase order number |
+| J — Batch                  | Batch identifier |
+| K — Beneficiaries          | Number of beneficiaries (SDO level, if used on your row) |
+| L — Contract Amt (₱)       | Contract amount if different from Amount |
+| M — Delivery Start         | Start of delivery (also updates linked drop-off schools on the masterlist) |
+| N — Delivery End           | End of delivery (also updates linked schools) |
+| Delivered-as-of columns    | **Cumulative packs delivered** as of each date you added |
+| Raw ₱/L (per month)        | Raw milk price per liter for that calendar month (when the month column is visible) |
+| Payment Status, Remarks    | As needed for your center’s workflow |
+
+**Note:** Column **O — Packs to Deliver** is usually **calculated** from Amount
+and milk type (see formulas). Your role may still allow a manual override — please
+use overrides only when your coordinator instructs you to.
+
+2.3 What the system calculates (please do not re-type these unless overriding)
+--------------------------------------------------------------------------------
+| Column / area              | How it is computed |
+|----------------------------|--------------------|
+| Pack ₱ (PM / SM)           | Fixed: PM = ₱25, SM = ₱30 (display only; you do not type) |
+| O — Packs to Deliver       | See formula **F1** below |
+| Raw milk used (L)          | See formula **F2** (per visible month) |
+| Income (per month)         | See formula **F3** |
+| Total Income               | Sum of each month’s Income (only packs **completed in that month**) |
+| Dashboard “Target milk packs” / “Delivery progress %” | From sums of Packs to Deliver and delivered packs across SDOs |
+
+**When do monthly Raw milk / Income columns appear?**
+After you add at least one **Delivered as-of** date (or when delivery data exists
+for feeding months Aug–Dec of the school year start year), the system shows
+month groups (August, September, …). Packs for each month are derived from your
+delivered-as-of snapshots (see **F4**).
+
+2.4 Formulas (SBFP procurement)
+-------------------------------
+F1 — Packs to Deliver (column O)
+  Let Amount = D — Amount (₱).
+  Let Pack ₱ =
+    • PM (Pasteurized)  → 25
+    • SM (Sterilized)   → 30
+    • CM (Commercial)   → value you entered in Pack ₱
+  If Amount > 0 and Pack ₱ > 0:
+    Packs to Deliver = round( Amount ÷ Pack ₱ )
+
+F2 — Raw milk utilized (liters) for a month
+  Let P = packs **completed in that calendar month** (see F4).
+  Raw milk used (L) = ( P ÷ 5 ) × 0.20
+
+F3 — Raw milk income for a month
+  Let P = packs completed in that month (F4).
+  Let R = Raw ₱/L you entered for that month.
+  Income = Raw milk used (L) × R = ( (P ÷ 5) × 0.20 ) × R
+
+F4 — Packs completed in one month (from “Delivered as-of” columns)
+  For each month, the system looks at all “Delivered as-of” dates in that month,
+  takes the **maximum cumulative packs** shown on those dates in the month, and
+  subtracts the maximum cumulative packs from **before** that month:
+    Month increment = max(cumulative packs in month) − max(cumulative packs before month)
+  (If you enter explicit monthly pack fields elsewhere, those take precedence.)
+
+
+3. SECTION 1b — DROP-OFF POINTS (SCHOOLS)
+-----------------------------------------
+Schools under each SDO. Add schools only **after** the parent SDO exists in
+Section 1.
+
+3.1 Buttons
+-----------
+• **Add school** — Pick the SDO, then add the school / drop-off name.
+• Row checkbox — For bulk delete when enabled.
+
+3.2 What YOU should input
+-------------------------
+| Field              | What to enter |
+|--------------------|---------------|
+| SDO (parent)       | Link school to the correct SDO row |
+| Drop-off / School  | School name |
+| Beneficiaries      | Number of children / beneficiaries |
+| Feeding days       | Days of feeding (e.g. 120) — often from SDO or standard options |
+| Other remarks      | If your table includes editable remark columns |
+
+3.3 Auto-calculated (drop-off → masterlist / MFP)
+-------------------------------------------------
+When beneficiaries and feeding days are both greater than zero, the system
+computes milk needs using **F5–F9** (same family as MFP Data formulations).
+These values sync to the DepEd school masterlist — **please do not type over
+calculated pack/volume fields** unless your coordinator says otherwise.
+
+F5 — Milk packs (drop-off)
+  Milk packs = Beneficiaries × Feeding days
+
+F6 — Total volume (liters)
+  Liters per pack depends on milk type from the parent SDO:
+    • SM (Sterilized)     → 0.18 L per pack (180 ml)
+    • PM / CM / default   → 0.20 L per pack (200 ml)
+  Total volume (L) = Milk packs × Liters per pack
+
+F7 — Raw milk (kg equivalent path uses volume)
+  Raw milk = Total volume (L) × 0.20
+
+F8 — Whole milk powder, skim milk powder
+  Whole milk powder = Raw milk × 0.268
+  Skim milk powder    = Raw milk × 0.274
+
+F9 — Sugar
+  Sugar = Total volume (L) × 0.02
+
+
+4. OTHER SECTIONS ON THE SBFP CENTER PAGE
+-----------------------------------------
+• **PPMP tables** (Office Supplies, Fixtures/ICT, Training) — enter fund lines
+  as your finance team directs.
+• **Staff hiring** — enter hiring rows if your center uses this table.
+• **2. Center Budget (A–F)** — budget form fields your coordinator assigns.
+• **3. Milk Capacity** — capacity fields; some summaries compare to total
+  Packs to Deliver from Section 1.
+
+Please treat calculated totals on those forms as **read-only** unless the cell
+is clearly editable.
+
+
+5. MFP DATA (DEPED ROWS)
+------------------------
+DepEd-funded schools often appear in **MFP Data** after drop-off sync. Volume
+and formulation columns there use the same **F5–F9** logic. Encoder edits
+should focus on identifiers, dates, beneficiaries, and feeding days — not on
+duplicating formula results in Excel elsewhere.
+
+
+6. SBFP REPORT (SIDEBAR → REPORTS)
+-----------------------------------
+The **SBFP Report** page reads the same SDO rows you encode under SBFP → your
+center → Section 1. You do not re-type data there. After saving in the center
+table, open SBFP Report, choose the same school year, and set **Delivered As Of**
+to match the delivery snapshot date you need. Rows unchecked for **In Report?**
+ are hidden unless an administrator enables “Show SDOs not marked In Report?”
+
+
+7. POLITE REMINDERS
+-------------------
+• Please save by clicking out of a cell or pressing Enter; the app saves in the
+  background. A brief spinner is normal.
+• If a column is gray or shows a fixed ₱ for PM/SM, you do not need to type there.
+• For DSWD-funded areas, kindly use **DSWD** monitoring instead of SBFP
+  (see DSWD-Encoder-Manual.txt).
+• When unsure, leave Remarks noting your question rather than guessing amounts.
+
+Thank you again for supporting PCC and DepEd feeding programs.

@@ -1,0 +1,15 @@
+VSU — Encoder Welcome
+=====================
+
+Dear colleague at Visayas State University (VSU),
+
+Thank you for encoding MFP monitoring data for **VSU**.
+
+• DepEd → **SBFP**  |  • DSWD → **DSWD**
+
+SBFP → VSU → school year
+DSWD → VSU → calendar year
+
+..\SBFP-DepEd-Encoder-Manual.txt  ·  ..\DSWD-Encoder-Manual.txt
+
+We appreciate your accurate encoding.

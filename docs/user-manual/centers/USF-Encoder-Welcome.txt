@@ -1,0 +1,15 @@
+USF — Encoder Welcome
+=====================
+
+Dear colleague at Ubay Stock Farm (USF),
+
+Thank you for encoding data for **USF**.
+
+• DepEd → **SBFP**  |  • DSWD → **DSWD**
+
+SBFP → USF → school year
+DSWD → USF → calendar year
+
+..\SBFP-DepEd-Encoder-Manual.txt  ·  ..\DSWD-Encoder-Manual.txt
+
+Thank you for your service to PCC.

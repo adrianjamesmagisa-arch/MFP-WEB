@@ -1,0 +1,15 @@
+UPLB — Encoder Welcome
+========================
+
+Dear colleague at University of the Philippines Los Baños (UPLB),
+
+Thank you for encoding MFP monitoring data for **UPLB**.
+
+• DepEd → **SBFP**  |  • DSWD → **DSWD**
+
+SBFP → UPLB → school year
+DSWD → UPLB → calendar year
+
+Detailed manuals: ..\SBFP-DepEd-Encoder-Manual.txt, ..\DSWD-Encoder-Manual.txt
+
+Thank you for your cooperation.

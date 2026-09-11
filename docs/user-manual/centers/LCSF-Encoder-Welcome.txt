@@ -1,0 +1,15 @@
+LCSF — Encoder Welcome
+======================
+
+Dear colleague at La Carlota Stock Farm (LCSF),
+
+Thank you for encoding MFP monitoring data for **LCSF**.
+
+• DepEd → **SBFP**  |  • DSWD → **DSWD**
+
+SBFP → LCSF → school year
+DSWD → LCSF → calendar year
+
+Full instructions: ..\SBFP-DepEd-Encoder-Manual.txt, ..\DSWD-Encoder-Manual.txt
+
+Thank you for your dedication.

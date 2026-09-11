@@ -1,8 +1,17 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Printer, Download, Filter, Search, RotateCcw, Table, BarChart2, Layers } from 'lucide-react'
+import { SBFP_DATA_ENCODER_COLUMNS } from '@/lib/encoder-selects'
+import { dbYearToSchoolYear, FALLBACK_SCHOOL_YEARS, schoolYearToDbYear } from '@/lib/sbfp-year'
+import {
+  mapSbfpRowToReportView,
+  reportCenterFilterOptions,
+  rowMatchesReportCenterFilter,
+  sbfpRowIncludedInReport,
+  type SbfpReportSourceRow,
+} from '@/lib/sbfp-report-sync'
 
 // Philippine regional display order
 const REGION_ORDER: Record<string, number> = {
@@ -31,11 +40,13 @@ const STATUS_BADGE: Record<string, { bg: string; color: string }> = {
 export default function SbfpSpreadsheetReport() {
   const [records, setRecords]               = useState<any[]>([])
   const [loading, setLoading]               = useState(true)
-  const [year, setYear]                     = useState('2026')
+  const [year, setYear]                     = useState(String(schoolYearToDbYear(FALLBACK_SCHOOL_YEARS[0])))
+  const [schoolYearOptions, setSchoolYearOptions] = useState<string[]>([...FALLBACK_SCHOOL_YEARS])
   const [reportDate, setReportDate]         = useState(() => new Date().toISOString().split('T')[0])
   const [filterRegion, setFilterRegion]     = useState('ALL')
   const [filterCenter, setFilterCenter]     = useState('ALL')
   const [filterStatus, setFilterStatus]     = useState('ALL')
+  const [includeExcluded, setIncludeExcluded] = useState(false)
   const [filterStartDate, setFilterStartDate] = useState('')
   const [filterEndDate, setFilterEndDate]   = useState('')
   const [searchQuery, setSearchQuery]       = useState('')
@@ -44,18 +55,32 @@ export default function SbfpSpreadsheetReport() {
   const supabase = createClient()
 
   useEffect(() => {
+    supabase
+      .from('sbfp_school_years')
+      .select('year, label, is_active')
+      .then(({ data }) => {
+        const labels = (data || [])
+          .filter(r => r.is_active !== false)
+          .sort((a, b) => (a.year || 0) - (b.year || 0))
+          .map(r => r.label || dbYearToSchoolYear(r.year))
+        if (labels.length > 0) setSchoolYearOptions(labels)
+      })
+  }, [])
+
+  useEffect(() => {
     setLoading(true)
     supabase
       .from('sbfp_data')
-      .select('*')
-      .eq('year', parseInt(year))
+      .select(SBFP_DATA_ENCODER_COLUMNS)
+      .eq('year', parseInt(year, 10))
       .then(({ data, error }) => {
         if (error) {
           console.error('Error fetching SBFP data:', error)
           setRecords([])
         } else {
-          const sorted = (data || []).sort((a, b) => {
-            const rA = regionSortKey(a.region), rB = regionSortKey(b.region)
+          const rows = (data || []) as unknown as SbfpReportSourceRow[]
+          const sorted = rows.sort((a, b) => {
+            const rA = regionSortKey(a.region || ''), rB = regionSortKey(b.region || '')
             if (rA !== rB) return rA - rB
             return (a.sdo || '').localeCompare(b.sdo || '')
           })
@@ -66,11 +91,10 @@ export default function SbfpSpreadsheetReport() {
   }, [year])
 
   // Extract distinct centers and regions
-  const distinctCenters = useMemo(() => {
-    const set = new Set<string>()
-    records.forEach(r => { if (r.center) set.add(r.center) })
-    return Array.from(set).sort()
-  }, [records])
+  const distinctCenters = useMemo(
+    () => reportCenterFilterOptions(records as SbfpReportSourceRow[]),
+    [records],
+  )
 
   const distinctRegions = useMemo(() => {
     const set = new Set<string>()
@@ -90,8 +114,9 @@ export default function SbfpSpreadsheetReport() {
   // Filter records
   const filteredRecords = useMemo(() => {
     return records.filter(r => {
+      if (!includeExcluded && !sbfpRowIncludedInReport(r)) return false
       if (filterRegion !== 'ALL' && r.region !== filterRegion) return false
-      if (filterCenter !== 'ALL' && r.center !== filterCenter) return false
+      if (!rowMatchesReportCenterFilter(r as SbfpReportSourceRow, filterCenter)) return false
       if (filterStatus !== 'ALL' && (r.procurement_status || '').toLowerCase() !== filterStatus.toLowerCase()) return false
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim()
@@ -112,17 +137,16 @@ export default function SbfpSpreadsheetReport() {
       }
       return true
     })
-  }, [records, filterRegion, filterCenter, filterStatus, searchQuery, filterStartDate, filterEndDate])
+  }, [records, filterRegion, filterCenter, filterStatus, searchQuery, filterStartDate, filterEndDate, includeExcluded])
 
-  // Calculate snapshot pack count based on report date
-  const getDeliveredPacks = (r: any): number => {
-    const snaps: Array<{ date: string; packs: number }> = r.delivery_snapshots || []
-    if (snaps.length === 0) return r.packs_delivered || 0
-    const best = snaps
-      .filter(s => !reportDate || s.date <= reportDate)
-      .sort((a, b) => b.date.localeCompare(a.date))[0]
-    return best?.packs || (r.packs_delivered || 0)
-  }
+  const viewRows = useMemo(() => {
+    return (records as SbfpReportSourceRow[]).map(r => mapSbfpRowToReportView(r, reportDate))
+  }, [records, reportDate])
+
+  const getViewForSource = useCallback(
+    (sourceId: string | undefined) => viewRows.find(v => v.source.id === sourceId),
+    [viewRows],
+  )
 
   // Summary statistics
   const stats = useMemo(() => {
@@ -135,8 +159,9 @@ export default function SbfpSpreadsheetReport() {
     const statusCounts: Record<string, number> = {}
 
     filteredRecords.forEach(r => {
-      totalPacks += Number(r.packs_to_deliver) || 0
-      totalDelivered += getDeliveredPacks(r)
+      const view = getViewForSource(r.id)
+      totalPacks += view?.packs_to_deliver ?? 0
+      totalDelivered += view?.delivered_packs ?? 0
       totalContractAmt += Number(r.contract_amount) || 0
       totalAmount += Number(r.amount) || 0
       totalBeneficiaries += Number(r.beneficiaries_pm) || 0
@@ -157,7 +182,7 @@ export default function SbfpSpreadsheetReport() {
       pctDelivered,
       statusCounts,
     }
-  }, [filteredRecords, reportDate])
+  }, [filteredRecords, getViewForSource])
 
   // Regional Aggregations
   const regionalSummary = useMemo(() => {
@@ -196,8 +221,9 @@ export default function SbfpSpreadsheetReport() {
       entry.sdoCount++
       entry.beneficiaries += Number(r.beneficiaries_pm) || 0
       entry.contractAmt += Number(r.contract_amount) || 0
-      entry.targetPacks += Number(r.packs_to_deliver) || 0
-      entry.deliveredPacks += getDeliveredPacks(r)
+      const view = getViewForSource(r.id)
+      entry.targetPacks += view?.packs_to_deliver ?? 0
+      entry.deliveredPacks += view?.delivered_packs ?? 0
 
       const st = (r.procurement_status || '').toLowerCase()
       if (st === 'for preparation') entry.forPrep++
@@ -209,7 +235,7 @@ export default function SbfpSpreadsheetReport() {
     })
 
     return Array.from(map.values()).sort((a, b) => regionSortKey(a.region) - regionSortKey(b.region))
-  }, [filteredRecords, reportDate])
+  }, [filteredRecords, getViewForSource])
 
   // Export to CSV Function
   const exportToCSV = () => {
@@ -245,29 +271,30 @@ export default function SbfpSpreadsheetReport() {
     const csvRows = [headers.map(h => `"${h.replace(/"/g, '""')}"`).join(',')]
 
     filteredRecords.forEach((r, idx) => {
-      const delivered = getDeliveredPacks(r)
+      const v = getViewForSource(r.id)
+      if (!v) return
       const row = [
         idx + 1,
-        r.region || '',
-        r.sdo || '',
-        r.center || '',
-        r.procurement_status || '',
-        r.amount || 0,
-        r.mode_of_procurement || '',
-        r.pr_date_received || '',
-        r.pr_number || '',
-        r.ors_date || '',
-        r.po_number || '',
-        r.batch || '',
-        r.beneficiaries_pm || 0,
-        r.contract_amount || 0,
-        r.delivery_start || '',
-        r.delivery_end || '',
-        r.packs_to_deliver || 0,
-        r.milk_type || 'Pasteurized',
-        delivered,
-        r.status_of_payment || '',
-        r.remarks || ''
+        v.region === '—' ? '' : v.region,
+        v.sdo === '—' ? '' : v.sdo,
+        v.center,
+        v.procurement_status,
+        v.amount,
+        v.mode_of_procurement === '—' ? '' : v.mode_of_procurement,
+        v.pr_date_received === '—' ? '' : v.pr_date_received,
+        v.pr_number === '—' ? '' : v.pr_number,
+        v.ors_date === '—' ? '' : v.ors_date,
+        v.po_number === '—' ? '' : v.po_number,
+        v.batch === '—' ? '' : v.batch,
+        v.beneficiaries_pm,
+        v.contract_amount,
+        v.delivery_start === '—' ? '' : v.delivery_start,
+        v.delivery_end === '—' ? '' : v.delivery_end,
+        v.packs_to_deliver,
+        v.milk_type,
+        v.delivered_packs,
+        v.status_of_payment === '—' ? '' : v.status_of_payment,
+        v.remarks === '—' ? '' : v.remarks,
       ]
 
       csvRows.push(row.map(val => {
@@ -316,9 +343,12 @@ export default function SbfpSpreadsheetReport() {
               <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>Year</div>
               <select value={year} onChange={e => setYear(e.target.value)}
                 style={{ height: 34, padding: '0 0.75rem', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: '0.85rem', background: '#fff', fontWeight: 600 }}>
-                {['2026','2027'].map(y => (
-                  <option key={y} value={y}>SY {y}-{Number(y) + 1}</option>
-                ))}
+                {schoolYearOptions.map(sy => {
+                  const dbY = String(schoolYearToDbYear(sy))
+                  return (
+                    <option key={sy} value={dbY}>SY {sy}</option>
+                  )
+                })}
               </select>
             </div>
 
@@ -419,8 +449,14 @@ export default function SbfpSpreadsheetReport() {
             <div style={{ marginLeft: 12, borderLeft: '1px solid #e2e8f0', paddingLeft: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
               <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>Delivered As Of:</span>
               <input type="date" value={reportDate} onChange={e => setReportDate(e.target.value)}
+                title="Cumulative delivered packs use SBFP “Delivered as-of” columns through this date"
                 style={{ height: 28, padding: '0 0.5rem', borderRadius: 4, border: '1px solid #cbd5e1', fontSize: '0.78rem' }} />
             </div>
+
+            <label style={{ marginLeft: 12, borderLeft: '1px solid #e2e8f0', paddingLeft: 12, display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: '#475569', cursor: 'pointer' }}>
+              <input type="checkbox" checked={includeExcluded} onChange={e => setIncludeExcluded(e.target.checked)} />
+              Show SDOs not marked “In Report?”
+            </label>
           </div>
 
           {/* View Mode Tabs */}
@@ -517,8 +553,11 @@ export default function SbfpSpreadsheetReport() {
                 
                 <div className="print-only" style={{ display: 'none', padding: '1rem 1rem 0.5rem', textAlign: 'center' }}>
                   <h2 style={{ fontSize: '1.2rem', fontWeight: 800, margin: 0, textTransform: 'uppercase' }}>
-                    School-Based Feeding Program (SBFP) ? Milk Procurement Monitoring Report
+                    School-Based Feeding Program (SBFP) — Milk Procurement Monitoring Report
                   </h2>
+                  <p style={{ fontSize: '0.8rem', color: '#64748b', marginTop: 4 }}>
+                    Live from each center&apos;s SBFP SDO procurement table (same fields as Section 1). Refresh after encoding; use &quot;Delivered As Of&quot; to match cumulative delivery columns.
+                  </p>
                   <div style={{ fontSize: '0.85rem', color: '#475569', marginTop: 4 }}>
                     FY {year} | Filtered as of: {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
                   </div>
@@ -560,50 +599,52 @@ export default function SbfpSpreadsheetReport() {
                         </tr>
                       )}
                       {filteredRecords.map((r, i) => {
-                        const delivered = getDeliveredPacks(r)
-                        const statusCfg = STATUS_BADGE[r.procurement_status] || { bg: '#f1f5f9', color: '#475569' }
+                        const v = getViewForSource(r.id)
+                        if (!v) return null
+                        const statusCfg = STATUS_BADGE[v.procurement_status] || { bg: '#f1f5f9', color: '#475569' }
                         const rowBg = i % 2 === 0 ? '#ffffff' : '#f8fafc'
+                        const delivered = v.delivered_packs
 
                         return (
                           <tr key={r.id || i} style={{ background: rowBg }}>
                             <td style={{ border: '1px solid #cbd5e1', padding: '4px 6px', textAlign: 'center', color: '#64748b' }}>{i + 1}</td>
-                            <td style={{ border: '1px solid #cbd5e1', padding: '4px 6px', textAlign: 'center', fontWeight: 700 }}>{r.region || '?'}</td>
-                            <td style={{ border: '1px solid #cbd5e1', padding: '4px 8px', fontWeight: 600, color: '#0f172a' }}>{r.sdo}</td>
-                            <td style={{ border: '1px solid #cbd5e1', padding: '4px 6px', textAlign: 'center', color: '#475569' }}>{r.center}</td>
+                            <td style={{ border: '1px solid #cbd5e1', padding: '4px 6px', textAlign: 'center', fontWeight: 700 }}>{v.region}</td>
+                            <td style={{ border: '1px solid #cbd5e1', padding: '4px 8px', fontWeight: 600, color: '#0f172a' }}>{v.sdo}</td>
+                            <td style={{ border: '1px solid #cbd5e1', padding: '4px 6px', textAlign: 'center', color: '#475569' }}>{v.center}</td>
                             <td style={{ border: '1px solid #cbd5e1', padding: '4px 8px', textAlign: 'center' }}>
                               <span style={{
                                 display: 'inline-block', padding: '2px 8px', borderRadius: 4,
                                 fontSize: '0.72rem', fontWeight: 700, background: statusCfg.bg, color: statusCfg.color
                               }}>
-                                {r.procurement_status || 'For Preparation'}
+                                {v.procurement_status}
                               </span>
                             </td>
-                            <td style={{ border: '1px solid #cbd5e1', padding: '4px 6px', textAlign: 'center', color: '#475569' }}>{r.milk_type || 'Pasteurized'}</td>
+                            <td style={{ border: '1px solid #cbd5e1', padding: '4px 6px', textAlign: 'center', color: '#475569' }}>{v.milk_type}</td>
                             <td style={{ border: '1px solid #cbd5e1', padding: '4px 8px', textAlign: 'right' }}>
-                              {r.amount ? `?${Number(r.amount).toLocaleString()}` : '?'}
+                              {v.amount > 0 ? `\u20B1${v.amount.toLocaleString()}` : '—'}
                             </td>
-                            <td style={{ border: '1px solid #cbd5e1', padding: '4px 8px' }}>{r.mode_of_procurement || '?'}</td>
-                            <td style={{ border: '1px solid #cbd5e1', padding: '4px 6px', textAlign: 'center' }}>{r.pr_date_received || '?'}</td>
-                            <td style={{ border: '1px solid #cbd5e1', padding: '4px 8px' }}>{r.pr_number || '?'}</td>
-                            <td style={{ border: '1px solid #cbd5e1', padding: '4px 6px', textAlign: 'center' }}>{r.ors_date || '?'}</td>
-                            <td style={{ border: '1px solid #cbd5e1', padding: '4px 8px' }}>{r.po_number || '?'}</td>
-                            <td style={{ border: '1px solid #cbd5e1', padding: '4px 6px', textAlign: 'center' }}>{r.batch || '?'}</td>
+                            <td style={{ border: '1px solid #cbd5e1', padding: '4px 8px' }}>{v.mode_of_procurement}</td>
+                            <td style={{ border: '1px solid #cbd5e1', padding: '4px 6px', textAlign: 'center' }}>{v.pr_date_received}</td>
+                            <td style={{ border: '1px solid #cbd5e1', padding: '4px 8px' }}>{v.pr_number}</td>
+                            <td style={{ border: '1px solid #cbd5e1', padding: '4px 6px', textAlign: 'center' }}>{v.ors_date}</td>
+                            <td style={{ border: '1px solid #cbd5e1', padding: '4px 8px' }}>{v.po_number}</td>
+                            <td style={{ border: '1px solid #cbd5e1', padding: '4px 6px', textAlign: 'center' }}>{v.batch}</td>
                             <td style={{ border: '1px solid #cbd5e1', padding: '4px 8px', textAlign: 'right', fontWeight: 600 }}>
-                              {r.beneficiaries_pm ? Number(r.beneficiaries_pm).toLocaleString() : '?'}
+                              {v.beneficiaries_pm > 0 ? v.beneficiaries_pm.toLocaleString() : '—'}
                             </td>
                             <td style={{ border: '1px solid #cbd5e1', padding: '4px 8px', textAlign: 'right', fontWeight: 600 }}>
-                              {r.contract_amount ? `?${Number(r.contract_amount).toLocaleString()}` : '?'}
+                              {v.contract_amount > 0 ? `\u20B1${v.contract_amount.toLocaleString()}` : '—'}
                             </td>
-                            <td style={{ border: '1px solid #cbd5e1', padding: '4px 6px', textAlign: 'center' }}>{r.delivery_start || '?'}</td>
-                            <td style={{ border: '1px solid #cbd5e1', padding: '4px 6px', textAlign: 'center' }}>{r.delivery_end || '?'}</td>
+                            <td style={{ border: '1px solid #cbd5e1', padding: '4px 6px', textAlign: 'center' }}>{v.delivery_start}</td>
+                            <td style={{ border: '1px solid #cbd5e1', padding: '4px 6px', textAlign: 'center' }}>{v.delivery_end}</td>
                             <td style={{ border: '1px solid #cbd5e1', padding: '4px 8px', textAlign: 'right', fontWeight: 700, color: '#1e40af' }}>
-                              {r.packs_to_deliver ? Number(r.packs_to_deliver).toLocaleString() : '?'}
+                              {v.packs_to_deliver > 0 ? v.packs_to_deliver.toLocaleString() : '—'}
                             </td>
                             <td style={{ border: '1px solid #cbd5e1', padding: '4px 8px', textAlign: 'right', fontWeight: 700, color: '#065f46', background: delivered > 0 ? '#f0fdf4' : undefined }}>
-                              {delivered > 0 ? delivered.toLocaleString() : '?'}
+                              {delivered > 0 ? delivered.toLocaleString() : '—'}
                             </td>
-                            <td style={{ border: '1px solid #cbd5e1', padding: '4px 6px', textAlign: 'center' }}>{r.status_of_payment || '?'}</td>
-                            <td style={{ border: '1px solid #cbd5e1', padding: '4px 8px', color: '#475569' }}>{r.remarks || '?'}</td>
+                            <td style={{ border: '1px solid #cbd5e1', padding: '4px 6px', textAlign: 'center' }}>{v.status_of_payment}</td>
+                            <td style={{ border: '1px solid #cbd5e1', padding: '4px 8px', color: '#475569' }}>{v.remarks}</td>
                           </tr>
                         )
                       })}
@@ -617,14 +658,14 @@ export default function SbfpSpreadsheetReport() {
                             GRAND TOTAL ({filteredRecords.length} SDOs)
                           </td>
                           <td style={{ border: '1px solid #93c5fd', padding: '8px', textAlign: 'right' }}>
-                            ?{stats.totalAmount.toLocaleString()}
+                            {'\u20B1'}{stats.totalAmount.toLocaleString()}
                           </td>
                           <td colSpan={6} style={{ border: '1px solid #93c5fd' }}></td>
                           <td style={{ border: '1px solid #93c5fd', padding: '8px', textAlign: 'right' }}>
                             {stats.totalBeneficiaries.toLocaleString()}
                           </td>
                           <td style={{ border: '1px solid #93c5fd', padding: '8px', textAlign: 'right' }}>
-                            ?{stats.totalContractAmt.toLocaleString()}
+                            {'\u20B1'}{stats.totalContractAmt.toLocaleString()}
                           </td>
                           <td colSpan={2} style={{ border: '1px solid #93c5fd' }}></td>
                           <td style={{ border: '1px solid #93c5fd', padding: '8px', textAlign: 'right' }}>
