@@ -1,0 +1,230 @@
+================================================================================
+  PROPOSAL: PCC PHYSICAL SERVER FOR MFP WEB APPLICATION
+  Application team configures the stack; IT provides Ubuntu server + network
+================================================================================
+
+To          : PCC Information Technology / Infrastructure Team
+From        : MFP Web Application Team
+Subject     : Request for Ubuntu server provisioning (app team will configure)
+System      : DA-PCC Milk Feeding Program Monitoring System (mfp-web)
+Date        : September 2026
+Document    : Hosting proposal (simplified IT scope)
+
+
+--------------------------------------------------------------------------------
+1. PURPOSE
+--------------------------------------------------------------------------------
+
+We request PCC to provision a physical (or PCC-hosted VM) Ubuntu server for
+the Milk Feeding Program web application.
+
+Under this proposal:
+  - PCC IT provides the server, network, DNS, firewall, and access.
+  - The application team installs and configures the application stack
+    (Node.js, reverse proxy, process manager, and GitHub auto-deploy).
+
+This reduces IT workload and avoids installing CyberPanel/PHP stacks that
+do not match this application.
+
+
+--------------------------------------------------------------------------------
+2. WHY THIS APPROACH
+--------------------------------------------------------------------------------
+
+2.1 The application is Next.js (Node.js), not PHP/WordPress.
+2.2 The application team already maintains the codebase and GitHub repo.
+2.3 We want Vercel-style deployment: push to GitHub → server auto-updates.
+2.4 IT focuses on infrastructure (hardware, OS, network, security baseline).
+2.5 Application team focuses on runtime, deploys, and app operations.
+
+
+--------------------------------------------------------------------------------
+3. SCOPE — WHAT WE ASK FROM PCC IT
+--------------------------------------------------------------------------------
+
+Please provide the following only:
+
+3.1 Server
+  - Ubuntu Server 22.04 LTS or 24.04 LTS
+  - Suggested minimum: 2 CPU, 4–8 GB RAM, 40 GB+ disk (SSD preferred)
+  - Located on PCC physical infrastructure / approved VM host
+
+3.2 Access
+  - SSH access for the application team
+  - A Linux user with sudo privileges for initial setup
+  - (Optional) separate deploy user later if required by policy
+
+3.3 Network / DNS
+  - Server IP (LAN and/or public, per PCC policy)
+  - Hostname, e.g. mfp.pcc.gov.ph (final name per PCC standards)
+  - DNS record pointing to the server
+
+3.4 Firewall
+  - Allow TCP 22 (SSH) — preferably limited to PCC network/VPN
+  - Allow TCP 80 and 443 (web)
+  - Do not expose application port 3000 to the public internet
+
+3.5 Outbound internet (required for app and auto-deploy)
+  - HTTPS to Supabase (*.supabase.co)
+  - HTTPS to GitHub (github.com) and GitHub Actions endpoints
+  - HTTPS to npm registry (registry.npmjs.org)
+
+3.6 SSL / certificate
+  - Either:
+      a) Approve Let’s Encrypt on this host, OR
+      b) Provide PCC certificate for the hostname, OR
+      c) Confirm internal HTTP-only access if public HTTPS is not required yet
+
+3.7 Backups and operations (IT ownership)
+  - Server/VM backup policy
+  - OS patching schedule (coordinate brief downtime if needed)
+  - Reboot notifications when possible
+
+
+--------------------------------------------------------------------------------
+4. SCOPE — WHAT THE APPLICATION TEAM WILL DO
+--------------------------------------------------------------------------------
+
+We will configure and operate:
+
+  - Node.js 20+
+  - Git clone of the MFP-WEB repository
+  - Application environment file (.env.local) with secrets
+  - Nginx (or equivalent) reverse proxy to the app
+  - PM2 to keep the app running after reboot
+  - GitHub Actions self-hosted runner for auto-deploy on push to main
+  - First production build and smoke testing
+  - Day-to-day application deployments via GitHub
+
+Repository:
+  https://github.com/adrianjamesmagisa-arch/MFP-WEB
+
+Target app path (example):
+  /var/www/mfp-web
+
+Local app port (not public):
+  127.0.0.1:3000
+
+
+--------------------------------------------------------------------------------
+5. WHAT WE ARE NOT ASKING IT TO INSTALL
+--------------------------------------------------------------------------------
+
+Unless PCC policy strictly requires them, please do NOT treat this as a
+standard CyberPanel/PHP website request.
+
+Not required from IT for go-live:
+  - CyberPanel (optional only if mandated for SSL/panel policy)
+  - Local MySQL/MariaDB for this application
+  - PHP / WordPress stack
+  - Manual FTP upload workflow
+
+Database and authentication remain on Supabase cloud for this phase.
+(A future on-prem database migration would be a separate proposal.)
+
+
+--------------------------------------------------------------------------------
+6. AUTO-DEPLOY MODEL (LIKE VERCEL, ON PCC HARDWARE)
+--------------------------------------------------------------------------------
+
+Desired flow after one-time setup:
+
+  Developer pushes to GitHub (main)
+          ↓
+  GitHub Actions job runs on PCC server (self-hosted runner)
+          ↓
+  Server pulls code → builds → restarts app (PM2)
+          ↓
+  Users see the updated site on the PCC hostname
+
+IT does not need to redeploy the app for each release.
+IT only maintains the server, network, and backups.
+
+
+--------------------------------------------------------------------------------
+7. RESPONSIBILITY MATRIX
+--------------------------------------------------------------------------------
+
+  Item                              PCC IT     App Team
+  --------------------------------  ---------  ---------
+  Physical/VM server                Yes
+  Ubuntu OS install                 Yes
+  DNS / IP / firewall               Yes
+  SSL policy / cert support         Yes*
+  OS backups & host patching        Yes
+  SSH user provisioning             Yes
+  Node.js / Nginx / PM2                        Yes
+  App install & .env                           Yes
+  GitHub runner & auto-deploy                  Yes
+  Application features & fixes                 Yes
+  Supabase project & keys                      Yes
+
+  * IT provides cert or approves Let’s Encrypt; app team can complete
+    web-server SSL config if allowed.
+
+
+--------------------------------------------------------------------------------
+8. ACCEPTANCE CRITERIA (HANDOVER COMPLETE WHEN)
+--------------------------------------------------------------------------------
+
+  [ ] Ubuntu server is reachable via SSH with sudo
+  [ ] Hostname/DNS points to the server
+  [ ] Ports 22/80/443 allowed as agreed; port 3000 not public
+  [ ] Outbound HTTPS to Supabase, GitHub, and npm works
+  [ ] Application team can install packages and run the app
+  [ ] (After our setup) site loads on the agreed URL
+  [ ] (After our setup) push to GitHub main auto-deploys successfully
+
+
+--------------------------------------------------------------------------------
+9. REQUESTED DELIVERABLES FROM IT
+--------------------------------------------------------------------------------
+
+Please confirm and provide:
+
+  1. Server hostname and IP
+  2. SSH host, username, and access method (VPN/key)
+  3. Sudo confirmation
+  4. DNS name assigned
+  5. Firewall rules applied (summary)
+  6. SSL approach approved (Let’s Encrypt / PCC cert / internal only)
+  7. Outbound HTTPS confirmation
+  8. Backup policy note (frequency / retention)
+
+
+--------------------------------------------------------------------------------
+10. SUMMARY
+--------------------------------------------------------------------------------
+
+We propose that PCC IT provision a clean Ubuntu server with network access,
+DNS, firewall, and SSH/sudo for the application team. The application team
+will fully configure the Node.js MFP Web stack and GitHub-based auto-deploy
+on that server.
+
+This gives PCC control of the hardware and network, while enabling the same
+push-to-deploy workflow the team uses today — hosted on PCC premises instead
+of a third-party app platform.
+
+
+--------------------------------------------------------------------------------
+11. APPROVAL
+--------------------------------------------------------------------------------
+
+Requested decision:
+  [ ] Approved — provision Ubuntu server as described
+  [ ] Approved with changes (notes below)
+  [ ] Not approved — alternative required
+
+IT notes / conditions:
+  _______________________________________________________________________
+  _______________________________________________________________________
+  _______________________________________________________________________
+
+IT sign-off: _______________________  Date: ______________
+
+App team sign-off: _________________  Date: ______________
+
+
+================================================================================
+  End of Proposal
+================================================================================

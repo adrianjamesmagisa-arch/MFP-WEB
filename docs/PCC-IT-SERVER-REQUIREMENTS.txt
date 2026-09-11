@@ -1,0 +1,314 @@
+================================================================================
+  DA-PCC MILK FEEDING PROGRAM (MFP) WEB APPLICATION
+  SERVER HOSTING — REQUIREMENTS ANALYSIS
+  For: PCC Information Technology / Infrastructure Team
+================================================================================
+
+Document type : Requirements Analysis (Hosting & Deployment)
+System        : mfp-web (DA-PCC Milk Feeding Program Monitoring System)
+Application   : Next.js (Node.js) web application
+Database/Auth : Supabase (cloud) — no local PHP/MySQL hosting required for go-live
+Prepared for  : PCC physical server transition
+Status        : For IT review and provisioning
+
+
+--------------------------------------------------------------------------------
+1. PURPOSE
+--------------------------------------------------------------------------------
+
+This document describes what PCC IT must provide and configure so that the
+MFP Web application can run reliably on a PCC-owned physical server.
+
+The application is currently developed and tested as a modern Node.js / Next.js
+system. It is NOT a traditional PHP, WordPress, or CyberPanel “static site”
+upload. Hosting must support a long-running Node.js process behind a reverse
+proxy (HTTPS).
+
+
+--------------------------------------------------------------------------------
+2. SYSTEM OVERVIEW
+--------------------------------------------------------------------------------
+
+2.1 Application stack
+  - Frontend / Backend : Next.js (Node.js 20+)
+  - Runtime command    : npm run build  →  npm start (next start)
+  - Process manager    : PM2 (recommended) or Docker
+  - Reverse proxy      : Nginx (recommended) or OpenLiteSpeed via CyberPanel
+  - Data / Auth        : Supabase cloud (PostgreSQL + Auth + API)
+
+2.2 What runs on the PCC server
+  - The Next.js application only (web UI + API routes)
+
+2.3 What does NOT need to run on the PCC server (initial phase)
+  - Application database
+  - User authentication store
+  - File storage for app auth
+
+  These remain on Supabase unless PCC later mandates a full on-premises
+  database migration (separate project).
+
+
+--------------------------------------------------------------------------------
+3. BUSINESS / OPERATIONAL REQUIREMENTS
+--------------------------------------------------------------------------------
+
+REQ-01  The application must be accessible via a PCC-approved hostname
+        (internal LAN and/or public, as decided by PCC).
+
+REQ-02  Access must use HTTPS where policy requires encrypted traffic.
+
+REQ-03  The service must survive server reboot (auto-start).
+
+REQ-04  Application updates must auto-deploy from GitHub (Vercel-style):
+        when the application team pushes to the main branch, the PCC
+        server must pull, build, and restart the app without manual SSH.
+
+REQ-05  Secrets (API keys) must be stored on the server with restricted
+        file permissions; not committed to source control.
+
+REQ-06  Outbound connectivity to Supabase must be allowed for login and
+        data operations.
+
+REQ-07  Outbound connectivity to GitHub Actions / GitHub APIs must be
+        allowed so the self-hosted runner can receive deploy jobs.
+
+
+--------------------------------------------------------------------------------
+4. INFRASTRUCTURE REQUIREMENTS (PCC IT TO PROVIDE)
+--------------------------------------------------------------------------------
+
+4.1 Server
+  - Physical server (or VM on PCC hardware) dedicated or shared for MFP Web
+  - Recommended OS : Ubuntu Server 22.04 LTS or 24.04 LTS
+  - Minimum sizing (starting point; scale as usage grows):
+      • CPU    : 2 vCPU / cores
+      • RAM    : 4 GB (8 GB preferred)
+      • Disk   : 40 GB free for OS + app + logs (SSD preferred)
+  - SSH administrative or deploy-user access for initial setup
+  - sudo rights for package install OR IT installs the software list below
+
+4.2 Network and DNS
+  - Hostname example : mfp.pcc.gov.ph  (final name per PCC naming standards)
+  - DNS A/AAAA record pointing to the server IP
+  - Firewall rules:
+      ALLOW  TCP 22   (SSH) — preferably limited to PCC network / VPN
+      ALLOW  TCP 80   (HTTP — redirect to HTTPS if used)
+      ALLOW  TCP 443  (HTTPS)
+      DENY   public access to application port 3000
+  - Outbound HTTPS (TCP 443) required to:
+      • Supabase   (*.supabase.co)
+      • GitHub     (github.com) — for code pull, if used
+      • npm registry (registry.npmjs.org) — for dependency install/build
+
+4.3 TLS / SSL
+  - Valid certificate for the hostname:
+      • Let’s Encrypt, OR
+      • PCC enterprise / internal CA certificate
+  - If CyberPanel is the agency standard, SSL may be managed there,
+    provided traffic is reverse-proxied to the Node app.
+
+4.4 Software to install on the server
+  REQUIRED
+    - Node.js 20.x (or newer LTS)
+    - Git
+    - Nginx  (OR equivalent reverse proxy / OpenLiteSpeed with proxy)
+    - PM2    (Node process manager)  — unless Docker is chosen instead
+    - GitHub Actions self-hosted runner (for auto-deploy on git push)
+
+  OPTIONAL
+    - Docker + Docker Compose (only if PCC prefers container deployment)
+    - CyberPanel (only if mandated for panel/SSL management; does not
+      replace Node/PM2 for this application)
+    - Coolify / similar PaaS panel (alternative Vercel-like UI; see 5.7)
+
+
+--------------------------------------------------------------------------------
+5. APPLICATION DEPLOYMENT REQUIREMENTS
+--------------------------------------------------------------------------------
+
+5.1 Application location (example)
+  /var/www/mfp-web
+
+5.2 Source repository
+  GitHub : https://github.com/adrianjamesmagisa-arch/MFP-WEB
+  If the repository is private, PCC IT must provide either:
+    - a server deploy key, OR
+    - a machine user / token with read access
+  The same GitHub account/org must allow a self-hosted Actions runner
+  registered to this repository (or organization).
+
+5.3 Environment configuration (on server only)
+  File example : /var/www/mfp-web/.env.local
+  Permissions  : 600 (owner read/write only)
+
+  Required variables (values provided by the application team securely):
+    NEXT_PUBLIC_SUPABASE_URL=...
+    NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+    SUPABASE_SERVICE_ROLE_KEY=...
+
+5.4 First-time build and run (once, then auto-deploy takes over)
+  cd /var/www/mfp-web
+  npm ci
+  npm run build
+  pm2 start npm --name mfp-web -- start
+  pm2 save
+  pm2 startup
+
+  The app listens locally on:  http://127.0.0.1:3000
+
+  Bootstrap helper in repo: scripts/pcc-server-bootstrap.sh
+
+5.5 Reverse proxy
+  Public/internal URL  →  http://127.0.0.1:3000
+  Proxy must forward Host, X-Forwarded-For, X-Forwarded-Proto headers.
+
+5.6 AUTO-DEPLOY FROM GITHUB (VERCEL-STYLE — REQUIRED GOAL)
+  Desired developer experience (same idea as Vercel):
+    1. Developer pushes code to GitHub branch "main"
+    2. PCC server automatically pulls, builds, and restarts the app
+    3. No manual SSH / FTP upload for each release
+
+  Recommended method for PCC: GitHub Actions + self-hosted runner
+
+  Why this method:
+    - Uses the existing GitHub repository only (no separate Vercel account)
+    - Deploy stays on the PCC physical server (data residency / policy)
+    - Workflow file is already in the repo:
+        .github/workflows/deploy-pcc-server.yml
+
+  IT one-time setup on the PCC server:
+    A. Install Node, Git, Nginx, PM2; clone app; create .env.local; first build
+    B. Install GitHub Actions self-hosted runner (Linux) for this repo
+       Labels required:  self-hosted, linux, pcc-mfp
+       Docs: https://docs.github.com/en/actions/hosting-your-own-runners
+    C. Install runner as a system service so it starts on reboot
+    D. Confirm runner shows "Idle" under:
+       GitHub repo → Settings → Actions → Runners
+    E. Ensure outbound HTTPS to github.com / actions endpoints works
+
+  After setup, every push to "main" runs:
+    git reset to origin/main → npm ci → npm run build → pm2 restart mfp-web
+
+  Manual trigger also available via GitHub Actions "Run workflow".
+
+5.7 Alternative: Coolify (closest Vercel UI on own hardware)
+  If PCC prefers a web dashboard similar to Vercel:
+    - Install Coolify on the server
+    - Connect the GitHub repo
+    - Enable auto-deploy on push
+  Coolify still needs Docker and outbound GitHub access.
+  Choose EITHER Coolify OR GitHub Actions self-hosted runner — not both
+  for the same app path unless IT designs it deliberately.
+
+
+--------------------------------------------------------------------------------
+6. CYBERPANEL (IF SELECTED BY PCC)
+--------------------------------------------------------------------------------
+
+CyberPanel MAY be used if it is PCC’s standard control panel for:
+  - website / vhost creation
+  - SSL certificate management
+  - basic firewall / mail (if any)
+
+CyberPanel does NOT replace the following for this project:
+  - Node.js runtime
+  - Application build (npm run build)
+  - Long-running process (PM2 or Docker)
+  - GitHub auto-deploy (Actions runner or Coolify)
+
+If CyberPanel is used, configure it as:
+  CyberPanel / OpenLiteSpeed  →  reverse proxy  →  127.0.0.1:3000
+  while PM2 (or Docker) runs the Next.js process and GitHub Actions
+  (or Coolify) performs auto-deploy.
+
+Recommendation:
+  Prefer Nginx + PM2 + GitHub Actions self-hosted runner unless
+  CyberPanel or Coolify is mandatory.
+
+
+--------------------------------------------------------------------------------
+7. ROLES AND RESPONSIBILITIES
+--------------------------------------------------------------------------------
+
+PCC IT / Infrastructure
+  - Provision server, OS, network, DNS, firewall, SSL
+  - Install Node.js, Git, Nginx (or CyberPanel proxy), PM2
+  - Install and register GitHub Actions self-hosted runner (labels above)
+  - Ensure outbound access to Supabase / GitHub / npm / Actions
+  - Server backups, patching, uptime, reboot recovery
+  - Account and access control for SSH
+
+Application Team
+  - Application source code and features
+  - Supabase project configuration
+  - Provide environment variable values securely
+  - Maintain GitHub Actions workflow in the repository
+  - Push to main to trigger production deploy
+  - Assist first deployment and functional smoke test
+
+
+--------------------------------------------------------------------------------
+8. ACCEPTANCE CRITERIA (GO-LIVE CHECKLIST)
+--------------------------------------------------------------------------------
+
+  [ ] Server OS installed and reachable via SSH
+  [ ] Hostname / DNS resolves to server
+  [ ] Ports 80/443 (and SSH) configured; port 3000 not publicly exposed
+  [ ] Outbound HTTPS to Supabase verified
+  [ ] Outbound HTTPS to GitHub / Actions verified
+  [ ] Node.js 20+, Git, Nginx/proxy, PM2 installed
+  [ ] Application cloned to server path
+  [ ] .env.local present with correct keys (restricted permissions)
+  [ ] npm run build completes successfully
+  [ ] PM2 shows mfp-web as online and starts after reboot
+  [ ] GitHub self-hosted runner online (labels: self-hosted, linux, pcc-mfp)
+  [ ] Test push to main triggers Actions deploy and updates the live site
+  [ ] HTTPS (or approved internal URL) loads the login page
+  [ ] User login and basic data load against Supabase succeed
+
+
+--------------------------------------------------------------------------------
+9. OUT OF SCOPE (THIS PHASE)
+--------------------------------------------------------------------------------
+
+  - Migrating Supabase database onto local MySQL/PostgreSQL on CyberPanel
+  - Rebuilding the application as PHP
+  - Email server setup (unless separately requested)
+  - High-availability multi-node clustering (can be planned later)
+  - Continuing to use Vercel as production once PCC server is live
+    (Vercel may remain temporary until cutover)
+
+
+--------------------------------------------------------------------------------
+10. RISKS AND NOTES
+--------------------------------------------------------------------------------
+
+  R1  Treating this as a PHP/CyberPanel-only site will fail — Node process
+      is mandatory.
+  R2  Blocking outbound Supabase traffic will break login and all data.
+  R3  Exposing port 3000 publicly increases attack surface; proxy only.
+  R4  Missing or world-readable service role key is a security incident risk.
+  R5  Future on-prem database migration is a separate requirements effort.
+  R6  Without the self-hosted runner (or Coolify), push-to-deploy will not
+      work — IT must complete runner registration.
+  R7  Self-hosted runner has access to the server; treat the runner token
+      and host like production credentials.
+
+
+--------------------------------------------------------------------------------
+11. SUMMARY REQUEST TO PCC IT
+--------------------------------------------------------------------------------
+
+Please provision a PCC physical server (Ubuntu LTS preferred) with DNS,
+HTTPS, firewall, and outbound access to Supabase and GitHub; install
+Node.js 20, Git, Nginx (or CyberPanel reverse proxy), and PM2; register
+a GitHub Actions self-hosted runner (labels: self-hosted, linux, pcc-mfp)
+so that pushes to the MFP-WEB main branch auto-deploy like Vercel; and
+coordinate with the application team for first deployment of mfp-web as
+a Node.js service proxied to port 3000. Database/auth remain on Supabase
+for this phase.
+
+
+================================================================================
+  End of Requirements Analysis
+================================================================================

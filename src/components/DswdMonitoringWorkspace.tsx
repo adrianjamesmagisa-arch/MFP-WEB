@@ -86,7 +86,6 @@ export function DswdMonitoringWorkspace({
         return next as DswdRow
       }),
     )
-    router.refresh()
   }
 
   async function addMunicipality() {

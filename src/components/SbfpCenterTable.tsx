@@ -121,17 +121,21 @@ function EditableCell({
   const save = async (override?: any) => {
     const nextVal = override !== undefined ? override : val
     if (nextVal === value) { setEditing(false); return }
-    setSaving(true)
     let v: any = nextVal
     if (type === 'number') v = nextVal === '' || nextVal == null ? null : Number(nextVal)
     if (type === 'checkbox') v = nextVal
-    const { error } = await supabase.from('sbfp_data').update({ [field]: v }).eq('id', id)
-    if (!error) {
-      setVal(nextVal)
-      onSave(id, field, value, v)
-    } else setVal(value)
-    setSaving(false)
+    // Optimistic: update parent row immediately, sync DB in background.
+    setVal(nextVal)
     setEditing(false)
+    setSaving(true)
+    onSave(id, field, value, v)
+    const { error } = await supabase.from('sbfp_data').update({ [field]: v }).eq('id', id)
+    if (error) {
+      setVal(value)
+      onSave(id, field, v, value)
+      alert(error.message)
+    }
+    setSaving(false)
   }
 
   const onKey = (e: React.KeyboardEvent) => {
@@ -145,11 +149,16 @@ function EditableCell({
         <input type="checkbox" checked={!!val}
           onChange={async (e) => {
             const newVal = e.target.checked
+            const prev = val
             setVal(newVal)
             setSaving(true)
+            onSave(id, field, value, newVal)
             const { error } = await supabase.from('sbfp_data').update({ [field]: newVal }).eq('id', id)
-            if (!error) onSave(id, field, value, newVal)
-            else setVal(value)
+            if (error) {
+              setVal(prev)
+              onSave(id, field, newVal, value)
+              alert(error.message)
+            }
             setSaving(false)
           }}
           style={{ cursor: 'pointer', width: 15, height: 15 }} />
@@ -630,9 +639,9 @@ export function SbfpCenterTable({
     if (nextRow && (field === 'monthly_packs_delivered' || field === 'delivery_snapshots')) {
       const total = totalPacksDelivered(nextRow)
       if (total !== (Number(nextRow.packs_delivered) || 0)) {
-        await supabase.from('sbfp_data').update({ packs_delivered: total }).eq('id', id)
         nextRow = { ...nextRow, packs_delivered: total }
         setRows(p => p.map(r => r.id === id ? { ...r, packs_delivered: total } : r))
+        void supabase.from('sbfp_data').update({ packs_delivered: total }).eq('id', id)
       }
       cascadeWithFeedback(nextRow)
     }
@@ -644,39 +653,28 @@ export function SbfpCenterTable({
     ) {
       const milk = normalizeSbfpMilkType(nextRow.milk_type) || String(nextRow.milk_type || '').toUpperCase()
       let packPrice: number | null | undefined = nextRow.pack_unit_price
+      const patch: Record<string, unknown> = {}
       if (milk === 'PM' || milk === 'SM') {
         packPrice = fixedPackPriceForMilkType(milk)
         if (nextRow.pack_unit_price != null) {
-          const { error: clearErr } = await supabase
-            .from('sbfp_data')
-            .update({ pack_unit_price: null })
-            .eq('id', id)
-          if (!clearErr) {
-            nextRow = { ...nextRow, pack_unit_price: null }
-            setRows(p => p.map(r => r.id === id ? { ...r, pack_unit_price: null } : r))
-          }
+          patch.pack_unit_price = null
+          nextRow = { ...nextRow, pack_unit_price: null }
         }
       }
       const derived = packsFromAmount(nextRow.amount, milk, packPrice)
-      // CM without Pack ₱ yet → clear packs; otherwise write Amount ÷ price
       const nextPacks = derived != null ? derived : (milk === 'CM' ? 0 : null)
       if (nextPacks != null && nextPacks !== (Number(nextRow.packs_to_deliver) || 0)) {
-        const { error: packErr } = await supabase
-          .from('sbfp_data')
-          .update({ packs_to_deliver: nextPacks })
-          .eq('id', id)
-        if (!packErr) {
-          nextRow = { ...nextRow, packs_to_deliver: nextPacks }
-          setRows(p => p.map(r => r.id === id ? { ...r, packs_to_deliver: nextPacks } : r))
-          cascadeWithFeedback(nextRow)
-        } else {
-          alert(`Could not update Packs to Deliver: ${packErr.message}`)
-        }
-      } else if (milk === 'CM' && derived == null && !(Number(nextRow.amount) > 0)) {
-        // no-op: need Amount first
-      } else if (milk === 'CM' && derived == null) {
-        // waiting for Pack ₱ — packs already cleared above if needed
-      } else if ((milk === 'PM' || milk === 'SM') && !(Number(nextRow.amount) > 0)) {
+        patch.packs_to_deliver = nextPacks
+        nextRow = { ...nextRow, packs_to_deliver: nextPacks }
+      }
+      if (Object.keys(patch).length) {
+        setRows(p => p.map(r => (r.id === id ? { ...r, ...patch } : r)))
+        void supabase.from('sbfp_data').update(patch).eq('id', id).then(({ error }) => {
+          if (error) alert(`Could not update Packs to Deliver: ${error.message}`)
+          else if (nextRow) cascadeWithFeedback(nextRow)
+        })
+      }
+      if ((milk === 'PM' || milk === 'SM') && !(Number(nextRow.amount) > 0)) {
         alert('Enter Amount (₱) first — Packs to Deliver = Amount ÷ Pack ₱')
       }
     }
@@ -685,17 +683,16 @@ export function SbfpCenterTable({
       // Auto-detect milk type from label e.g. "Zambales (SM)" → SM
       const inferred = inferSbfpMilkType(String(newV || ''))
       if (inferred && inferred !== normalizeSbfpMilkType(nextRow.milk_type)) {
-        await supabase.from('sbfp_data').update({ milk_type: inferred }).eq('id', id)
-        nextRow = { ...nextRow, milk_type: inferred }
-        setRows(p => p.map(r => r.id === id ? { ...r, milk_type: inferred } : r))
-        // Recalc packs from Amount ÷ milk pack ₱
         const price = inferred === 'CM' ? nextRow.pack_unit_price : fixedPackPriceForMilkType(inferred)
         const derived = packsFromAmount(nextRow.amount, inferred, price)
+        const patch: Record<string, unknown> = { milk_type: inferred }
+        nextRow = { ...nextRow, milk_type: inferred }
         if (derived != null && derived !== (Number(nextRow.packs_to_deliver) || 0)) {
-          await supabase.from('sbfp_data').update({ packs_to_deliver: derived }).eq('id', id)
+          patch.packs_to_deliver = derived
           nextRow = { ...nextRow, packs_to_deliver: derived }
-          setRows(p => p.map(r => r.id === id ? { ...r, packs_to_deliver: derived } : r))
         }
+        setRows(p => p.map(r => (r.id === id ? { ...r, ...patch } : r)))
+        void supabase.from('sbfp_data').update(patch).eq('id', id)
       }
       void apiDropoffMasterlist({
         action: 'cascade-rename',
@@ -726,7 +723,8 @@ export function SbfpCenterTable({
         if (err) alert(err)
       })
     }
-    await maybeRecompute(field === 'amount' || field === 'milk_type' || field === 'pack_unit_price' ? 'packs_to_deliver' : field)
+    // Summary recompute in background — never block the encoder cell.
+    void maybeRecompute(field === 'amount' || field === 'milk_type' || field === 'pack_unit_price' ? 'packs_to_deliver' : field)
   }
 
   const renameSnapDate = async (oldDate: string, newDate: string) => {

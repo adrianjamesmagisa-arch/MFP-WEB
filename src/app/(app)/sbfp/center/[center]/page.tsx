@@ -7,6 +7,7 @@ import { loadCenterSchoolYearCards, loadSchoolYears } from '@/lib/sbfp-school-ye
 import { parseSchoolYear, schoolYearLabel, schoolYearToDbYear } from '@/lib/sbfp-year'
 import { encoderCanAccessSbfpCenter, sbfpNavCenter } from '@/lib/center-aliases'
 import { excludeAuxSbfp, SBFP_HIRING_TYPE, SBFP_PPMP_TYPE, toHiringRow, toPpmpRow } from '@/lib/sbfp-aux'
+import { SBFP_DATA_ENCODER_COLUMNS, SBFP_DROPOFF_ENCODER_COLUMNS } from '@/lib/encoder-selects'
 
 export default async function SbfpCenterPage({
   params,
@@ -55,7 +56,7 @@ export default async function SbfpCenterPage({
   const [{ data: records }, { data: budget }, { data: capacity }, dropoffRes] = await Promise.all([
     supabase
       .from('sbfp_data')
-      .select('*')
+      .select(SBFP_DATA_ENCODER_COLUMNS)
       .eq('center', decodedCenter)
       .eq('year', year)
       .order('created_at', { ascending: true }),
@@ -73,7 +74,7 @@ export default async function SbfpCenterPage({
       .maybeSingle(),
     supabase
       .from('sbfp_dropoff_points')
-      .select('*')
+      .select(SBFP_DROPOFF_ENCODER_COLUMNS)
       .eq('center', decodedCenter)
       .eq('year', year)
       .order('sdo', { ascending: true })
@@ -85,8 +86,8 @@ export default async function SbfpCenterPage({
   const hiringRows = all.filter(r => r.milk_type === SBFP_HIRING_TYPE).map(toHiringRow)
   const dropoffs = dropoffRes.error ? [] : (dropoffRes.data || [])
   const dropoffSchemaReady = !dropoffRes.error
-  const { error: feedingErr } = await supabase.from('sbfp_dropoff_points').select('feeding_days').limit(1)
-  const feedingDaysReady = !feedingErr
+  // feeding_days is included in the lean select — ready if that column query succeeded.
+  const feedingDaysReady = dropoffSchemaReady
 
   return (
     <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading…</div>}>

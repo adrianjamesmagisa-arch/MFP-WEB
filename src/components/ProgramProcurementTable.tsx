@@ -171,9 +171,9 @@ export function ProgramProcurementTable({
 
     if (field === 'label' && nextRow) {
       const row = nextRow as ProgramProcurementRow
-      await supabase.from(PROC_TABLE).update({ province: String(newV || '') }).eq('id', id)
       nextRow = { ...row, province: String(newV || '') }
       setRows(p => p.map(r => (r.id === id ? { ...r, province: String(newV || '') } : r)))
+      void supabase.from(PROC_TABLE).update({ province: String(newV || '') }).eq('id', id)
     }
 
     if (
@@ -182,9 +182,9 @@ export function ProgramProcurementTable({
     ) {
       const total = totalPacksDelivered(rawMilkRow(nextRow))
       if (total !== (Number(nextRow.packs_delivered) || 0)) {
-        await supabase.from(PROC_TABLE).update({ packs_delivered: total }).eq('id', id)
         nextRow = { ...nextRow, packs_delivered: total }
         setRows(p => p.map(r => (r.id === id ? { ...r, packs_delivered: total } : r)))
+        void supabase.from(PROC_TABLE).update({ packs_delivered: total }).eq('id', id)
       }
     }
 
@@ -194,25 +194,23 @@ export function ProgramProcurementTable({
     ) {
       const milk = normalizeSbfpMilkType(nextRow.milk_type) || String(nextRow.milk_type || '').toUpperCase()
       let packPrice: number | null | undefined = nextRow.pack_unit_price
+      const patch: Record<string, unknown> = {}
       if (milk === 'PM' || milk === 'SM') {
         packPrice = fixedPackPriceForMilkType(milk)
         if (nextRow.pack_unit_price != null) {
-          await supabase.from(PROC_TABLE).update({ pack_unit_price: null }).eq('id', id)
+          patch.pack_unit_price = null
           nextRow = { ...nextRow, pack_unit_price: null }
-          setRows(p => p.map(r => (r.id === id ? { ...r, pack_unit_price: null } : r)))
         }
       }
       const derived = packsFromAmount(nextRow.amount, milk, packPrice)
       const nextPacks = derived != null ? derived : milk === 'CM' ? 0 : null
       if (nextPacks != null && nextPacks !== (Number(nextRow.packs_to_deliver) || 0)) {
-        const { error: packErr } = await supabase
-          .from(PROC_TABLE)
-          .update({ packs_to_deliver: nextPacks })
-          .eq('id', id)
-        if (!packErr) {
-          nextRow = { ...nextRow, packs_to_deliver: nextPacks }
-          setRows(p => p.map(r => (r.id === id ? { ...r, packs_to_deliver: nextPacks } : r)))
-        }
+        patch.packs_to_deliver = nextPacks
+        nextRow = { ...nextRow, packs_to_deliver: nextPacks }
+      }
+      if (Object.keys(patch).length) {
+        setRows(p => p.map(r => (r.id === id ? { ...r, ...patch } : r)))
+        void supabase.from(PROC_TABLE).update(patch).eq('id', id)
       }
     }
 

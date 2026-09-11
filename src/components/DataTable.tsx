@@ -31,20 +31,21 @@ function EditableCell({ id, field, value, type = 'text', className, style, forma
       setIsEditing(false);
       return;
     }
-    setIsSaving(true);
     let saveVal = val;
     if (type === 'number') {
       saveVal = val === '' ? null : Number(val);
     }
+    setIsEditing(false);
+    setIsSaving(true);
+    if (onSave) onSave(id, field, value, saveVal);
     try {
       const { error } = await supabase.from('mfp_data').update({ [field]: saveVal }).eq('id', id);
       if (error) throw error;
-      setIsEditing(false);
-      if (onSave) onSave(id, field, value, saveVal);
     } catch (e) {
       console.error('Error saving:', e);
-      setVal(value); // revert
-      setIsEditing(false);
+      setVal(value);
+      if (onSave) onSave(id, field, saveVal, value);
+      alert('Failed to save cell — change was reverted.');
     } finally {
       setIsSaving(false);
     }

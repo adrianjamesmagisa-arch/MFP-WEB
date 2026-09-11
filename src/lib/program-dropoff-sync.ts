@@ -12,6 +12,10 @@ import {
   type MonitoringProgramId,
 } from '@/lib/monitoring-programs'
 import { normalizeSbfpMilkType } from '@/lib/sbfp-pack-price'
+import {
+  PROGRAM_DROPOFF_ENCODER_COLUMNS,
+  PROGRAM_PROCUREMENT_ENCODER_COLUMNS,
+} from '@/lib/encoder-selects'
 
 export type ProgramProcurementRow = {
   id: string
@@ -249,7 +253,7 @@ export async function loadProgramProcurement(
 ): Promise<ProgramProcurementRow[]> {
   let q = supabase
     .from('mfp_program_procurement')
-    .select('*')
+    .select(PROGRAM_PROCUREMENT_ENCODER_COLUMNS)
     .eq('center', center)
     .eq('year', year)
     .eq('program', programId)
@@ -268,7 +272,7 @@ export async function loadProgramDropoffs(
 ): Promise<ProgramDropoffRow[]> {
   let q = supabase
     .from('mfp_program_dropoffs')
-    .select('*')
+    .select(PROGRAM_DROPOFF_ENCODER_COLUMNS)
     .eq('center', center)
     .eq('year', year)
     .eq('program', programId)

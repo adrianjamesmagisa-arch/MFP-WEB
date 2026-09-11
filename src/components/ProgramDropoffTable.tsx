@@ -81,21 +81,21 @@ export function ProgramDropoffTable({
   }
 
   const save = async (row: ProgramDropoffRow, field: string, value: unknown) => {
-    setBusyRowId(row.id)
-    try {
-      const { error } = await supabase.from('mfp_program_dropoffs').update({ [field]: value }).eq('id', row.id)
-      if (error) {
-        alert(error.message)
-        return
-      }
-      const next = { ...row, [field]: value } as ProgramDropoffRow
-      updateLocal(row.id, { [field]: value } as Partial<ProgramDropoffRow>)
-      if (['beneficiaries', 'feeding_days', 'include_in_masterlist', 'dropoff_name', 'municipality', 'province', 'procurement_id'].includes(field)) {
-        const err = await apiSync(next)
+    const prev = row[field as keyof ProgramDropoffRow]
+    // Optimistic UI — encoders see the change immediately.
+    updateLocal(row.id, { [field]: value } as Partial<ProgramDropoffRow>)
+    const { error } = await supabase.from('mfp_program_dropoffs').update({ [field]: value }).eq('id', row.id)
+    if (error) {
+      updateLocal(row.id, { [field]: prev } as Partial<ProgramDropoffRow>)
+      alert(error.message)
+      return
+    }
+    const next = { ...row, [field]: value } as ProgramDropoffRow
+    if (['beneficiaries', 'feeding_days', 'include_in_masterlist', 'dropoff_name', 'municipality', 'province', 'procurement_id'].includes(field)) {
+      // Masterlist sync in background — do not block the row.
+      void apiSync(next).then(err => {
         if (err) alert(err)
-      }
-    } finally {
-      setBusyRowId(null)
+      })
     }
   }
 

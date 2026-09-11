@@ -129,7 +129,6 @@ export function SbfpDataTable({
 
   const handleSave = (id: string, field: string, oldVal: any, newVal: any) => {
     setLocalRecords(prev => prev.map(r => r.id === id ? { ...r, [field]: newVal } : r))
-    router.refresh()
   }
 
   const handleDelete = async (id: string) => {

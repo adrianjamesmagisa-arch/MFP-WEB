@@ -59,17 +59,20 @@ export function ProcEditableCell({
       setEditing(false)
       return
     }
-    setSaving(true)
     let v: any = nextVal
     if (type === 'number') v = nextVal === '' || nextVal == null ? null : Number(nextVal)
     if (type === 'checkbox') v = nextVal
-    const { error } = await supabase.from(table).update({ [field]: v }).eq('id', id)
-    if (!error) {
-      setVal(nextVal)
-      onSave(id, field, value, v)
-    } else setVal(value)
-    setSaving(false)
+    setVal(nextVal)
     setEditing(false)
+    setSaving(true)
+    onSave(id, field, value, v)
+    const { error } = await supabase.from(table).update({ [field]: v }).eq('id', id)
+    if (error) {
+      setVal(value)
+      onSave(id, field, v, value)
+      alert(error.message)
+    }
+    setSaving(false)
   }
 
   if (type === 'checkbox') {
@@ -80,11 +83,16 @@ export function ProcEditableCell({
           checked={!!val}
           onChange={async e => {
             const newVal = e.target.checked
+            const prev = val
             setVal(newVal)
             setSaving(true)
+            onSave(id, field, value, newVal)
             const { error } = await supabase.from(table).update({ [field]: newVal }).eq('id', id)
-            if (!error) onSave(id, field, value, newVal)
-            else setVal(value)
+            if (error) {
+              setVal(prev)
+              onSave(id, field, newVal, value)
+              alert(error.message)
+            }
             setSaving(false)
           }}
           style={{ cursor: 'pointer', width: 15, height: 15 }}
