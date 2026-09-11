@@ -27,6 +27,10 @@ function regionSortKey(region: string): number {
   return REGION_ORDER[region?.toUpperCase()] ?? 99
 }
 
+/** Philippine peso — use Unicode escape so builds never lose the glyph as "?". */
+const PESO = '\u20B1'
+const fmtPeso = (n: number) => `${PESO}${n.toLocaleString()}`
+
 const STATUS_BADGE: Record<string, { bg: string; color: string }> = {
   'For Preparation':            { bg: '#fef3c7', color: '#92400e' },
   'Ongoing Procurement':        { bg: '#dbeafe', color: '#1e40af' },
@@ -528,7 +532,7 @@ export default function SbfpSpreadsheetReport() {
 
         <div style={{ background: '#ffffff', padding: '0.625rem 1rem', borderRadius: 8, border: '1px solid #e2e8f0' }}>
           <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Contract Amount</div>
-          <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#b45309', marginTop: 2 }}>?{stats.totalContractAmt.toLocaleString()}</div>
+          <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#b45309', marginTop: 2 }}>{fmtPeso(stats.totalContractAmt)}</div>
         </div>
 
         <div style={{ background: '#ffffff', padding: '0.625rem 1rem', borderRadius: 8, border: '1px solid #e2e8f0' }}>
@@ -573,7 +577,7 @@ export default function SbfpSpreadsheetReport() {
                         <th style={{ border: '1px solid #cbd5e1', padding: '6px 8px', width: 85, textAlign: 'center', fontWeight: 700, position: 'sticky', top: 0, background: '#e2e8f0', zIndex: 5 }}>Center</th>
                         <th style={{ border: '1px solid #cbd5e1', padding: '6px 10px', minWidth: 165, textAlign: 'center', fontWeight: 700, position: 'sticky', top: 0, background: '#e2e8f0', zIndex: 5 }}>Procurement Status</th>
                         <th style={{ border: '1px solid #cbd5e1', padding: '6px 8px', width: 95, textAlign: 'center', fontWeight: 700, position: 'sticky', top: 0, background: '#e2e8f0', zIndex: 5 }}>Milk Type</th>
-                        <th style={{ border: '1px solid #cbd5e1', padding: '6px 10px', minWidth: 110, textAlign: 'right', fontWeight: 700, position: 'sticky', top: 0, background: '#e2e8f0', zIndex: 5 }}>Amount (?)</th>
+                        <th style={{ border: '1px solid #cbd5e1', padding: '6px 10px', minWidth: 110, textAlign: 'right', fontWeight: 700, position: 'sticky', top: 0, background: '#e2e8f0', zIndex: 5 }}>Amount ({PESO})</th>
                         <th style={{ border: '1px solid #cbd5e1', padding: '6px 8px', minWidth: 130, textAlign: 'left', fontWeight: 700, position: 'sticky', top: 0, background: '#e2e8f0', zIndex: 5 }}>Mode of Procurement</th>
                         <th style={{ border: '1px solid #cbd5e1', padding: '6px 8px', width: 95, textAlign: 'center', fontWeight: 700, position: 'sticky', top: 0, background: '#e2e8f0', zIndex: 5 }}>PR Date</th>
                         <th style={{ border: '1px solid #cbd5e1', padding: '6px 8px', minWidth: 110, textAlign: 'left', fontWeight: 700, position: 'sticky', top: 0, background: '#e2e8f0', zIndex: 5 }}>PR Number</th>
@@ -581,7 +585,7 @@ export default function SbfpSpreadsheetReport() {
                         <th style={{ border: '1px solid #cbd5e1', padding: '6px 8px', minWidth: 110, textAlign: 'left', fontWeight: 700, position: 'sticky', top: 0, background: '#e2e8f0', zIndex: 5 }}>PO Number</th>
                         <th style={{ border: '1px solid #cbd5e1', padding: '6px 8px', width: 75, textAlign: 'center', fontWeight: 700, position: 'sticky', top: 0, background: '#e2e8f0', zIndex: 5 }}>Batch</th>
                         <th style={{ border: '1px solid #cbd5e1', padding: '6px 8px', width: 95, textAlign: 'right', fontWeight: 700, position: 'sticky', top: 0, background: '#e2e8f0', zIndex: 5 }}>Beneficiaries</th>
-                        <th style={{ border: '1px solid #cbd5e1', padding: '6px 10px', minWidth: 120, textAlign: 'right', fontWeight: 700, position: 'sticky', top: 0, background: '#e2e8f0', zIndex: 5 }}>Contract Amt (?)</th>
+                        <th style={{ border: '1px solid #cbd5e1', padding: '6px 10px', minWidth: 120, textAlign: 'right', fontWeight: 700, position: 'sticky', top: 0, background: '#e2e8f0', zIndex: 5 }}>Contract Amt ({PESO})</th>
                         <th style={{ border: '1px solid #cbd5e1', padding: '6px 8px', width: 95, textAlign: 'center', fontWeight: 700, position: 'sticky', top: 0, background: '#e2e8f0', zIndex: 5 }}>Delivery Start</th>
                         <th style={{ border: '1px solid #cbd5e1', padding: '6px 8px', width: 95, textAlign: 'center', fontWeight: 700, position: 'sticky', top: 0, background: '#e2e8f0', zIndex: 5 }}>Delivery End</th>
                         <th style={{ border: '1px solid #cbd5e1', padding: '6px 10px', minWidth: 115, textAlign: 'right', fontWeight: 700, position: 'sticky', top: 0, background: '#e2e8f0', zIndex: 5 }}>Packs to Deliver</th>
@@ -621,7 +625,7 @@ export default function SbfpSpreadsheetReport() {
                             </td>
                             <td style={{ border: '1px solid #cbd5e1', padding: '4px 6px', textAlign: 'center', color: '#475569' }}>{v.milk_type}</td>
                             <td style={{ border: '1px solid #cbd5e1', padding: '4px 8px', textAlign: 'right' }}>
-                              {v.amount > 0 ? `\u20B1${v.amount.toLocaleString()}` : '—'}
+                              {v.amount > 0 ? fmtPeso(v.amount) : '—'}
                             </td>
                             <td style={{ border: '1px solid #cbd5e1', padding: '4px 8px' }}>{v.mode_of_procurement}</td>
                             <td style={{ border: '1px solid #cbd5e1', padding: '4px 6px', textAlign: 'center' }}>{v.pr_date_received}</td>
@@ -633,7 +637,7 @@ export default function SbfpSpreadsheetReport() {
                               {v.beneficiaries_pm > 0 ? v.beneficiaries_pm.toLocaleString() : '—'}
                             </td>
                             <td style={{ border: '1px solid #cbd5e1', padding: '4px 8px', textAlign: 'right', fontWeight: 600 }}>
-                              {v.contract_amount > 0 ? `\u20B1${v.contract_amount.toLocaleString()}` : '—'}
+                              {v.contract_amount > 0 ? fmtPeso(v.contract_amount) : '—'}
                             </td>
                             <td style={{ border: '1px solid #cbd5e1', padding: '4px 6px', textAlign: 'center' }}>{v.delivery_start}</td>
                             <td style={{ border: '1px solid #cbd5e1', padding: '4px 6px', textAlign: 'center' }}>{v.delivery_end}</td>
@@ -658,14 +662,14 @@ export default function SbfpSpreadsheetReport() {
                             GRAND TOTAL ({filteredRecords.length} SDOs)
                           </td>
                           <td style={{ border: '1px solid #93c5fd', padding: '8px', textAlign: 'right' }}>
-                            {'\u20B1'}{stats.totalAmount.toLocaleString()}
+                            {fmtPeso(stats.totalAmount)}
                           </td>
                           <td colSpan={6} style={{ border: '1px solid #93c5fd' }}></td>
                           <td style={{ border: '1px solid #93c5fd', padding: '8px', textAlign: 'right' }}>
                             {stats.totalBeneficiaries.toLocaleString()}
                           </td>
                           <td style={{ border: '1px solid #93c5fd', padding: '8px', textAlign: 'right' }}>
-                            {'\u20B1'}{stats.totalContractAmt.toLocaleString()}
+                            {fmtPeso(stats.totalContractAmt)}
                           </td>
                           <td colSpan={2} style={{ border: '1px solid #93c5fd' }}></td>
                           <td style={{ border: '1px solid #93c5fd', padding: '8px', textAlign: 'right' }}>
@@ -701,7 +705,7 @@ export default function SbfpSpreadsheetReport() {
                         <th style={{ border: '1px solid #cbd5e1', padding: '8px 10px', textAlign: 'center', width: 90 }}>Region</th>
                         <th style={{ border: '1px solid #cbd5e1', padding: '8px 10px', textAlign: 'right', width: 90 }}>No. of SDOs</th>
                         <th style={{ border: '1px solid #cbd5e1', padding: '8px 10px', textAlign: 'right' }}>Beneficiaries</th>
-                        <th style={{ border: '1px solid #cbd5e1', padding: '8px 10px', textAlign: 'right' }}>Contract Amt (?)</th>
+                        <th style={{ border: '1px solid #cbd5e1', padding: '8px 10px', textAlign: 'right' }}>Contract Amt ({PESO})</th>
                         <th style={{ border: '1px solid #cbd5e1', padding: '8px 10px', textAlign: 'right' }}>Packs to Deliver</th>
                         <th style={{ border: '1px solid #cbd5e1', padding: '8px 10px', textAlign: 'right' }}>Delivered Packs</th>
                         <th style={{ border: '1px solid #cbd5e1', padding: '8px 10px', textAlign: 'right' }}>% Delivered</th>
@@ -720,15 +724,15 @@ export default function SbfpSpreadsheetReport() {
                             <td style={{ border: '1px solid #cbd5e1', padding: '6px 10px', textAlign: 'center', fontWeight: 800 }}>{reg.region}</td>
                             <td style={{ border: '1px solid #cbd5e1', padding: '6px 10px', textAlign: 'right', fontWeight: 600 }}>{reg.sdoCount}</td>
                             <td style={{ border: '1px solid #cbd5e1', padding: '6px 10px', textAlign: 'right' }}>{reg.beneficiaries.toLocaleString()}</td>
-                            <td style={{ border: '1px solid #cbd5e1', padding: '6px 10px', textAlign: 'right' }}>?{reg.contractAmt.toLocaleString()}</td>
+                            <td style={{ border: '1px solid #cbd5e1', padding: '6px 10px', textAlign: 'right' }}>{fmtPeso(reg.contractAmt)}</td>
                             <td style={{ border: '1px solid #cbd5e1', padding: '6px 10px', textAlign: 'right', fontWeight: 700, color: '#1e40af' }}>{reg.targetPacks.toLocaleString()}</td>
                             <td style={{ border: '1px solid #cbd5e1', padding: '6px 10px', textAlign: 'right', fontWeight: 700, color: '#047857' }}>{reg.deliveredPacks.toLocaleString()}</td>
                             <td style={{ border: '1px solid #cbd5e1', padding: '6px 10px', textAlign: 'right', fontWeight: 600 }}>{pct.toFixed(1)}%</td>
-                            <td style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'center' }}>{reg.forPrep || '?'}</td>
-                            <td style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'center' }}>{reg.ongoing || '?'}</td>
-                            <td style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'center' }}>{reg.awardedDelivery || '?'}</td>
-                            <td style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'center' }}>{reg.awardedOngoing || '?'}</td>
-                            <td style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'center', fontWeight: 700, color: '#047857' }}>{reg.completed || '?'}</td>
+                            <td style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'center' }}>{reg.forPrep || '—'}</td>
+                            <td style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'center' }}>{reg.ongoing || '—'}</td>
+                            <td style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'center' }}>{reg.awardedDelivery || '—'}</td>
+                            <td style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'center' }}>{reg.awardedOngoing || '—'}</td>
+                            <td style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'center', fontWeight: 700, color: '#047857' }}>{reg.completed || '—'}</td>
                           </tr>
                         )
                       })}
@@ -738,7 +742,7 @@ export default function SbfpSpreadsheetReport() {
                         <td style={{ border: '1px solid #93c5fd', padding: '8px 10px', textAlign: 'center' }}>TOTAL</td>
                         <td style={{ border: '1px solid #93c5fd', padding: '8px 10px', textAlign: 'right' }}>{stats.count}</td>
                         <td style={{ border: '1px solid #93c5fd', padding: '8px 10px', textAlign: 'right' }}>{stats.totalBeneficiaries.toLocaleString()}</td>
-                        <td style={{ border: '1px solid #93c5fd', padding: '8px 10px', textAlign: 'right' }}>?{stats.totalContractAmt.toLocaleString()}</td>
+                        <td style={{ border: '1px solid #93c5fd', padding: '8px 10px', textAlign: 'right' }}>{fmtPeso(stats.totalContractAmt)}</td>
                         <td style={{ border: '1px solid #93c5fd', padding: '8px 10px', textAlign: 'right' }}>{stats.totalPacks.toLocaleString()}</td>
                         <td style={{ border: '1px solid #93c5fd', padding: '8px 10px', textAlign: 'right', color: '#047857' }}>{stats.totalDelivered.toLocaleString()}</td>
                         <td style={{ border: '1px solid #93c5fd', padding: '8px 10px', textAlign: 'right' }}>{stats.pctDelivered.toFixed(1)}%</td>
