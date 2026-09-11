@@ -8,6 +8,7 @@ import { parseSchoolYear, schoolYearLabel, schoolYearToDbYear } from '@/lib/sbfp
 import { encoderCanAccessSbfpCenter, sbfpNavCenter } from '@/lib/center-aliases'
 import { excludeAuxSbfp, SBFP_HIRING_TYPE, SBFP_PPMP_TYPE, toHiringRow, toPpmpRow } from '@/lib/sbfp-aux'
 import { SBFP_DATA_ENCODER_COLUMNS, SBFP_DROPOFF_ENCODER_COLUMNS } from '@/lib/encoder-selects'
+import type { SbfpDropoffPoint } from '@/lib/types'
 
 export default async function SbfpCenterPage({
   params,
@@ -80,11 +81,12 @@ export default async function SbfpCenterPage({
       .order('sdo', { ascending: true })
       .order('dropoff_name', { ascending: true }),
   ])
-  const all = records || []
+  // Lean .select(column list) — Supabase types need `unknown` bridge (non-literal select string).
+  const all = (records || []) as unknown as Array<{ milk_type?: string | null; [key: string]: unknown }>
   const sdoRecords = excludeAuxSbfp(all)
   const ppmpItems = all.filter(r => r.milk_type === SBFP_PPMP_TYPE).map(toPpmpRow)
   const hiringRows = all.filter(r => r.milk_type === SBFP_HIRING_TYPE).map(toHiringRow)
-  const dropoffs = dropoffRes.error ? [] : (dropoffRes.data || [])
+  const dropoffs = (dropoffRes.error ? [] : (dropoffRes.data || [])) as unknown as SbfpDropoffPoint[]
   const dropoffSchemaReady = !dropoffRes.error
   // feeding_days is included in the lean select — ready if that column query succeeded.
   const feedingDaysReady = dropoffSchemaReady
