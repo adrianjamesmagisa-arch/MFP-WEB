@@ -61,6 +61,8 @@ function EditableCell({ id, field, value, type = 'text', className, style, forma
     }
   }
 
+  const stickyCol = Boolean(className?.startsWith('col-'))
+
   if (isEditing) {
     return (
       <td className={className} style={{ ...style, padding: '2px', background: '#fff' }}>
@@ -81,7 +83,13 @@ function EditableCell({ id, field, value, type = 'text', className, style, forma
   return (
     <td 
       className={className} 
-      style={{ ...style, cursor: 'text', position: 'relative', opacity: isSaving ? 0.85 : 1 }} 
+      style={{
+        ...style,
+        cursor: 'text',
+        opacity: isSaving ? 0.85 : 1,
+        // Do not set position:relative on sticky cols — it breaks position:sticky from .col-*.
+        ...(stickyCol ? { position: 'sticky' as const } : { position: 'relative' as const }),
+      }} 
       onClick={() => !isSaving && setIsEditing(true)}
     >
       {(val === null || val === undefined || val === '') ? 'N/A' : render ? render(val) : format ? format(val) : val}
@@ -300,7 +308,10 @@ export function DataTable({
     <>
       <div className="card" style={{ overflow: 'hidden' }}>
         <div style={{ overflow: 'auto', maxHeight: 'calc(100vh - 260px)' }}>
-          <table className="data-table" style={{ minWidth: 2700, fontSize: '0.78rem' }}>
+          <table
+            className="data-table mfp-data-table"
+            style={{ minWidth: 2700, fontSize: '0.78rem', borderCollapse: 'separate', borderSpacing: 0 }}
+          >
             <thead>
               <tr>
                 {/* CHECKBOX */}
@@ -349,7 +360,11 @@ export function DataTable({
             </thead>
                         <tbody>
               {displayRecords?.map((r, rIdx) => (
-                <tr key={r.id} style={{ background: selectedIds.has(r.id) ? '#e0e7ff' : undefined }}>
+                <tr
+                  key={r.id}
+                  className={selectedIds.has(r.id) ? 'mfp-data-row-selected' : undefined}
+                  style={{ background: selectedIds.has(r.id) ? '#e0e7ff' : undefined }}
+                >
                   <td className="col-check" style={{ textAlign: 'center' }}>
                     <input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => toggleRow(r.id)} style={{ cursor: 'pointer' }} />
                   </td>
