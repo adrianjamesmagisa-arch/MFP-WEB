@@ -141,8 +141,7 @@ export const MFP_DATA_LIST_COLUMNS = [
   'liquidation',
   'target_milk_packs_to_deliver',
   'total_milk_packs_delivered',
-  'supplier',
   'supplier_id',
   'created_at',
-  'cooperatives(name)',
+  'cooperatives!supplier_id(name)',
 ].join(',')

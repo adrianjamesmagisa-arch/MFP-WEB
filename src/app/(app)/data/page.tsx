@@ -74,7 +74,7 @@ export default async function DataPage({
   if (params.division)  query = query.eq('division', params.division)
   if (params.municipality) query = query.eq('municipality', params.municipality)
   if (params.milk_type) query = query.eq('milk_type', params.milk_type)
-  if (params.supplier)  query = query.eq('supplier', params.supplier) // Assumes supplier is mapped correctly or handled in DataFilters
+  if (params.supplier)  query = query.eq('supplier_id', params.supplier)
   if (params.center && profile?.role !== 'encoder') query = query.eq('center', params.center)
 
   if (params.input_month && params.input_year) {
@@ -85,7 +85,10 @@ export default async function DataPage({
       .lt('created_at', endDate.toISOString())
   }
 
-  const { data: records } = await query
+  const { data: records, error: recordsError } = await query
+  if (recordsError) {
+    console.error('mfp_data list query failed:', recordsError.message)
+  }
 
   // Fetch unique filter options for dynamic fields, using a limit to prevent massive payload delays
   let filterQuery = supabase.from('mfp_data').select('province, division, municipality').limit(5000)
