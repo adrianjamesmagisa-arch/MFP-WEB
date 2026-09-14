@@ -432,13 +432,13 @@ export function SummaryDepEdClient({
       <SpreadsheetTabs 
         activeTab={activeTab} 
         setActiveTab={setActiveTab} 
-        handlePrint={handlePrint} 
+        handlePrint={handlePrint}
+        hasProvince={false}
       />
 
       <div className="report-content">
         <div style={{ display: activeTab === 'overview' || activeTab === 'all' ? undefined : 'none' }}>{renderOverview()}</div>
         <div style={{ display: activeTab === 'region' || activeTab === 'all' ? undefined : 'none' }}>{renderRegion()}</div>
-        <div style={{ display: activeTab === 'province' || activeTab === 'all' ? undefined : 'none' }}>{renderProvince()}</div>
         <div style={{ display: activeTab === 'sdo' || activeTab === 'all' ? undefined : 'none' }}>{renderSDO()}</div>
         <div style={{ display: activeTab === 'coop' || activeTab === 'all' ? undefined : 'none' }}>{renderCoops()}</div>
       </div>
