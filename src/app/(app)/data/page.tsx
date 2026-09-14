@@ -8,6 +8,7 @@ import { DataTable } from '@/components/DataTable'
 import { REGIONS, PCC_CENTERS } from '@/lib/types'
 import { APP_YEAR_STRINGS, APP_YEARS } from '@/lib/app-years'
 import { MFP_DATA_LIST_COLUMNS } from '@/lib/encoder-selects'
+import { fetchAllRows } from '@/lib/supabase-paginate'
 
 export default async function DataPage({
   searchParams
@@ -27,67 +28,71 @@ export default async function DataPage({
     .from('profiles').select('role,center').eq('id', user.id).single()
 
   const params = await searchParams
-  let query = supabase
-    .from('mfp_data')
-    .select(MFP_DATA_LIST_COLUMNS)
-    .gte('year', APP_YEARS[0] ?? 2026)
-    .order('year', { ascending: false })
-    .order('created_at', { ascending: false })
-    .limit(300)
 
-  if (profile?.role === 'encoder' && profile?.center) {
-    query = query.eq('center', profile.center)
-  }
+  function buildListQuery() {
+    let query = supabase
+      .from('mfp_data')
+      .select(MFP_DATA_LIST_COLUMNS)
+      .gte('year', APP_YEARS[0] ?? 2026)
+      .order('year', { ascending: false })
+      .order('created_at', { ascending: false })
 
-  // Handle Search parameter (multi-column text search)
-  if (params.search) {
-    query = query.or(`center.ilike.%${params.search}%,province.ilike.%${params.search}%,municipality.ilike.%${params.search}%,elementary_school.ilike.%${params.search}%,division.ilike.%${params.search}%`)
-  }
-
-  // Handle specific filter categories
-  if (params.year)      query = query.eq('year', Number(params.year))
-  if (params.date_started_month) {
-    const m = params.date_started_month.substring(0, 2)
-    if (params.year) {
-      const end = new Date(Number(params.year), Number(m), 1).toISOString().split('T')[0]
-      query = query.gte('date_started', `${params.year}-${m}-01`).lt('date_started', end)
-    } else {
-      const years = APP_YEARS
-      const orConditions = years.map(y => `and(date_started.gte.${y}-${m}-01,date_started.lt.${new Date(y, Number(m), 1).toISOString().split('T')[0]})`).join(',')
-      query = query.or(orConditions)
+    if (profile?.role === 'encoder' && profile?.center) {
+      query = query.eq('center', profile.center)
     }
-  }
-  if (params.date_completed_month) {
-    const m = params.date_completed_month.substring(0, 2)
-    if (params.year) {
-      const end = new Date(Number(params.year), Number(m), 1).toISOString().split('T')[0]
-      query = query.gte('date_completed', `${params.year}-${m}-01`).lt('date_completed', end)
-    } else {
-      const years = APP_YEARS
-      const orConditions = years.map(y => `and(date_completed.gte.${y}-${m}-01,date_completed.lt.${new Date(y, Number(m), 1).toISOString().split('T')[0]})`).join(',')
-      query = query.or(orConditions)
+
+    if (params.search) {
+      query = query.or(`center.ilike.%${params.search}%,province.ilike.%${params.search}%,municipality.ilike.%${params.search}%,elementary_school.ilike.%${params.search}%,division.ilike.%${params.search}%`)
     }
-  }
-  if (params.funded_by) query = query.eq('funded_by', params.funded_by)
-  if (params.region)    query = query.eq('region', params.region)
-  if (params.province)  query = query.eq('province', params.province)
-  if (params.division)  query = query.eq('division', params.division)
-  if (params.municipality) query = query.eq('municipality', params.municipality)
-  if (params.milk_type) query = query.eq('milk_type', params.milk_type)
-  if (params.supplier)  query = query.eq('supplier_id', params.supplier)
-  if (params.center && profile?.role !== 'encoder') query = query.eq('center', params.center)
 
-  if (params.input_month && params.input_year) {
-    const startDate = new Date(parseInt(params.input_year), parseInt(params.input_month) - 1, 1)
-    const endDate = new Date(parseInt(params.input_year), parseInt(params.input_month), 1)
-    query = query
-      .gte('created_at', startDate.toISOString())
-      .lt('created_at', endDate.toISOString())
+    if (params.year) query = query.eq('year', Number(params.year))
+    if (params.date_started_month) {
+      const m = params.date_started_month.substring(0, 2)
+      if (params.year) {
+        const end = new Date(Number(params.year), Number(m), 1).toISOString().split('T')[0]
+        query = query.gte('date_started', `${params.year}-${m}-01`).lt('date_started', end)
+      } else {
+        const years = APP_YEARS
+        const orConditions = years.map(y => `and(date_started.gte.${y}-${m}-01,date_started.lt.${new Date(y, Number(m), 1).toISOString().split('T')[0]})`).join(',')
+        query = query.or(orConditions)
+      }
+    }
+    if (params.date_completed_month) {
+      const m = params.date_completed_month.substring(0, 2)
+      if (params.year) {
+        const end = new Date(Number(params.year), Number(m), 1).toISOString().split('T')[0]
+        query = query.gte('date_completed', `${params.year}-${m}-01`).lt('date_completed', end)
+      } else {
+        const years = APP_YEARS
+        const orConditions = years.map(y => `and(date_completed.gte.${y}-${m}-01,date_completed.lt.${new Date(y, Number(m), 1).toISOString().split('T')[0]})`).join(',')
+        query = query.or(orConditions)
+      }
+    }
+    if (params.funded_by) query = query.eq('funded_by', params.funded_by)
+    if (params.region) query = query.eq('region', params.region)
+    if (params.province) query = query.eq('province', params.province)
+    if (params.division) query = query.eq('division', params.division)
+    if (params.municipality) query = query.eq('municipality', params.municipality)
+    if (params.milk_type) query = query.eq('milk_type', params.milk_type)
+    if (params.supplier) query = query.eq('supplier_id', params.supplier)
+    if (params.center && profile?.role !== 'encoder') query = query.eq('center', params.center)
+
+    if (params.input_month && params.input_year) {
+      const startDate = new Date(parseInt(params.input_year), parseInt(params.input_month) - 1, 1)
+      const endDate = new Date(parseInt(params.input_year), parseInt(params.input_month), 1)
+      query = query
+        .gte('created_at', startDate.toISOString())
+        .lt('created_at', endDate.toISOString())
+    }
+
+    return query
   }
 
-  const { data: records, error: recordsError } = await query
-  if (recordsError) {
-    console.error('mfp_data list query failed:', recordsError.message)
+  let records: any[] = []
+  try {
+    records = await fetchAllRows(() => buildListQuery())
+  } catch (err) {
+    console.error('mfp_data list query failed:', err instanceof Error ? err.message : err)
   }
 
   // Fetch unique filter options for dynamic fields, using a limit to prevent massive payload delays
