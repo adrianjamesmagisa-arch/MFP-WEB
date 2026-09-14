@@ -172,8 +172,6 @@ function HBar({ data }: { data: Record<string, number> }) {
   )
 }
 
-const ALL_CENTERS_VALUE = '__ALL_CENTERS__'
-
 const FUNDER_OPTIONS: [string, string][] = [
   ['', 'All Funders'],
   ['DepEd', 'DepEd'],
@@ -197,9 +195,9 @@ function includeSbfpForFunder(funder: string): boolean {
   return !funder || funder === 'DepEd'
 }
 
-/** Blank until Year is chosen — avoids loading the full “All Centers / All Years” dump on open. */
-function hasActivePimdFilters(_center: string, year: string, _month: string) {
-  return Boolean(year)
+/** Blank until year and center are chosen — avoids loading a national dump on open. */
+function hasActivePimdFilters(center: string, year: string, _month: string) {
+  return Boolean(year && center)
 }
 
 /** Packs delivered in one calendar month from monitoring cumulative snapshot columns (not YTD). */
@@ -275,7 +273,7 @@ function chartsFromSbfp(
 export default function PIMDReportPage() {
   const supabase = createClient()
   const searchParams = useSearchParams()
-  const [center, setCenter] = useState(ALL_CENTERS_VALUE)
+  const [center, setCenter] = useState('')
   const [year, setYear] = useState('')
   const [month, setMonth] = useState('')
   const [funder, setFunder] = useState('')
@@ -296,7 +294,7 @@ export default function PIMDReportPage() {
 
   const getFilename = useCallback(() => {
     const sanitize = (s: string) => s.replace(/[^a-zA-Z0-9_-]/g, '-')
-    const cLabel = center === ALL_CENTERS_VALUE ? 'All-Centers' : sanitize(center || 'All-Centers')
+    const cLabel = sanitize(center || 'Center')
     const yLabel = year || 'All-Years'
     const mLabel = month ? (MONTHS.find(([v]) => v === month)?.[1] ?? month) : 'All-Months'
     const fLabel = funder || 'All-Funders'
@@ -347,8 +345,8 @@ export default function PIMDReportPage() {
         if (!data) return
         if (data.role === 'encoder') {
           setIsEncoder(true)
-          const cc = data.center === 'NHQGP (NIZ)' ? 'NIZ' : (data.center || ALL_CENTERS_VALUE)
-          setCenter(cc)
+          const cc = data.center === 'NHQGP (NIZ)' ? 'NIZ' : (data.center || '')
+          if (cc) setCenter(cc)
         }
       })
     })
@@ -377,7 +375,7 @@ export default function PIMDReportPage() {
     let hasMore = true
     while (hasMore) {
       let q = supabase.from('mfp_data').select(selectCols).range(offset, offset + PAGE_SIZE - 1)
-      if (center && center !== ALL_CENTERS_VALUE) {
+      if (center) {
         const aliases = mfpCenterAliases(center)
         q = aliases.length === 1 ? q.eq('center', aliases[0]) : q.in('center', aliases)
       }
@@ -469,7 +467,7 @@ export default function PIMDReportPage() {
       let sq = supabase
         .from('sbfp_data')
         .select('sdo,procurement_status,contract_amount,amount,packs_to_deliver,packs_delivered,delivery_start,delivery_end,delivery_snapshots,milk_type,remarks,monthly_packs_delivered,raw_milk_prices,raw_milk_month,include_in_report')
-      if (center && center !== ALL_CENTERS_VALUE) {
+      if (center) {
         const aliases = sbfpCenterAliases(center)
         sq = aliases.length === 1 ? sq.eq('center', aliases[0]) : sq.in('center', aliases)
       }
@@ -654,7 +652,7 @@ export default function PIMDReportPage() {
         .from('sbfp_monitoring')
         .select('target_packs,latest_delivered,del_aug18,del_aug31,del_sep30,del_oct31,status')
         .eq('year', 2026)
-      if (center && center !== ALL_CENTERS_VALUE) {
+      if (center) {
         const aliases = sbfpCenterAliases(center)
         mq = aliases.length === 1 ? mq.eq('center', aliases[0]) : mq.in('center', aliases)
       }
@@ -893,9 +891,7 @@ export default function PIMDReportPage() {
   }
 
   const reportScopeLabel = (() => {
-    const centerPart = center === ALL_CENTERS_VALUE
-      ? 'ALL CENTERS'
-      : centerDisplayLabel(center || 'ALL CENTERS').toUpperCase()
+    const centerPart = centerDisplayLabel(center || 'CENTER').toUpperCase()
     if (!funder) return centerPart
     return `${centerPart} · ${funder.toUpperCase()}`
   })()
@@ -974,7 +970,7 @@ export default function PIMDReportPage() {
         {!isEncoder && (
           <select value={center} onChange={e => setCenter(e.target.value)}
             style={{ padding: '0.45rem 0.75rem', borderRadius: 8, border: '1.5px solid #e2e8f0', fontSize: '0.83rem', fontWeight: 600, color: NAVY, cursor: 'pointer' }}>
-            <option value={ALL_CENTERS_VALUE}>All Centers</option>
+            <option value="">Select a center</option>
             {PCC_CENTERS.map(cc => { const v = cc === 'NHQGP (NIZ)' ? 'NIZ' : cc; return <option key={v} value={v}>{cc}</option> })}
           </select>
         )}
@@ -1030,7 +1026,7 @@ export default function PIMDReportPage() {
             Select filters to generate the factsheet
           </div>
           <div style={{ fontSize: '0.9rem', maxWidth: 420, margin: '0 auto', lineHeight: 1.45 }}>
-            Choose a year above to load the report. Center and month are optional refinements.
+            Choose a center and year above to load the report. Month is optional.
           </div>
         </div>
       ) : (

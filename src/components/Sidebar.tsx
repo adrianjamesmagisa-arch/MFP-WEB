@@ -17,7 +17,6 @@ import { Spinner } from '@/components/loading/Spinner'
 const navItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { href: '/data',      icon: Database,         label: 'MFP Data' },
-  { href: '/sbfp',      icon: Milk,             label: 'SBFP' },
   { href: '/centers',   icon: Building2,         label: 'Centers' },
   { href: '/users',     icon: Users,             label: 'Users' },
 ]
@@ -75,12 +74,10 @@ export default function Sidebar({ userRole, userCenter, userName }: {
     if (item.href === '/users'   && userRole !== 'super_admin') return false
     if (item.href === '/centers' && userRole !== 'super_admin') return false
     return true
-  }).map(item => {
-    if (item.href === '/sbfp' && userRole === 'encoder') {
-      return { ...item, href: sbfpEncoderHomePath(userCenter) }
-    }
-    return item
   })
+
+  const sbfpHref = userRole === 'encoder' ? sbfpEncoderHomePath(userCenter) : '/sbfp'
+  const sbfpActive = pathname === '/sbfp' || pathname.startsWith('/sbfp/')
 
   const visibleMonitoringItems = monitoringNavItems.map(item => ({
     ...item,
@@ -155,6 +152,15 @@ export default function Sidebar({ userRole, userCenter, userName }: {
             Program monitoring
           </div>
         )}
+
+        <Link
+          href={sbfpHref}
+          className={`sidebar-link ${sbfpActive ? 'active' : ''}`}
+        >
+          <Milk size={16} />
+          {!isCollapsed && <span>SBFP</span>}
+          {sbfpActive && !isCollapsed && <ChevronRight size={14} style={{ marginLeft: 'auto' }} />}
+        </Link>
 
         {visibleMonitoringItems.map(item => {
           const Icon = item.icon
