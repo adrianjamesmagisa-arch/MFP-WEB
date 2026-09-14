@@ -1,8 +1,8 @@
 /**
  * Dashboard totals.
- * DepEd / SBFP beneficiaries & packs come from SBFP SDO procurement (sbfp_data),
- * same source as the SBFP Report (column K beneficiaries_pm, packs_to_deliver).
- * Other funders use the masterlist (mfp_data).
+ * DepEd beneficiaries come from SBFP SDO procurement (sbfp_data.beneficiaries_pm —
+ * same as SBFP Report column K). Record counts and DepEd milk packs come from the
+ * MFP masterlist (mfp_data). Other funders use the masterlist for all figures.
  */
 
 import { excludeAuxSbfp } from '@/lib/sbfp-aux'
@@ -52,6 +52,12 @@ function sdoInMonth(parent: SbfpRawMilkRow, month: number | undefined, year?: nu
   return packsForMonth(parent, month, { year }) > 0
 }
 
+function masterInMonth(r: { date_started?: string | null }, month: number | undefined) {
+  if (month == null || !Number.isFinite(month)) return true
+  if (!r.date_started) return false
+  return new Date(r.date_started).getMonth() + 1 === month
+}
+
 export async function loadDashboardStats(
   supabase: SupabaseLike,
   filters: { year?: number; month?: number; center?: string },
@@ -82,25 +88,19 @@ export async function loadDashboardStats(
     ? sdos.filter(s => sdoInMonth(s as SbfpRawMilkRow, month, year || s.year))
     : sdos
 
+  const scopedMaster = master.filter(r => matchesCenter(r.center, center) && masterInMonth(r, month))
+  const depedMaster = scopedMaster.filter(r => String(r.funded_by || '').trim() === 'DepEd')
+  const otherMaster = scopedMaster.filter(r => String(r.funded_by || '').trim() !== 'DepEd')
+
+  // Only beneficiaries use SDO column K; packs/records stay on masterlist.
   const depedBene = scopedSdos.reduce((s, r) => s + (Number(r.beneficiaries_pm) || 0), 0)
-  const depedPacks = scopedSdos.reduce((s, r) => s + (Number(r.packs_to_deliver) || 0), 0)
+  const depedPacks = depedMaster.reduce((s, r) => s + (Number(r.milk_packs) || 0), 0)
   const depedFunds = scopedSdos.reduce((s, r) => {
     const contract = Number(r.contract_amount) || 0
     const amount = Number(r.amount) || 0
     return s + (contract > 0 ? contract : amount)
   }, 0)
   const depedIncome = Number(sumGrossIncomeRawMilk(scopedSdos, month, { year })) || 0
-
-  const otherMaster = master.filter(r => {
-    if (!matchesCenter(r.center, center)) return false
-    const f = String(r.funded_by || '').trim()
-    if (f === 'DepEd') return false
-    if (month != null) {
-      if (!r.date_started) return false
-      return new Date(r.date_started).getMonth() + 1 === month
-    }
-    return true
-  })
 
   const emptyFunder = (funded_by: string): DashFunderStat => ({
     funded_by, records: 0, beneficiaries: 0, milk_packs: 0, milk_cost: 0, total_funds: 0,
@@ -109,7 +109,7 @@ export async function loadDashboardStats(
   const funderMap: Record<string, DashFunderStat> = {
     DepEd: {
       funded_by: 'DepEd',
-      records: scopedSdos.length,
+      records: depedMaster.length,
       beneficiaries: depedBene,
       milk_packs: depedPacks,
       milk_cost: depedIncome,
@@ -138,16 +138,25 @@ export async function loadDashboardStats(
     yearMap[y].milk_packs += packs
   }
 
-  const depedByYear = new Map<number, { rec: number; bene: number; packs: number }>()
+  // Masterlist drives year record/pack counts; DepEd beneficiaries still from SDO.
+  const depedBeneByYear = new Map<number, number>()
   for (const r of scopedSdos) {
     const y = Number(r.year) || year || 0
-    const cur = depedByYear.get(y) || { rec: 0, bene: 0, packs: 0 }
-    cur.rec += 1
-    cur.bene += Number(r.beneficiaries_pm) || 0
-    cur.packs += Number(r.packs_to_deliver) || 0
-    depedByYear.set(y, cur)
+    depedBeneByYear.set(y, (depedBeneByYear.get(y) || 0) + (Number(r.beneficiaries_pm) || 0))
   }
-  for (const [y, v] of depedByYear) addYear(y, v.rec, v.bene, v.packs)
+  const depedMasterByYear = new Map<number, { rec: number; packs: number }>()
+  for (const r of depedMaster) {
+    const y = Number(r.year) || year || 0
+    const cur = depedMasterByYear.get(y) || { rec: 0, packs: 0 }
+    cur.rec += 1
+    cur.packs += Number(r.milk_packs) || 0
+    depedMasterByYear.set(y, cur)
+  }
+  const depedYears = new Set([...depedBeneByYear.keys(), ...depedMasterByYear.keys()])
+  for (const y of depedYears) {
+    const m = depedMasterByYear.get(y) || { rec: 0, packs: 0 }
+    addYear(y, m.rec, depedBeneByYear.get(y) || 0, m.packs)
+  }
   for (const r of otherMaster) {
     addYear(Number(r.year) || 0, 1, Number(r.beneficiaries) || 0, Number(r.milk_packs) || 0)
   }
@@ -165,7 +174,8 @@ export async function loadDashboardStats(
   const total_milk_packs = by_funder.reduce((s, f) => s + f.milk_packs, 0)
   const total_funds = by_funder.reduce((s, f) => s + f.total_funds, 0)
   const total_milk_cost = by_funder.reduce((s, f) => s + f.milk_cost, 0)
-  const total_records = by_funder.reduce((s, f) => s + f.records, 0)
+  // Total Records = full MFP masterlist rows (all funders), not SDO count.
+  const total_records = scopedMaster.length
 
   return {
     total_records,
