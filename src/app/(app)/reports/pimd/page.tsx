@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { PCC_CENTERS } from '@/lib/types'
-import { parseSnapshotDate, sumGrossIncomeRawMilk, packsForMonth, totalPacksDelivered } from '@/lib/sbfp-raw-milk'
+import { sumGrossIncomeRawMilk, packsForMonth, totalPacksDelivered } from '@/lib/sbfp-raw-milk'
 import { excludeAuxSbfp } from '@/lib/sbfp-aux'
 import { normalizeSdoName } from '@/lib/sbfp-dropoff-sync'
 import { calcMilkFormulations, litersPerPackForMilkType, packagingSizeForMilkType, normalizeMilkTypeCode } from '@/lib/mfp-formulas'
@@ -403,56 +403,7 @@ export default function PIMDReportPage() {
     // packs delivered in the selected month — not date_started alone (that
     // wrongly keeps full-year packs on August starts and drops them in September).
 
-    // Shared SBFP month helpers (delivery start/end/snapshots)
-    const monthMatches = (value: unknown, m: number, y?: number) => {
-      if (value == null || value === '') return false
-      const d = value instanceof Date ? value : new Date(String(value))
-      if (!Number.isNaN(d.getTime())) {
-        if (d.getMonth() + 1 !== m) return false
-        if (y && d.getFullYear() !== y) return false
-        return true
-      }
-      const s = String(value)
-      const parsed = Date.parse(s.replace(/(\d+)(st|nd|rd|th)/i, '$1'))
-      if (!Number.isNaN(parsed)) {
-        const pd = new Date(parsed)
-        if (pd.getMonth() + 1 !== m) return false
-        if (y && pd.getFullYear() !== y) return false
-        return true
-      }
-      const monthNames = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec']
-      const lower = s.toLowerCase()
-      const mi = monthNames.findIndex(n => lower.includes(n))
-      if (mi < 0 || mi + 1 !== m) return false
-      if (y) {
-        const yr = s.match(/20\d{2}/)
-        if (yr && parseInt(yr[0], 10) !== y) return false
-      }
-      return true
-    }
-    const rowActiveInMonth = (r: any, m: number, y?: number) => {
-      if (monthMatches(r.delivery_start, m, y) || monthMatches(r.delivery_end, m, y)) return true
-      const startD = parseSnapshotDate(r.delivery_start)
-      const endD = parseSnapshotDate(r.delivery_end)
-      if (startD && endD) {
-        const year = y ?? startD.getFullYear()
-        const cursor = new Date(year, m - 1, 15).getTime()
-        const spanStart = new Date(startD.getFullYear(), startD.getMonth(), 1).getTime()
-        const spanEnd = new Date(endD.getFullYear(), endD.getMonth() + 1, 0).getTime()
-        if (cursor >= spanStart && cursor <= spanEnd) return true
-      }
-      const snaps = Array.isArray(r.delivery_snapshots) ? r.delivery_snapshots : []
-      if (snaps.some((snap: any) =>
-        (Number(snap?.packs) || 0) > 0 && monthMatches(snap?.date, m, y)
-      )) return true
-      const monthly = r.monthly_packs_delivered
-      if (monthly && typeof monthly === 'object' && !Array.isArray(monthly)) {
-        const packs = Number((monthly as Record<string, unknown>)[String(m)]) || 0
-        if (packs > 0) return true
-      }
-      return false
-    }
-
+    // Shared SBFP month helpers (delivery start/end/snapshots) — packs completed this month only.
     const monthNum = month ? parseInt(month, 10) : null
     const yNum = year ? parseInt(year, 10) : undefined
 
@@ -486,7 +437,8 @@ export default function PIMDReportPage() {
           }
         }
         if (monthNum != null && Number.isFinite(monthNum)) {
-          sbfpScoped = sbfpScoped.filter(r => rowActiveInMonth(r, monthNum, yNum))
+          // Only SDOs with packs actually completed in this month (not delivery-date span alone).
+          sbfpScoped = sbfpAll.filter(r => packsForMonth(r, monthNum, { year: yNum }) > 0)
         }
         for (const r of sbfpScoped) {
           const st = String(r.procurement_status || '').toUpperCase()
@@ -500,17 +452,18 @@ export default function PIMDReportPage() {
 
     // Masterlist month scope: schools under SDOs that delivered in that month (DepEd/SBFP),
     // or date_started / date_completed for other funders.
+    // If a month is selected and no SBFP packs completed that month → empty (do not fall back to full year).
     if (monthNum != null && Number.isFinite(monthNum) && rows.length) {
-      if (includeSbfpForFunder(funder) && sdoMonthPacks.size > 0) {
-        rows = rows.filter(r => {
-          const key = normalizeSdoName(r.division || '')
-          if (key && (sdoMonthPacks.get(key) || 0) > 0) return true
-          if (!sdoMonthPacks.size && r.date_started) {
-            return (new Date(r.date_started).getMonth() + 1) === monthNum
-          }
-          return false
-        })
-      } else if (!includeSbfpForFunder(funder)) {
+      if (includeSbfpForFunder(funder)) {
+        if (sdoMonthPacks.size > 0) {
+          rows = rows.filter(r => {
+            const key = normalizeSdoName(r.division || '')
+            return Boolean(key && (sdoMonthPacks.get(key) || 0) > 0)
+          })
+        } else {
+          rows = []
+        }
+      } else {
         rows = rows.filter(r => {
           if (r.date_started && (new Date(r.date_started).getMonth() + 1) === monthNum) return true
           if (r.date_completed && (new Date(r.date_completed).getMonth() + 1) === monthNum) return true
@@ -561,8 +514,8 @@ export default function PIMDReportPage() {
     // (those SDOs ARE the accomplishment %). Do not multiply again by the %.
     // When a month is selected:
     //   • Packs / volume → scale by packs delivered that month ÷ packs_to_deliver
-    //   • Beneficiaries → FULL SDO headcount if that SDO delivered anything that month
-    //     (not prorated — e.g. Muñoz stays 3,791 in Aug and Sep while ongoing)
+    //   • Beneficiaries → FULL SDO headcount only if that SDO delivered packs that month
+    //   • If no SDO delivered in that month → all quantity cards stay 0 (no full-year fallback)
     const useCompletedOnly = includeSbfpForFunder(funder) && completedSdoKeys.size > 0
     const qtyRows = useCompletedOnly
       ? rows.filter(r => completedSdoKeys.has(normalizeSdoName(r.division || '')))
@@ -570,7 +523,9 @@ export default function PIMDReportPage() {
 
     const monthQtyFactor = (division: string | null | undefined) => {
       if (monthNum == null || !Number.isFinite(monthNum)) return 1
-      if (!includeSbfpForFunder(funder) || sdoMonthPacks.size === 0) return 1
+      if (!includeSbfpForFunder(funder)) return 1
+      // No packs completed this month → show zero, never fall back to full-year totals.
+      if (sdoMonthPacks.size === 0) return 0
       const key = normalizeSdoName(division || '')
       if (!key) return 0
       const target = sdoTargetPacks.get(key) || 0
@@ -579,10 +534,11 @@ export default function PIMDReportPage() {
       return delivered / target
     }
 
-    /** 1 if SDO is in scope for the month (or no month filter); never prorate headcount. */
+    /** 1 if SDO delivered packs in the selected month; never prorate headcount. */
     const monthBeneFactor = (division: string | null | undefined) => {
       if (monthNum == null || !Number.isFinite(monthNum)) return 1
-      if (!includeSbfpForFunder(funder) || sdoMonthPacks.size === 0) return 1
+      if (!includeSbfpForFunder(funder)) return 1
+      if (sdoMonthPacks.size === 0) return 0
       const key = normalizeSdoName(division || '')
       if (!key) return 0
       if ((sdoMonthPacks.get(key) || 0) > 0) return 1
