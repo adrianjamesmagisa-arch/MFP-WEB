@@ -59,7 +59,7 @@ export default async function DashboardPage(props: { searchParams: Promise<{ yea
             {profile?.center && <> · {profile.center}</>}
           </p>
           <p style={{ fontSize: '0.78rem', color: 'var(--gray-600)', marginTop: 6 }}>
-            DepEd figures come from SBFP drop-off schools (encoder-entered beneficiaries). Other funders use the masterlist.
+            DepEd figures come from SBFP SDO procurement (same as SBFP Report — column K). Other funders use the masterlist.
           </p>
         </div>
         {centerFilter && (
@@ -115,7 +115,7 @@ export default async function DashboardPage(props: { searchParams: Promise<{ yea
               </div>
               <div style={{ marginTop: '0.75rem', padding: '0.6rem 0.75rem', background: `${cfg.color}10`, borderRadius: 8 }}>
                 <div style={{ fontWeight: 700, fontSize: '0.85rem', color: cfg.color }}>{formatCurrency(d.milk_cost)}</div>
-                <div style={{ fontSize: '0.68rem', color: 'var(--gray-600)' }}>Gross Income · {formatNumber(d.records)} {key === 'DepEd' ? 'schools' : 'records'}</div>
+                <div style={{ fontSize: '0.68rem', color: 'var(--gray-600)' }}>Gross Income · {formatNumber(d.records)} {key === 'DepEd' ? 'SDOs' : 'records'}</div>
               </div>
             </div>
           )

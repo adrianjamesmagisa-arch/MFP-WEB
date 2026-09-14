@@ -1,22 +1,16 @@
 /**
  * Dashboard totals.
- * DepEd / SBFP is sourced from SBFP drop-off schools (encoder-entered beneficiaries)
- * plus SDO procurement for funds/income — not stale masterlist rows.
+ * DepEd / SBFP beneficiaries & packs come from SBFP SDO procurement (sbfp_data),
+ * same source as the SBFP Report (column K beneficiaries_pm, packs_to_deliver).
+ * Other funders use the masterlist (mfp_data).
  */
 
-import { calcMilkFormulations } from '@/lib/mfp-formulas'
-import { inferSbfpMilkType, normalizeSbfpMilkType } from '@/lib/sbfp-pack-price'
 import { excludeAuxSbfp } from '@/lib/sbfp-aux'
 import {
   packsForMonth,
   sumGrossIncomeRawMilk,
   type SbfpRawMilkRow,
 } from '@/lib/sbfp-raw-milk'
-import {
-  resolveDropoffFeedingDays,
-  type SbfpDropoffRow,
-  type SbfpParentSdo,
-} from '@/lib/sbfp-dropoff-sync'
 import { fetchAllRows } from '@/lib/supabase-paginate'
 import { centerDisplayLabel, mfpCenterAliases, sbfpCenterAliases } from '@/lib/center-aliases'
 
@@ -58,16 +52,6 @@ function sdoInMonth(parent: SbfpRawMilkRow, month: number | undefined, year?: nu
   return packsForMonth(parent, month, { year }) > 0
 }
 
-function dropoffPacks(dropoff: SbfpDropoffRow, parent?: SbfpParentSdo | null) {
-  const bene = Number(dropoff.beneficiaries) || 0
-  const days = resolveDropoffFeedingDays(dropoff, parent)
-  const milk =
-    inferSbfpMilkType(parent?.sdo, parent?.remarks, dropoff.sdo) ||
-    normalizeSbfpMilkType(parent?.milk_type) ||
-    'PM'
-  return calcMilkFormulations(bene, days, milk)?.milkPacks || 0
-}
-
 export async function loadDashboardStats(
   supabase: SupabaseLike,
   filters: { year?: number; month?: number; center?: string },
@@ -76,15 +60,7 @@ export async function loadDashboardStats(
   const month = filters.month
   const center = filters.center?.trim() || undefined
 
-  const [dropoffs, sbfpRaw, master] = await Promise.all([
-    fetchAllRows<SbfpDropoffRow>(() => {
-      let q = supabase
-        .from('sbfp_dropoff_points')
-        .select('id,year,center,sbfp_data_id,sdo,dropoff_name,beneficiaries,feeding_days,remarks,include_in_masterlist,region,province,municipality')
-        .neq('include_in_masterlist', false)
-      if (year) q = q.eq('year', year)
-      return q
-    }),
+  const [sbfpRaw, master] = await Promise.all([
     fetchAllRows<any>(() => {
       let q = supabase.from('sbfp_data').select(
         'id,year,center,sdo,region,milk_type,batch,feeding_days,remarks,delivery_start,delivery_end,packs_to_deliver,packs_delivered,monthly_packs_delivered,delivery_snapshots,amount,contract_amount,raw_milk_prices,raw_milk_month,beneficiaries_pm',
@@ -102,29 +78,12 @@ export async function loadDashboardStats(
   ])
 
   const sdos = excludeAuxSbfp(sbfpRaw).filter(r => matchesCenter(r.center, center))
-  const sdoById = new Map(sdos.map(r => [r.id, r]))
-
-  const scopedDrops = dropoffs.filter(d => {
-    if (!matchesCenter(d.center, center)) return false
-    if (d.include_in_masterlist === false) return false
-    const parent = d.sbfp_data_id ? sdoById.get(d.sbfp_data_id) : null
-    if (month != null) {
-      if (!parent) return false
-      return sdoInMonth(parent as SbfpRawMilkRow, month, year || d.year)
-    }
-    return true
-  })
-
-  const depedSdoIds = new Set(scopedDrops.map(d => d.sbfp_data_id).filter(Boolean) as string[])
   const scopedSdos = month != null
-    ? sdos.filter(s => depedSdoIds.has(s.id) || sdoInMonth(s as SbfpRawMilkRow, month, year || s.year))
+    ? sdos.filter(s => sdoInMonth(s as SbfpRawMilkRow, month, year || s.year))
     : sdos
 
-  const depedBene = scopedDrops.reduce((s, d) => s + (Number(d.beneficiaries) || 0), 0)
-  const depedPacks = scopedDrops.reduce((s, d) => {
-    const parent = d.sbfp_data_id ? (sdoById.get(d.sbfp_data_id) as SbfpParentSdo | undefined) : undefined
-    return s + dropoffPacks(d, parent)
-  }, 0)
+  const depedBene = scopedSdos.reduce((s, r) => s + (Number(r.beneficiaries_pm) || 0), 0)
+  const depedPacks = scopedSdos.reduce((s, r) => s + (Number(r.packs_to_deliver) || 0), 0)
   const depedFunds = scopedSdos.reduce((s, r) => {
     const contract = Number(r.contract_amount) || 0
     const amount = Number(r.amount) || 0
@@ -150,7 +109,7 @@ export async function loadDashboardStats(
   const funderMap: Record<string, DashFunderStat> = {
     DepEd: {
       funded_by: 'DepEd',
-      records: scopedDrops.length,
+      records: scopedSdos.length,
       beneficiaries: depedBene,
       milk_packs: depedPacks,
       milk_cost: depedIncome,
@@ -180,13 +139,12 @@ export async function loadDashboardStats(
   }
 
   const depedByYear = new Map<number, { rec: number; bene: number; packs: number }>()
-  for (const d of scopedDrops) {
-    const y = Number(d.year) || year || 0
+  for (const r of scopedSdos) {
+    const y = Number(r.year) || year || 0
     const cur = depedByYear.get(y) || { rec: 0, bene: 0, packs: 0 }
-    const parent = d.sbfp_data_id ? (sdoById.get(d.sbfp_data_id) as SbfpParentSdo | undefined) : undefined
     cur.rec += 1
-    cur.bene += Number(d.beneficiaries) || 0
-    cur.packs += dropoffPacks(d, parent)
+    cur.bene += Number(r.beneficiaries_pm) || 0
+    cur.packs += Number(r.packs_to_deliver) || 0
     depedByYear.set(y, cur)
   }
   for (const [y, v] of depedByYear) addYear(y, v.rec, v.bene, v.packs)
