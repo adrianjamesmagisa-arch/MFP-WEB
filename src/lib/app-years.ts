@@ -10,3 +10,10 @@ export const APP_YEARS: number[] = (() => {
 })()
 
 export const APP_YEAR_STRINGS = APP_YEARS.map(String)
+
+/** Default calendar year for report filters when URL has no year. */
+export function defaultReportYearString(): string {
+  const y = new Date().getFullYear()
+  if (APP_YEAR_STRINGS.includes(String(y))) return String(y)
+  return String(MIN_DATA_YEAR)
+}

@@ -1,8 +1,8 @@
 'use client'
 
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import { useCallback } from 'react'
-import { APP_YEAR_STRINGS } from '@/lib/app-years'
+import { APP_YEAR_STRINGS, defaultReportYearString } from '@/lib/app-years'
 
 const MONTHS = [
   { value: '1', label: 'January' },
@@ -19,11 +19,27 @@ const MONTHS = [
   { value: '12', label: 'December' },
 ]
 
-export function DashboardFilter({ centers = [], isEncoder = false }: { centers?: string[], isEncoder?: boolean }) {
+export function DashboardFilter({
+  centers = [],
+  isEncoder = false,
+  basePath,
+}: {
+  centers?: string[]
+  isEncoder?: boolean
+  /** Stay on this path when filters change (defaults to current pathname). */
+  basePath?: string
+}) {
   const router = useRouter()
+  const pathname = usePathname()
   const searchParams = useSearchParams()
+  const path = basePath || pathname || '/dashboard'
 
-  const currentYear = searchParams.get('year') || ''
+  const defaultYear = defaultReportYearString()
+  const yearFromUrl = searchParams.get('year')
+  const currentYear =
+    yearFromUrl === null || yearFromUrl === ''
+      ? defaultYear
+      : yearFromUrl
   const currentMonth = searchParams.get('month') || ''
   const currentCenter = searchParams.get('center') || ''
 
@@ -31,9 +47,10 @@ export function DashboardFilter({ centers = [], isEncoder = false }: { centers?:
 
   const updateFilters = useCallback((year: string, month: string, center: string) => {
     const params = new URLSearchParams(searchParams.toString())
-    
-    if (year) params.set('year', year)
-    else params.delete('year')
+
+    if (year === '__ALL_YEARS__') params.set('year', '__ALL_YEARS__')
+    else if (year) params.set('year', year)
+    else params.set('year', defaultYear)
 
     if (month) params.set('month', month)
     else params.delete('month')
@@ -41,8 +58,8 @@ export function DashboardFilter({ centers = [], isEncoder = false }: { centers?:
     if (center) params.set('center', center)
     else params.delete('center')
 
-    router.push(`/dashboard?${params.toString()}`)
-  }, [router, searchParams])
+    router.push(`${path}?${params.toString()}`)
+  }, [router, searchParams, path, defaultYear])
 
   return (
     <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
@@ -66,7 +83,7 @@ export function DashboardFilter({ centers = [], isEncoder = false }: { centers?:
         value={currentYear}
         onChange={(e) => updateFilters(e.target.value, currentMonth, currentCenter)}
       >
-        <option value="">All Years</option>
+        <option value="__ALL_YEARS__">All Years</option>
         {years.map(y => (
           <option key={y} value={y}>{y}</option>
         ))}

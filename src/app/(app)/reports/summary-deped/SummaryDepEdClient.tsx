@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { SpreadsheetStyle } from '@/components/reports/spreadsheet/SpreadsheetStyle'
 import { SpreadsheetTabs, TabType } from '@/components/reports/spreadsheet/SpreadsheetTabs'
 import { getAvg, valOrDash, curOrDash } from '@/components/reports/spreadsheet/SpreadsheetUtils'
@@ -38,6 +38,7 @@ export function SummaryDepEdClient({
 }) {
   const [activeTab, setActiveTab] = useState<TabType>('overview')
 
+  const { parameters, regions, provinces, sdos, coops } = useMemo(() => {
   // Derive matrices
   // 1. Parameters
   const parameters = {
@@ -152,6 +153,9 @@ export function SummaryDepEdClient({
       coops[r.supplier_name][y] = true
     }
   })
+
+  return { parameters, regions, provinces, sdos, coops }
+  }, [rows, years])
 
   const handlePrint = (tab: TabType) => {
     setActiveTab(tab)
@@ -432,11 +436,11 @@ export function SummaryDepEdClient({
       />
 
       <div className="report-content">
-        {(activeTab === 'overview' || activeTab === 'all') && renderOverview()}
-        {(activeTab === 'region' || activeTab === 'all') && renderRegion()}
-        {(activeTab === 'province' || activeTab === 'all') && renderProvince()}
-        {(activeTab === 'sdo' || activeTab === 'all') && renderSDO()}
-        {(activeTab === 'coop' || activeTab === 'all') && renderCoops()}
+        <div style={{ display: activeTab === 'overview' || activeTab === 'all' ? undefined : 'none' }}>{renderOverview()}</div>
+        <div style={{ display: activeTab === 'region' || activeTab === 'all' ? undefined : 'none' }}>{renderRegion()}</div>
+        <div style={{ display: activeTab === 'province' || activeTab === 'all' ? undefined : 'none' }}>{renderProvince()}</div>
+        <div style={{ display: activeTab === 'sdo' || activeTab === 'all' ? undefined : 'none' }}>{renderSDO()}</div>
+        <div style={{ display: activeTab === 'coop' || activeTab === 'all' ? undefined : 'none' }}>{renderCoops()}</div>
       </div>
     </div>
   )

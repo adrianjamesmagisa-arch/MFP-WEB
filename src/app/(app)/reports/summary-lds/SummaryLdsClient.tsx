@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { SpreadsheetStyle } from '@/components/reports/spreadsheet/SpreadsheetStyle'
 import { SpreadsheetTabs, TabType } from '@/components/reports/spreadsheet/SpreadsheetTabs'
 import { getAvg, valOrDash, curOrDash, fiscalYearToSchoolYear } from '@/components/reports/spreadsheet/SpreadsheetUtils'
@@ -35,6 +35,7 @@ export function SummaryLdsClient({
 }) {
   const [activeTab, setActiveTab] = useState<TabType>('overview')
 
+  const { parameters, regions, provinces, coops } = useMemo(() => {
   // Derive matrices
   // 1. Parameters
   const parameters = {
@@ -43,7 +44,7 @@ export function SummaryLdsClient({
     procurement: {} as Record<number, Set<string>>,
     regions: {} as Record<number, Set<string>>,
     provinces: {} as Record<number, Set<string>>,
-    schools: {} as Record<number, number>, // Assuming schools might not be directly in MFP or we'll mock based on division? Wait, the DepEd has SDO, LDS has 'No. of Elementary Schools'. We can use a Set if we have school identifiers, but we only have center/region/province. Wait, `school_name` isn't fetched. Let's look at the query later.
+    schools: {} as Record<number, number>,
     coops: {} as Record<number, Set<string>>,
     pm_bene: {} as Record<number, number>,
     sm_bene: {} as Record<number, number>,
@@ -89,7 +90,6 @@ export function SummaryLdsClient({
     if (r.mode_of_procurement) parameters.procurement[y].add(r.mode_of_procurement)
     if (r.region) parameters.regions[y].add(r.region)
     if (r.province) parameters.provinces[y].add(r.province)
-    // No explicit school data in the mfp_data, maybe we just mock it as records count or similar, or 0 if missing. The instructions say: "Use distinct identifiers for: ... elementary schools". But we might need to add `school` or `municipality` to the query. For now I will assume we don't have school_name in mfp_data or we can count unique municipalities? Let's check `page.tsx`. It selected `municipality`. I will use `municipality` as schools if school_name is not available, or just add `school_name` to select. Let's add `school_name` to the select in `page.tsx` and use it here.
 
     if (r.supplier_id) parameters.coops[y].add(r.supplier_id)
 
@@ -123,6 +123,9 @@ export function SummaryLdsClient({
       coops[r.supplier_name][y] = true
     }
   })
+
+  return { parameters, regions, provinces, coops }
+  }, [rows, years])
 
   const handlePrint = (tab: TabType) => {
     setActiveTab(tab)
@@ -347,10 +350,10 @@ export function SummaryLdsClient({
       />
 
       <div className="report-content">
-        {(activeTab === 'overview' || activeTab === 'all') && renderOverview()}
-        {(activeTab === 'region' || activeTab === 'all') && renderRegion()}
-        {(activeTab === 'province' || activeTab === 'all') && renderProvince()}
-        {(activeTab === 'coop' || activeTab === 'all') && renderCoops()}
+        <div style={{ display: activeTab === 'overview' || activeTab === 'all' ? undefined : 'none' }}>{renderOverview()}</div>
+        <div style={{ display: activeTab === 'region' || activeTab === 'all' ? undefined : 'none' }}>{renderRegion()}</div>
+        <div style={{ display: activeTab === 'province' || activeTab === 'all' ? undefined : 'none' }}>{renderProvince()}</div>
+        <div style={{ display: activeTab === 'coop' || activeTab === 'all' ? undefined : 'none' }}>{renderCoops()}</div>
       </div>
     </div>
   )

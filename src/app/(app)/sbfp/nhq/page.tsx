@@ -7,6 +7,8 @@ import { loadCenterSchoolYearCards, loadSchoolYears } from '@/lib/sbfp-school-ye
 import { parseSchoolYear, schoolYearLabel, schoolYearToDbYear } from '@/lib/sbfp-year'
 import { encoderCanAccessSbfpCenter, sbfpNavCenter } from '@/lib/center-aliases'
 import { excludeAuxSbfp, SBFP_HIRING_TYPE, SBFP_PPMP_TYPE, toHiringRow, toPpmpRow } from '@/lib/sbfp-aux'
+import { SBFP_DATA_ENCODER_COLUMNS, SBFP_DROPOFF_ENCODER_COLUMNS } from '@/lib/encoder-selects'
+import type { SbfpDropoffPoint } from '@/lib/types'
 
 export default async function SbfpNhqPage({
   searchParams,
@@ -51,7 +53,7 @@ export default async function SbfpNhqPage({
   const [{ data: records }, { data: budgetRows }, { data: capacityRows }, dropoffRes] = await Promise.all([
     supabase
       .from('sbfp_data')
-      .select('*')
+      .select(SBFP_DATA_ENCODER_COLUMNS)
       .eq('center', 'NHQ')
       .eq('year', year)
       .order('created_at', { ascending: true }),
@@ -67,21 +69,21 @@ export default async function SbfpNhqPage({
       .eq('year', year),
     supabase
       .from('sbfp_dropoff_points')
-      .select('*')
+      .select(SBFP_DROPOFF_ENCODER_COLUMNS)
       .eq('center', 'NHQ')
       .eq('year', year)
       .order('sdo', { ascending: true })
       .order('dropoff_name', { ascending: true }),
   ])
-  const all = records || []
-  const sdoRecords = excludeAuxSbfp(all)
+  const all = (records || []) as unknown as Array<Record<string, unknown> & { milk_type?: string }>
+  const sdoRecords = excludeAuxSbfp(all as any)
   const ppmpItems = all.filter(r => r.milk_type === SBFP_PPMP_TYPE).map(toPpmpRow)
   const hiringRows = all.filter(r => r.milk_type === SBFP_HIRING_TYPE).map(toHiringRow)
   const pickNhq = <T extends { center?: string }>(rows: T[] | null) =>
     (rows || []).find(r => r.center === 'NHQ') || (rows || []).find(r => r.center === 'NIZ') || null
   const budget = pickNhq(budgetRows)
   const capacity = pickNhq(capacityRows)
-  const dropoffs = dropoffRes.error ? [] : (dropoffRes.data || [])
+  const dropoffs = (dropoffRes.error ? [] : (dropoffRes.data || [])) as unknown as SbfpDropoffPoint[]
   const dropoffSchemaReady = !dropoffRes.error
   const { error: feedingErr } = await supabase.from('sbfp_dropoff_points').select('feeding_days').limit(1)
   const feedingDaysReady = !feedingErr

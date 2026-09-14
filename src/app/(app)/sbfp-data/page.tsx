@@ -5,6 +5,7 @@ import { Plus } from 'lucide-react'
 import { SbfpDataFilters } from '@/components/SbfpDataFilters'
 import { SbfpDataTable } from '@/components/SbfpDataTable'
 import { REGIONS, PCC_CENTERS } from '@/lib/types'
+import { SBFP_DATA_ENCODER_COLUMNS } from '@/lib/encoder-selects'
 
 export default async function SbfpDataPage({
   searchParams
@@ -18,12 +19,12 @@ export default async function SbfpDataPage({
   if (!user) redirect('/login')
 
   const { data: profile } = await supabase
-    .from('profiles').select('*').eq('id', user.id).single()
+    .from('profiles').select('role,center').eq('id', user.id).single()
 
   const params = await searchParams
   let query = supabase
     .from('sbfp_data')
-    .select('*')
+    .select(SBFP_DATA_ENCODER_COLUMNS)
     .order('year', { ascending: false })
     .order('region', { ascending: true })
     .order('sdo', { ascending: true })

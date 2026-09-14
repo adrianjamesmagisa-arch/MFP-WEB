@@ -4,6 +4,7 @@ import { SbfpCenterTable } from '@/components/SbfpCenterTable'
 import { parseSchoolYear, schoolYearLabel, schoolYearToDbYear } from '@/lib/sbfp-year'
 import { sbfpCenterAliases } from '@/lib/center-aliases'
 import { excludeAuxSbfp } from '@/lib/sbfp-aux'
+import { SBFP_DATA_ENCODER_COLUMNS } from '@/lib/encoder-selects'
 
 export default async function SbfpOverallPage({
   searchParams,
@@ -29,18 +30,18 @@ export default async function SbfpOverallPage({
 
   const { data: rawRecords } = await supabase
     .from('sbfp_data')
-    .select('*')
+    .select(SBFP_DATA_ENCODER_COLUMNS)
     .eq('year', year)
     .order('center', { ascending: true })
     .order('region', { ascending: true })
     .order('sdo', { ascending: true })
 
-  const records = excludeAuxSbfp(rawRecords)
+  const records = excludeAuxSbfp((rawRecords || []) as any)
 
   const total = records.length
-  const totalPacks = records.reduce((sum, r) => sum + (r.packs_to_deliver || 0), 0)
+  const totalPacks = records.reduce((sum: number, r: any) => sum + (r.packs_to_deliver || 0), 0)
 
-  const statusCounts = records.reduce((acc, r) => {
+  const statusCounts = records.reduce((acc: { prep: number; ongoing: number; awarded: number; done: number; failed: number }, r: any) => {
     const s = (r.procurement_status || '').toUpperCase()
     if (s === 'FOR PREPARATION') acc.prep++
     else if (s.includes('ONGOING')) acc.ongoing++

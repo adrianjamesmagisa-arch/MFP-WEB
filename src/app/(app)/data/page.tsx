@@ -7,6 +7,7 @@ import { DataFilters } from '@/components/DataFilters'
 import { DataTable } from '@/components/DataTable'
 import { REGIONS, PCC_CENTERS } from '@/lib/types'
 import { APP_YEAR_STRINGS, APP_YEARS } from '@/lib/app-years'
+import { MFP_DATA_LIST_COLUMNS } from '@/lib/encoder-selects'
 
 export default async function DataPage({
   searchParams
@@ -23,12 +24,12 @@ export default async function DataPage({
   if (!user) redirect('/login')
 
   const { data: profile } = await supabase
-    .from('profiles').select('*').eq('id', user.id).single()
+    .from('profiles').select('role,center').eq('id', user.id).single()
 
   const params = await searchParams
   let query = supabase
     .from('mfp_data')
-    .select('*, cooperatives(name)')
+    .select(MFP_DATA_LIST_COLUMNS)
     .gte('year', APP_YEARS[0] ?? 2026)
     .order('year', { ascending: false })
     .order('created_at', { ascending: false })

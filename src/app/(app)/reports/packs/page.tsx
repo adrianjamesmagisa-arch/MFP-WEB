@@ -3,6 +3,9 @@ import { redirect } from 'next/navigation'
 import { formatCurrency, formatNumber } from '@/lib/utils'
 import { DashboardFilter } from '@/components/DashboardFilter'
 import { PCC_CENTERS } from '@/lib/types'
+import { fetchAllRows } from '@/lib/supabase-paginate'
+import { resolveReportYearFilter } from '@/lib/report-year'
+import { MIN_DATA_YEAR } from '@/lib/app-years'
 
 export default async function PacksDeliveredPage(props: {
   searchParams: Promise<{ year?: string; month?: string; center?: string }>
@@ -12,23 +15,27 @@ export default async function PacksDeliveredPage(props: {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+  const { data: profile } = await supabase.from('profiles').select('role,center').eq('id', user.id).single()
   const isEncoder = profile?.role === 'encoder'
   const centerFilter = isEncoder ? profile?.center : sp.center
 
-  let query = supabase
-    .from('mfp_data')
-    .select('beneficiaries, milk_packs, milk_cost, total_funds_transferred, milk_type, funded_by, year, center, region, province, date_started, feeding_days')
-    .range(0, 49999)
+  const { allYears, yearNum } = resolveReportYearFilter(sp.year)
 
-  if (centerFilter) query = query.eq('center', centerFilter)
-  if (sp.year)      query = query.eq('year', parseInt(sp.year))
-
-  let { data: rows } = await query
+  let rows = await fetchAllRows<any>(() => {
+    let query = supabase
+      .from('mfp_data')
+      .select('beneficiaries, milk_packs, milk_cost, total_funds_transferred, milk_type, funded_by, year, center, region, province, date_started, feeding_days')
+      .gte('year', MIN_DATA_YEAR)
+    if (!allYears && yearNum != null) query = query.eq('year', yearNum)
+    if (centerFilter) query = query.eq('center', centerFilter)
+    return query
+  })
 
   if (sp.month && rows) {
-    const m = parseInt(sp.month)
-    rows = rows.filter(r => r.date_started && (new Date(r.date_started).getMonth() + 1) === m)
+    const m = parseInt(sp.month, 10)
+    if (Number.isFinite(m)) {
+      rows = rows.filter(r => r.date_started && (new Date(r.date_started).getMonth() + 1) === m)
+    }
   }
 
   rows = rows ?? []
@@ -99,7 +106,7 @@ export default async function PacksDeliveredPage(props: {
           <h1 className="page-title">📦 Packs Delivered</h1>
           <p className="page-subtitle">Milk Packs Delivered Report — All Program Types</p>
         </div>
-        <DashboardFilter centers={PCC_CENTERS} isEncoder={isEncoder} />
+        <DashboardFilter centers={PCC_CENTERS} isEncoder={isEncoder} basePath="/reports/packs" />
       </div>
 
       {/* Top KPIs */}
