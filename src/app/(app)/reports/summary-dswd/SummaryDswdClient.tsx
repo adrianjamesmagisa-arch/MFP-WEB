@@ -18,10 +18,8 @@ interface MfpRow {
   supplier_id: string
   supplier_name: string
   milk_type: string
-  component: string // 'milk' or 'hot_meals'
+  component?: string
 }
-
-type DswdComponent = 'milk' | 'hot_meals' | 'all'
 
 function cycleToSchoolYear(cycle: number): string {
   const startYear = 2010 + cycle
@@ -157,14 +155,9 @@ export function SummaryDswdClient({
   monthFilter: string | undefined
 }) {
   const [activeTab, setActiveTab] = useState<TabType>('overview')
-  const [activeComponent, setActiveComponent] = useState<DswdComponent>('milk')
 
   const milkMatrix = useMemo(
-    () => buildDswdMatrices(rows.filter(r => r.component === 'milk'), yearFilter),
-    [rows, yearFilter]
-  )
-  const hotMealMatrix = useMemo(
-    () => buildDswdMatrices(rows.filter(r => r.component === 'hot_meals'), yearFilter),
+    () => buildDswdMatrices(rows.filter(r => !r.component || r.component === 'milk'), yearFilter),
     [rows, yearFilter]
   )
 
@@ -175,10 +168,9 @@ export function SummaryDswdClient({
     }, 300)
   }
 
-  const renderReportForComponent = (comp: 'milk' | 'hot_meals', isAll: boolean) => {
-    const label = comp === 'milk' ? 'Milk Component' : 'Hot Meals'
-    const { cycles, parameters, regions, provinces, coops } =
-      comp === 'milk' ? milkMatrix : hotMealMatrix
+  const renderMilkReport = () => {
+    const label = 'Milk Component'
+    const { cycles, parameters, regions, provinces, coops } = milkMatrix
 
     const ThSchoolYear = () => (
       <>
@@ -415,7 +407,7 @@ export function SummaryDswdClient({
     }
 
     return (
-      <div key={comp} style={{ marginBottom: '2rem' }}>
+      <div style={{ marginBottom: '2rem' }}>
         <div style={{ display: activeTab === 'overview' || activeTab === 'all' ? undefined : 'none' }}>{renderOverviewTable()}</div>
         <div style={{ display: activeTab === 'region' || activeTab === 'all' ? undefined : 'none' }}>{renderRegionTable()}</div>
         <div style={{ display: activeTab === 'province' || activeTab === 'all' ? undefined : 'none' }}>{renderProvinceTable()}</div>
@@ -431,46 +423,7 @@ export function SummaryDswdClient({
         :root {
           --dswd-component-green: #00e600;
         }
-        .dswd-component-selector {
-          display: flex;
-          gap: 0.5rem;
-          margin-bottom: 1rem;
-        }
-        .dswd-component-selector button {
-          padding: 0.5rem 1rem;
-          border-radius: 4px;
-          border: 1px solid var(--gray-300);
-          background: white;
-          cursor: pointer;
-        }
-        .dswd-component-selector button.active {
-          background: var(--dswd-component-green);
-          color: white;
-          font-weight: bold;
-          border-color: var(--dswd-component-green);
-        }
       `}} />
-
-      <div className="dswd-component-selector no-print">
-        <button 
-          className={activeComponent === 'milk' ? 'active' : ''} 
-          onClick={() => setActiveComponent('milk')}
-        >
-          Milk Component
-        </button>
-        <button 
-          className={activeComponent === 'hot_meals' ? 'active' : ''} 
-          onClick={() => setActiveComponent('hot_meals')}
-        >
-          Hot Meals
-        </button>
-        <button 
-          className={activeComponent === 'all' ? 'active' : ''} 
-          onClick={() => setActiveComponent('all')}
-        >
-          All Components
-        </button>
-      </div>
 
       <SpreadsheetTabs 
         activeTab={activeTab} 
@@ -480,12 +433,7 @@ export function SummaryDswdClient({
       />
 
       <div className="report-content">
-        <div style={{ display: activeComponent === 'milk' || activeComponent === 'all' ? undefined : 'none' }}>
-          {renderReportForComponent('milk', activeComponent === 'all')}
-        </div>
-        <div style={{ display: activeComponent === 'hot_meals' || activeComponent === 'all' ? undefined : 'none' }}>
-          {renderReportForComponent('hot_meals', activeComponent === 'all')}
-        </div>
+        {renderMilkReport()}
       </div>
     </div>
   )
