@@ -68,6 +68,8 @@ export default function SbfpSpreadsheetReport() {
   const initialDeliveredRange = defaultDeliveredPackRange(initialDbYear)
   const [deliveredFrom, setDeliveredFrom] = useState(initialDeliveredRange.from)
   const [deliveredTo, setDeliveredTo] = useState(initialDeliveredRange.to)
+  /** When false: list all SDOs; delivered column uses full SY (Aug 1 – today). */
+  const [deliveredDateFilterEnabled, setDeliveredDateFilterEnabled] = useState(false)
   const [filterRegion, setFilterRegion]     = useState('ALL')
   const [filterCenter, setFilterCenter]     = useState('ALL')
   const [filterStatus, setFilterStatus]     = useState('ALL')
@@ -146,9 +148,17 @@ export default function SbfpSpreadsheetReport() {
 
   const dbYearNum = parseInt(year, 10)
 
+  const effectiveDeliveredRange = useMemo(() => {
+    if (Number.isFinite(dbYearNum) && !deliveredDateFilterEnabled) {
+      return defaultDeliveredPackRange(dbYearNum)
+    }
+    const to = deliveredTo >= deliveredFrom ? deliveredTo : deliveredFrom
+    return { from: deliveredFrom, to }
+  }, [dbYearNum, deliveredDateFilterEnabled, deliveredFrom, deliveredTo])
+
   // Filter records
   const filteredRecords = useMemo(() => {
-    const rangeTo = deliveredTo >= deliveredFrom ? deliveredTo : deliveredFrom
+    const { from: rangeFrom, to: rangeTo } = effectiveDeliveredRange
     return records.filter(r => {
       if (!includeExcluded && !sbfpRowIncludedInReport(r)) return false
       if (filterRegion !== 'ALL' && r.region !== filterRegion) return false
@@ -174,9 +184,14 @@ export default function SbfpSpreadsheetReport() {
           return false
         }
       }
-      if (Number.isFinite(dbYearNum) && deliveredFrom && rangeTo) {
+      if (
+        deliveredDateFilterEnabled &&
+        Number.isFinite(dbYearNum) &&
+        rangeFrom &&
+        rangeTo
+      ) {
         const delivered = resolveDeliveredPacksForReport(r as SbfpReportSourceRow, {
-          deliveredFromIso: deliveredFrom,
+          deliveredFromIso: rangeFrom,
           deliveredToIso: rangeTo,
           dbYear: dbYearNum,
         })
@@ -193,15 +208,14 @@ export default function SbfpSpreadsheetReport() {
     filterMonth,
     year,
     includeExcluded,
-    deliveredFrom,
-    deliveredTo,
+    deliveredDateFilterEnabled,
+    effectiveDeliveredRange,
     dbYearNum,
   ])
 
   const viewRows = useMemo(() => {
     const dbY = Number.isFinite(dbYearNum) ? dbYearNum : undefined
-    const from = deliveredFrom
-    const to = deliveredTo >= deliveredFrom ? deliveredTo : deliveredFrom
+    const { from, to } = effectiveDeliveredRange
     return (records as SbfpReportSourceRow[]).map(r =>
       mapSbfpRowToReportView(r, {
         deliveredFromIso: from,
@@ -209,7 +223,7 @@ export default function SbfpSpreadsheetReport() {
         dbYear: dbY,
       }),
     )
-  }, [records, deliveredFrom, deliveredTo, dbYearNum])
+  }, [records, effectiveDeliveredRange, dbYearNum])
 
   const getViewForSource = useCallback(
     (sourceId: string | undefined) => viewRows.find(v => v.source.id === sourceId),
@@ -388,6 +402,16 @@ export default function SbfpSpreadsheetReport() {
     setFilterStatus('ALL')
     setFilterMonth('')
     setSearchQuery('')
+    setDeliveredDateFilterEnabled(false)
+    if (Number.isFinite(dbYearNum)) {
+      const { from, to } = defaultDeliveredPackRange(dbYearNum)
+      setDeliveredFrom(from)
+      setDeliveredTo(to)
+    }
+  }
+
+  const clearDeliveredDateFilter = () => {
+    setDeliveredDateFilterEnabled(false)
     if (Number.isFinite(dbYearNum)) {
       const { from, to } = defaultDeliveredPackRange(dbYearNum)
       setDeliveredFrom(from)
@@ -529,24 +553,59 @@ export default function SbfpSpreadsheetReport() {
             </select>
 
             <div style={{ marginLeft: 12, borderLeft: '1px solid #e2e8f0', paddingLeft: 12, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>Delivered Packs:</span>
-              <span style={{ fontSize: '0.78rem', color: '#64748b' }}>From</span>
+              <label
+                style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', color: '#475569', cursor: 'pointer', fontWeight: 600 }}
+                title="When off, all SDOs are listed and delivered packs use the full school year (Aug 1 – today)."
+              >
+                <input
+                  type="checkbox"
+                  checked={deliveredDateFilterEnabled}
+                  onChange={e => setDeliveredDateFilterEnabled(e.target.checked)}
+                />
+                Delivered date range
+              </label>
+              <span style={{ fontSize: '0.78rem', color: deliveredDateFilterEnabled ? '#64748b' : '#94a3b8' }}>From</span>
               <input
                 type="date"
                 value={deliveredFrom}
+                disabled={!deliveredDateFilterEnabled}
                 onChange={e => setDeliveredFrom(e.target.value)}
-                title="Start of delivery period (inclusive). Only SDOs with packs delivered in this range appear in the table."
-                style={{ height: 28, padding: '0 0.5rem', borderRadius: 4, border: '1px solid #cbd5e1', fontSize: '0.78rem' }}
+                title="Start of delivery period (inclusive)."
+                style={{
+                  height: 28, padding: '0 0.5rem', borderRadius: 4, border: '1px solid #cbd5e1', fontSize: '0.78rem',
+                  opacity: deliveredDateFilterEnabled ? 1 : 0.55,
+                }}
               />
-              <span style={{ fontSize: '0.78rem', color: '#64748b' }}>To</span>
+              <span style={{ fontSize: '0.78rem', color: deliveredDateFilterEnabled ? '#64748b' : '#94a3b8' }}>To</span>
               <input
                 type="date"
                 value={deliveredTo}
                 min={deliveredFrom}
+                disabled={!deliveredDateFilterEnabled}
                 onChange={e => setDeliveredTo(e.target.value)}
                 title="End of delivery period (inclusive). Partial months are prorated from encoder monthly totals."
-                style={{ height: 28, padding: '0 0.5rem', borderRadius: 4, border: '1px solid #cbd5e1', fontSize: '0.78rem' }}
+                style={{
+                  height: 28, padding: '0 0.5rem', borderRadius: 4, border: '1px solid #cbd5e1', fontSize: '0.78rem',
+                  opacity: deliveredDateFilterEnabled ? 1 : 0.55,
+                }}
               />
+              {deliveredDateFilterEnabled ? (
+                <button
+                  type="button"
+                  onClick={clearDeliveredDateFilter}
+                  title="Show all SDOs; delivered packs use full school year totals"
+                  style={{
+                    height: 28, padding: '0 0.5rem', borderRadius: 4, border: '1px solid #e2e8f0',
+                    background: '#f8fafc', color: '#475569', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600,
+                  }}
+                >
+                  Show all SDOs
+                </button>
+              ) : (
+                <span style={{ fontSize: '0.72rem', color: '#64748b', maxWidth: 220 }}>
+                  All SDOs · delivered packs = Aug 1 – today
+                </span>
+              )}
             </div>
 
             <label style={{ marginLeft: 12, borderLeft: '1px solid #e2e8f0', paddingLeft: 12, display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: '#475569', cursor: 'pointer' }}>
@@ -617,7 +676,11 @@ export default function SbfpSpreadsheetReport() {
         <div style={{ background: '#ffffff', padding: '0.625rem 1rem', borderRadius: 8, border: '1px solid #e2e8f0' }}>
           <div
             style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}
-            title={`${formatRangeLabel(deliveredFrom)} – ${formatRangeLabel(deliveredTo)}`}
+            title={
+              deliveredDateFilterEnabled
+                ? `${formatRangeLabel(effectiveDeliveredRange.from)} – ${formatRangeLabel(effectiveDeliveredRange.to)}`
+                : `Full SY: ${formatRangeLabel(effectiveDeliveredRange.from)} – ${formatRangeLabel(effectiveDeliveredRange.to)}`
+            }
           >
             Delivered Packs
           </div>
