@@ -10,6 +10,7 @@ import {
   reportCenterFilterOptions,
   rowMatchesReportCenterFilter,
   sbfpRowIncludedInReport,
+  type DeliveredPacksMode,
   type SbfpReportSourceRow,
 } from '@/lib/sbfp-report-sync'
 
@@ -79,6 +80,7 @@ export default function SbfpSpreadsheetReport() {
   const [year, setYear]                     = useState(String(schoolYearToDbYear(FALLBACK_SCHOOL_YEARS[0])))
   const [schoolYearOptions, setSchoolYearOptions] = useState<string[]>([...FALLBACK_SCHOOL_YEARS])
   const [reportDate, setReportDate]         = useState(() => new Date().toISOString().split('T')[0])
+  const [deliveredPacksMode, setDeliveredPacksMode] = useState<DeliveredPacksMode>('as_of')
   const [filterRegion, setFilterRegion]     = useState('ALL')
   const [filterCenter, setFilterCenter]     = useState('ALL')
   const [filterStatus, setFilterStatus]     = useState('ALL')
@@ -177,9 +179,22 @@ export default function SbfpSpreadsheetReport() {
     })
   }, [records, filterRegion, filterCenter, filterStatus, searchQuery, filterMonth, year, includeExcluded])
 
+  const deliveryMonthNum = filterMonth ? parseInt(filterMonth, 10) : null
+  const dbYearNum = parseInt(year, 10)
+
   const viewRows = useMemo(() => {
-    return (records as SbfpReportSourceRow[]).map(r => mapSbfpRowToReportView(r, reportDate))
-  }, [records, reportDate])
+    const month =
+      deliveredPacksMode === 'in_month' && deliveryMonthNum != null && Number.isFinite(deliveryMonthNum)
+        ? deliveryMonthNum
+        : null
+    return (records as SbfpReportSourceRow[]).map(r =>
+      mapSbfpRowToReportView(r, reportDate, {
+        mode: deliveredPacksMode,
+        deliveryMonth: month,
+        dbYear: Number.isFinite(dbYearNum) ? dbYearNum : undefined,
+      }),
+    )
+  }, [records, reportDate, deliveredPacksMode, deliveryMonthNum, dbYearNum])
 
   const getViewForSource = useCallback(
     (sourceId: string | undefined) => viewRows.find(v => v.source.id === sourceId),
@@ -358,7 +373,13 @@ export default function SbfpSpreadsheetReport() {
     setFilterStatus('ALL')
     setFilterMonth('')
     setSearchQuery('')
+    setDeliveredPacksMode('as_of')
   }
+
+  const deliveredMonthLabel =
+    deliveryMonthNum != null && Number.isFinite(deliveryMonthNum)
+      ? DELIVERY_MONTHS.find(m => m.value === String(deliveryMonthNum))?.label
+      : null
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#f8fafc', overflow: 'hidden' }}>
       
@@ -487,11 +508,37 @@ export default function SbfpSpreadsheetReport() {
               ))}
             </select>
 
-            <div style={{ marginLeft: 12, borderLeft: '1px solid #e2e8f0', paddingLeft: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>Delivered As Of:</span>
-              <input type="date" value={reportDate} onChange={e => setReportDate(e.target.value)}
-                title="Cumulative delivered packs use SBFP “Delivered as-of” columns through this date"
-                style={{ height: 28, padding: '0 0.5rem', borderRadius: 4, border: '1px solid #cbd5e1', fontSize: '0.78rem' }} />
+            <div style={{ marginLeft: 12, borderLeft: '1px solid #e2e8f0', paddingLeft: 12, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>Delivered Packs:</span>
+              <select
+                value={deliveredPacksMode}
+                onChange={e => setDeliveredPacksMode(e.target.value as DeliveredPacksMode)}
+                style={{ height: 28, padding: '0 0.5rem', borderRadius: 4, border: '1px solid #cbd5e1', fontSize: '0.78rem', background: '#fff' }}
+              >
+                <option value="as_of">As of date (cumulative)</option>
+                <option value="in_month">In delivery month only</option>
+              </select>
+              {deliveredPacksMode === 'as_of' ? (
+                <>
+                  <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>As of:</span>
+                  <input
+                    type="date"
+                    value={reportDate}
+                    onChange={e => setReportDate(e.target.value)}
+                    title="Cumulative delivered packs from SBFP “Delivered as-of” columns through this date"
+                    style={{ height: 28, padding: '0 0.5rem', borderRadius: 4, border: '1px solid #cbd5e1', fontSize: '0.78rem' }}
+                  />
+                </>
+              ) : (
+                <span
+                  style={{ fontSize: '0.75rem', color: deliveredMonthLabel ? '#475569' : '#b45309', fontWeight: 500 }}
+                  title="Uses packs completed in the selected Delivery Month (snapshot increment or monthly encoding), not cumulative totals"
+                >
+                  {deliveredMonthLabel
+                    ? `Counts for ${deliveredMonthLabel} ${dbYearNum} only`
+                    : 'Select a Delivery Month above'}
+                </span>
+              )}
             </div>
 
             <label style={{ marginLeft: 12, borderLeft: '1px solid #e2e8f0', paddingLeft: 12, display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: '#475569', cursor: 'pointer' }}>
@@ -560,7 +607,11 @@ export default function SbfpSpreadsheetReport() {
         </div>
 
         <div style={{ background: '#ffffff', padding: '0.625rem 1rem', borderRadius: 8, border: '1px solid #e2e8f0' }}>
-          <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Delivered Packs</div>
+          <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+            {deliveredPacksMode === 'in_month' && deliveredMonthLabel
+              ? `Delivered (${deliveredMonthLabel.slice(0, 3)})`
+              : 'Delivered Packs'}
+          </div>
           <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#059669', marginTop: 2 }}>
             {stats.totalDelivered.toLocaleString()}
             <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#10b981', marginLeft: 6 }}>({stats.pctDelivered.toFixed(1)}%)</span>
@@ -597,7 +648,7 @@ export default function SbfpSpreadsheetReport() {
                     School-Based Feeding Program (SBFP) — Milk Procurement Monitoring Report
                   </h2>
                   <p style={{ fontSize: '0.8rem', color: '#64748b', marginTop: 4 }}>
-                    Live from each center&apos;s SBFP SDO procurement table (same fields as Section 1). Refresh after encoding; use &quot;Delivered As Of&quot; to match cumulative delivery columns.
+                    Live from each center&apos;s SBFP SDO procurement table (same fields as Section 1). Refresh after encoding; choose cumulative &quot;As of date&quot; or &quot;In delivery month only&quot; for delivered packs.
                   </p>
                   <div style={{ fontSize: '0.85rem', color: '#475569', marginTop: 4 }}>
                     FY {year} | Filtered as of: {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}

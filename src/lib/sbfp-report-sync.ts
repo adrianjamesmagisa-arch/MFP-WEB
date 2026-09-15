@@ -6,6 +6,7 @@
 import { centerDisplayLabel, sbfpCenterAliases } from '@/lib/center-aliases'
 import { packsFromAmount, milkTypeLabel } from '@/lib/sbfp-pack-price'
 import {
+  packsForMonth,
   parseSnapshotDate,
   totalPacksDelivered,
   type SbfpRawMilkRow,
@@ -102,6 +103,46 @@ export function deliveredPacksAsOfReportDate(
   return totalPacksDelivered(row)
 }
 
+/** How SBFP Report resolves the “Delivered Packs” column and KPI totals. */
+export type DeliveredPacksMode = 'as_of' | 'in_month'
+
+/**
+ * Packs completed in one calendar month (not cumulative).
+ * Uses monthly_packs_delivered, snapshot increments, or legacy fallback — same as center table / PIMD.
+ */
+export function deliveredPacksInMonth(
+  row: SbfpReportSourceRow,
+  month: number,
+  dbYear: number,
+): number {
+  if (!Number.isFinite(month) || month < 1 || month > 12) return 0
+  if (!Number.isFinite(dbYear)) return 0
+  return packsForMonth(row, month, { year: dbYear })
+}
+
+export function resolveDeliveredPacksForReport(
+  row: SbfpReportSourceRow,
+  opts: {
+    mode: DeliveredPacksMode
+    reportDateIso: string
+    deliveryMonth?: number | null
+    dbYear?: number
+  },
+): number {
+  if (opts.mode === 'in_month') {
+    if (
+      opts.deliveryMonth != null &&
+      Number.isFinite(opts.deliveryMonth) &&
+      opts.dbYear != null &&
+      Number.isFinite(opts.dbYear)
+    ) {
+      return deliveredPacksInMonth(row, opts.deliveryMonth, opts.dbYear)
+    }
+    return 0
+  }
+  return deliveredPacksAsOfReportDate(row, opts.reportDateIso)
+}
+
 export function formatReportDate(value: unknown): string {
   if (value == null || value === '') return '—'
   const d = parseSnapshotDate(value)
@@ -149,7 +190,13 @@ export type SbfpReportViewRow = {
 export function mapSbfpRowToReportView(
   row: SbfpReportSourceRow,
   reportDateIso: string,
+  deliveredOpts?: {
+    mode?: DeliveredPacksMode
+    deliveryMonth?: number | null
+    dbYear?: number
+  },
 ): SbfpReportViewRow {
+  const mode = deliveredOpts?.mode ?? 'as_of'
   return {
     source: row,
     region: row.region?.trim() || '—',
@@ -169,7 +216,12 @@ export function mapSbfpRowToReportView(
     delivery_start: formatReportDate(row.delivery_start),
     delivery_end: formatReportDate(row.delivery_end),
     packs_to_deliver: effectivePacksToDeliver(row),
-    delivered_packs: deliveredPacksAsOfReportDate(row, reportDateIso),
+    delivered_packs: resolveDeliveredPacksForReport(row, {
+      mode,
+      reportDateIso,
+      deliveryMonth: deliveredOpts?.deliveryMonth,
+      dbYear: deliveredOpts?.dbYear,
+    }),
     status_of_payment: row.status_of_payment?.trim() || '—',
     remarks: row.remarks?.trim() || '—',
   }
