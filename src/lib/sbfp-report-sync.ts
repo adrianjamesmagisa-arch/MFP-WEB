@@ -8,6 +8,7 @@ import { packsFromAmount, milkTypeLabel } from '@/lib/sbfp-pack-price'
 import {
   packsForMonth,
   parseSnapshotDate,
+  rowHasDeliverySnapshotPacks,
   totalPacksDelivered,
   type SbfpRawMilkRow,
 } from '@/lib/sbfp-raw-milk'
@@ -75,16 +76,37 @@ export function effectivePacksToDeliver(row: SbfpReportSourceRow): number {
 }
 
 /**
- * Cumulative packs delivered as of reportDate (ISO yyyy-mm-dd).
- * Uses delivery_snapshots dates (e.g. "Aug. 18, 2026") via parseSnapshotDate.
+ * Cumulative packs delivered through reportDate (ISO yyyy-mm-dd): sum of each
+ * calendar month’s completed packs (Aug + Sep + …), aligned with center monthly columns.
  */
 export function deliveredPacksAsOfReportDate(
   row: SbfpReportSourceRow,
   reportDateIso: string,
+  dbYear?: number,
 ): number {
   const cutoff = parseSnapshotDate(reportDateIso)
+  if (!cutoff) return totalPacksDelivered(row)
+
+  const syYear =
+    dbYear != null && Number.isFinite(dbYear) ? Math.floor(dbYear) : cutoff.getFullYear()
+
+  let endMonth = 12
+  if (cutoff.getFullYear() === syYear) {
+    endMonth = cutoff.getMonth() + 1
+  } else if (cutoff.getFullYear() < syYear) {
+    return 0
+  }
+
+  const monthOpts = reportPacksMonthOpts(row, syYear)
+  let sum = 0
+  for (let m = 1; m <= endMonth; m++) {
+    sum += packsForMonth(row, m, monthOpts)
+  }
+  if (sum > 0) return sum
+
+  // Fallback: single latest cumulative snapshot on or before cutoff (legacy rows).
   const snaps = Array.isArray(row.delivery_snapshots) ? row.delivery_snapshots : []
-  if (snaps.length > 0 && cutoff) {
+  if (snaps.length > 0) {
     let best = 0
     for (const s of snaps) {
       const d = parseSnapshotDate(s.date)
@@ -92,13 +114,6 @@ export function deliveredPacksAsOfReportDate(
       best = Math.max(best, Number(s.packs) || 0)
     }
     if (best > 0) return best
-  }
-  if (snaps.length > 0 && !cutoff) {
-    const latest = snaps.reduce(
-      (m, s) => Math.max(m, Number(s.packs) || 0),
-      0,
-    )
-    if (latest > 0) return latest
   }
   return totalPacksDelivered(row)
 }
@@ -110,6 +125,13 @@ export type DeliveredPacksMode = 'as_of' | 'in_month'
  * Packs completed in one calendar month (not cumulative).
  * Uses monthly_packs_delivered, snapshot increments, or legacy fallback — same as center table / PIMD.
  */
+function reportPacksMonthOpts(row: SbfpReportSourceRow, dbYear: number) {
+  return {
+    year: dbYear,
+    preferSnapshotsOverMonthly: rowHasDeliverySnapshotPacks(row),
+  }
+}
+
 export function deliveredPacksInMonth(
   row: SbfpReportSourceRow,
   month: number,
@@ -117,7 +139,7 @@ export function deliveredPacksInMonth(
 ): number {
   if (!Number.isFinite(month) || month < 1 || month > 12) return 0
   if (!Number.isFinite(dbYear)) return 0
-  return packsForMonth(row, month, { year: dbYear })
+  return packsForMonth(row, month, reportPacksMonthOpts(row, dbYear))
 }
 
 export function resolveDeliveredPacksForReport(
@@ -140,7 +162,7 @@ export function resolveDeliveredPacksForReport(
     }
     return 0
   }
-  return deliveredPacksAsOfReportDate(row, opts.reportDateIso)
+  return deliveredPacksAsOfReportDate(row, opts.reportDateIso, opts.dbYear)
 }
 
 export function formatReportDate(value: unknown): string {

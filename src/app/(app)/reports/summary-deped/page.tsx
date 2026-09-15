@@ -5,7 +5,8 @@ import { PCC_CENTERS } from '@/lib/types'
 import { SummaryDepEdClient } from './SummaryDepEdClient'
 import { fetchAllRows } from '@/lib/supabase-paginate'
 import { sbfpCenterAliases } from '@/lib/center-aliases'
-import { resolveReportYearFilter } from '@/lib/report-year'
+import { resolveReportSchoolYearFilter } from '@/lib/report-year'
+import { schoolYearsFromRows } from '@/lib/sbfp-year'
 import { MIN_DATA_YEAR } from '@/lib/app-years'
 import { excludeAuxSbfp } from '@/lib/sbfp-aux'
 import {
@@ -56,7 +57,15 @@ export default async function SummaryDepEdPage(props: {
       ? sbfpCenterAliases(centerFilter)
       : null
 
-  const { allYears, yearNum, yearsForUi } = resolveReportYearFilter(sp.year)
+  const { data: syRows } = await supabase
+    .from('sbfp_school_years')
+    .select('year, label, is_active')
+  const schoolYearOptions = schoolYearsFromRows(syRows)
+
+  const { allYears, yearNum, yearsForUi, schoolYear } = resolveReportSchoolYearFilter(
+    sp.year,
+    schoolYearOptions,
+  )
 
   const monthNum =
     sp.month && sp.month !== 'All' && sp.month !== '__ALL_MONTHS__'
@@ -125,14 +134,19 @@ export default async function SummaryDepEdPage(props: {
             Figures come from SBFP SDO procurement monitoring (column K beneficiaries) — not the MFP masterlist.
           </p>
         </div>
-        <DashboardFilter centers={PCC_CENTERS} isEncoder={isEncoder} basePath="/reports/summary-deped" />
+        <DashboardFilter
+          centers={PCC_CENTERS}
+          isEncoder={isEncoder}
+          basePath="/reports/summary-deped"
+          schoolYears={schoolYearOptions}
+        />
       </div>
 
       <SummaryDepEdClient
         rows={rows}
         years={yearsForUi}
         centerFilter={centerFilter === '__ALL_CENTERS__' ? 'All Centers' : centerFilter}
-        yearFilter={allYears ? '__ALL_YEARS__' : String(yearNum)}
+        yearFilter={allYears ? '__ALL_YEARS__' : schoolYear ?? String(yearNum)}
         monthFilter={sp.month}
       />
     </div>

@@ -3,6 +3,8 @@
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import { useCallback } from 'react'
 import { APP_YEAR_STRINGS, defaultReportYearString } from '@/lib/app-years'
+import { normalizeSchoolYearParam } from '@/lib/report-year'
+import { parseSchoolYear } from '@/lib/sbfp-year'
 
 const MONTHS = [
   { value: '1', label: 'January' },
@@ -23,27 +25,35 @@ export function DashboardFilter({
   centers = [],
   isEncoder = false,
   basePath,
+  /** When set, year dropdown uses SBFP school years (e.g. SY 2026-2027) instead of calendar years. */
+  schoolYears,
 }: {
   centers?: string[]
   isEncoder?: boolean
   /** Stay on this path when filters change (defaults to current pathname). */
   basePath?: string
+  schoolYears?: string[]
 }) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const path = basePath || pathname || '/dashboard'
 
-  const defaultYear = defaultReportYearString()
+  const useSchoolYears = Boolean(schoolYears && schoolYears.length > 0)
+  const defaultYear = useSchoolYears
+    ? parseSchoolYear(null, schoolYears)
+    : defaultReportYearString()
   const yearFromUrl = searchParams.get('year')
   const currentYear =
     yearFromUrl === null || yearFromUrl === ''
       ? defaultYear
-      : yearFromUrl
+      : useSchoolYears
+        ? normalizeSchoolYearParam(yearFromUrl, schoolYears!)
+        : yearFromUrl
   const currentMonth = searchParams.get('month') || ''
   const currentCenter = searchParams.get('center') || ''
 
-  const years = APP_YEAR_STRINGS
+  const years = useSchoolYears ? schoolYears! : APP_YEAR_STRINGS
 
   const updateFilters = useCallback((year: string, month: string, center: string) => {
     const params = new URLSearchParams(searchParams.toString())
@@ -79,13 +89,13 @@ export function DashboardFilter({
 
       <select
         className="form-input"
-        style={{ width: '150px', padding: '0.4rem 0.75rem', fontSize: '0.9rem' }}
+        style={{ width: useSchoolYears ? '190px' : '150px', padding: '0.4rem 0.75rem', fontSize: '0.9rem' }}
         value={currentYear}
         onChange={(e) => updateFilters(e.target.value, currentMonth, currentCenter)}
       >
-        <option value="__ALL_YEARS__">All Years</option>
+        <option value="__ALL_YEARS__">{useSchoolYears ? 'All School Years' : 'All Years'}</option>
         {years.map(y => (
-          <option key={y} value={y}>{y}</option>
+          <option key={y} value={y}>{useSchoolYears ? `SY ${y}` : y}</option>
         ))}
       </select>
 

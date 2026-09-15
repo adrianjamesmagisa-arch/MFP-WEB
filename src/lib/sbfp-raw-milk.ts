@@ -99,10 +99,20 @@ export function monthKeyFromDateValue(value: unknown): string | null {
  * 3. Else legacy packs_delivered only when that month is Delivery Start
  *    and the row has no monthly map and no snapshots
  */
+export function rowHasDeliverySnapshotPacks(row: SbfpRawMilkRow): boolean {
+  const snaps = Array.isArray(row.delivery_snapshots) ? row.delivery_snapshots : []
+  return snaps.some(s => Number(s?.packs) > 0)
+}
+
 export function packsForMonth(
   row: SbfpRawMilkRow,
   month?: number,
-  opts?: { allowLegacyFallback?: boolean; year?: number }
+  opts?: {
+    allowLegacyFallback?: boolean
+    year?: number
+    /** SBFP report: snapshots are source of truth when encoders use “Delivered as of” columns. */
+    preferSnapshotsOverMonthly?: boolean
+  },
 ): number {
   if (month == null || !Number.isFinite(month)) {
     return totalPacksDelivered(row)
@@ -110,7 +120,10 @@ export function packsForMonth(
 
   const monthly = readMonthlyMap(row.monthly_packs_delivered)
   const key = monthKey(month)
-  if (Object.prototype.hasOwnProperty.call(monthly, key)) {
+  if (
+    !opts?.preferSnapshotsOverMonthly &&
+    Object.prototype.hasOwnProperty.call(monthly, key)
+  ) {
     return Math.max(0, Number(monthly[key]) || 0)
   }
 
@@ -153,7 +166,10 @@ export function incrementFromSnapshots(
   const startOfMonth = new Date(monthStart.getFullYear(), monthStart.getMonth(), 1)
   const before = parsed.filter(s => s.date.getTime() < startOfMonth.getTime())
   const maxBefore = before.length ? Math.max(...before.map(s => s.packs)) : 0
-  return Math.max(0, maxInMonth - maxBefore)
+  // Monotonic cumulative snapshots: increment since prior month.
+  if (maxInMonth >= maxBefore) return Math.max(0, maxInMonth - maxBefore)
+  // Encoder entered month totals per column (Sep can be less than Aug) — use this month’s value.
+  return maxInMonth
 }
 
 /** Best available total packs delivered (monthly sum, latest snapshot, or legacy). */

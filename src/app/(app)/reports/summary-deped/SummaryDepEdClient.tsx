@@ -4,6 +4,7 @@ import React, { useState, useMemo } from 'react'
 import { SpreadsheetStyle } from '@/components/reports/spreadsheet/SpreadsheetStyle'
 import { SpreadsheetTabs, TabType } from '@/components/reports/spreadsheet/SpreadsheetTabs'
 import { getAvg, valOrDash, curOrDash } from '@/components/reports/spreadsheet/SpreadsheetUtils'
+import { dbYearToSchoolYear } from '@/lib/sbfp-year'
 
 interface MfpRow {
   year: number
@@ -164,10 +165,12 @@ export function SummaryDepEdClient({
     }, 300)
   }
 
+  const syLabel = (dbYear: number) => `SY ${dbYearToSchoolYear(dbYear)}`
+
   const ThYear = () => (
     <>
       {years.map(y => (
-        <th key={y} className="year-col">FY {y}</th>
+        <th key={y} className="year-col">{syLabel(y)}</th>
       ))}
     </>
   )
@@ -187,8 +190,8 @@ export function SummaryDepEdClient({
         </thead>
         <tbody>
           <tr>
-            <td>Fiscal Year (FY)</td>
-            {years.map(y => <td key={y} className="center-text">{y}</td>)}
+            <td>School Year (SY)</td>
+            {years.map(y => <td key={y} className="center-text">{dbYearToSchoolYear(y)}</td>)}
           </tr>
           <tr>
             <td>Average No. of Feeding Days</td>
