@@ -118,13 +118,6 @@ export function deliveredPacksAsOfReportDate(
   return totalPacksDelivered(row)
 }
 
-/** How SBFP Report resolves the “Delivered Packs” column and KPI totals. */
-export type DeliveredPacksMode = 'as_of' | 'in_month'
-
-/**
- * Packs completed in one calendar month (not cumulative).
- * Uses monthly_packs_delivered, snapshot increments, or legacy fallback — same as center table / PIMD.
- */
 function reportPacksMonthOpts(row: SbfpReportSourceRow, dbYear: number) {
   return {
     year: dbYear,
@@ -132,37 +125,92 @@ function reportPacksMonthOpts(row: SbfpReportSourceRow, dbYear: number) {
   }
 }
 
-export function deliveredPacksInMonth(
+function startOfDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate())
+}
+
+/** Inclusive calendar days between two same-local dates. */
+function inclusiveDaySpan(start: Date, end: Date): number {
+  const ms = startOfDay(end).getTime() - startOfDay(start).getTime()
+  return ms < 0 ? 0 : Math.floor(ms / 86400000) + 1
+}
+
+/**
+ * Share of calendar month `month` (1–12) that falls inside [rangeStart, rangeEnd] (inclusive).
+ * Used to prorate monthly delivered packs for partial ranges (e.g. Aug 19–30).
+ */
+export function monthFractionInDeliveredRange(
+  dbYear: number,
+  month: number,
+  rangeStart: Date,
+  rangeEnd: Date,
+): number {
+  if (!Number.isFinite(dbYear) || month < 1 || month > 12) return 0
+  const lastDay = new Date(dbYear, month, 0).getDate()
+  const monthStart = new Date(dbYear, month - 1, 1)
+  const monthEnd = new Date(dbYear, month - 1, lastDay)
+  if (monthEnd < rangeStart || monthStart > rangeEnd) return 0
+  const overlapStart = rangeStart > monthStart ? rangeStart : monthStart
+  const overlapEnd = rangeEnd < monthEnd ? rangeEnd : monthEnd
+  const overlapDays = inclusiveDaySpan(overlapStart, overlapEnd)
+  return overlapDays / lastDay
+}
+
+/**
+ * Delivered packs between two dates (inclusive): sums each overlapping month’s packs,
+ * prorating when the range covers only part of a month.
+ */
+export function deliveredPacksInDateRange(
+  row: SbfpReportSourceRow,
+  fromIso: string,
+  toIso: string,
+  dbYear: number,
+): number {
+  const rangeStart = parseSnapshotDate(fromIso)
+  const rangeEnd = parseSnapshotDate(toIso)
+  if (!rangeStart || !rangeEnd || !Number.isFinite(dbYear)) return 0
+  if (rangeStart.getTime() > rangeEnd.getTime()) return 0
+
+  const monthOpts = reportPacksMonthOpts(row, dbYear)
+  let sum = 0
+  for (let m = 1; m <= 12; m++) {
+    const frac = monthFractionInDeliveredRange(dbYear, m, rangeStart, rangeEnd)
+    if (frac <= 0) continue
+    const monthPacks = packsForMonth(row, m, monthOpts)
+    if (monthPacks <= 0) continue
+    sum += frac >= 1 ? monthPacks : Math.round(monthPacks * frac)
+  }
+  if (sum > 0) return sum
+
+  // Legacy: no monthly breakdown — best snapshot on or before range end.
+  return deliveredPacksAsOfReportDate(row, toIso, dbYear)
+}
+
+export function defaultDeliveredPackRange(dbYear: number): { from: string; to: string } {
+  const y = Number.isFinite(dbYear) ? Math.floor(dbYear) : new Date().getFullYear()
+  const to = new Date().toISOString().split('T')[0]
+  return { from: `${y}-08-01`, to }
+}
+
+/** SDO had packs completed in this calendar month (encoder snapshots / monthly map). */
+export function rowHasDeliveryInMonth(
   row: SbfpReportSourceRow,
   month: number,
   dbYear: number,
-): number {
-  if (!Number.isFinite(month) || month < 1 || month > 12) return 0
-  if (!Number.isFinite(dbYear)) return 0
-  return packsForMonth(row, month, reportPacksMonthOpts(row, dbYear))
+): boolean {
+  return packsForMonth(row, month, reportPacksMonthOpts(row, dbYear)) > 0
 }
 
 export function resolveDeliveredPacksForReport(
   row: SbfpReportSourceRow,
   opts: {
-    mode: DeliveredPacksMode
-    reportDateIso: string
-    deliveryMonth?: number | null
+    deliveredFromIso: string
+    deliveredToIso: string
     dbYear?: number
   },
 ): number {
-  if (opts.mode === 'in_month') {
-    if (
-      opts.deliveryMonth != null &&
-      Number.isFinite(opts.deliveryMonth) &&
-      opts.dbYear != null &&
-      Number.isFinite(opts.dbYear)
-    ) {
-      return deliveredPacksInMonth(row, opts.deliveryMonth, opts.dbYear)
-    }
-    return 0
-  }
-  return deliveredPacksAsOfReportDate(row, opts.reportDateIso, opts.dbYear)
+  if (opts.dbYear == null || !Number.isFinite(opts.dbYear)) return 0
+  return deliveredPacksInDateRange(row, opts.deliveredFromIso, opts.deliveredToIso, opts.dbYear)
 }
 
 export function formatReportDate(value: unknown): string {
@@ -211,14 +259,12 @@ export type SbfpReportViewRow = {
 
 export function mapSbfpRowToReportView(
   row: SbfpReportSourceRow,
-  reportDateIso: string,
-  deliveredOpts?: {
-    mode?: DeliveredPacksMode
-    deliveryMonth?: number | null
+  deliveredOpts: {
+    deliveredFromIso: string
+    deliveredToIso: string
     dbYear?: number
   },
 ): SbfpReportViewRow {
-  const mode = deliveredOpts?.mode ?? 'as_of'
   return {
     source: row,
     region: row.region?.trim() || '—',
@@ -239,10 +285,9 @@ export function mapSbfpRowToReportView(
     delivery_end: formatReportDate(row.delivery_end),
     packs_to_deliver: effectivePacksToDeliver(row),
     delivered_packs: resolveDeliveredPacksForReport(row, {
-      mode,
-      reportDateIso,
-      deliveryMonth: deliveredOpts?.deliveryMonth,
-      dbYear: deliveredOpts?.dbYear,
+      deliveredFromIso: deliveredOpts.deliveredFromIso,
+      deliveredToIso: deliveredOpts.deliveredToIso,
+      dbYear: deliveredOpts.dbYear,
     }),
     status_of_payment: row.status_of_payment?.trim() || '—',
     remarks: row.remarks?.trim() || '—',

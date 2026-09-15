@@ -6,11 +6,12 @@ import { Printer, Download, Filter, Search, RotateCcw, Table, BarChart2, Layers 
 import { SBFP_DATA_ENCODER_COLUMNS } from '@/lib/encoder-selects'
 import { dbYearToSchoolYear, FALLBACK_SCHOOL_YEARS, schoolYearToDbYear } from '@/lib/sbfp-year'
 import {
+  defaultDeliveredPackRange,
   mapSbfpRowToReportView,
   reportCenterFilterOptions,
+  rowHasDeliveryInMonth,
   rowMatchesReportCenterFilter,
   sbfpRowIncludedInReport,
-  type DeliveredPacksMode,
   type SbfpReportSourceRow,
 } from '@/lib/sbfp-report-sync'
 
@@ -47,23 +48,6 @@ const DELIVERY_MONTHS = [
   { value: '12', label: 'December' },
 ] as const
 
-/** True when the SDO delivery window overlaps the selected calendar month in `dbYear`. */
-function deliveryOverlapsMonth(
-  deliveryStart: string | null | undefined,
-  deliveryEnd: string | null | undefined,
-  dbYear: number,
-  month: number,
-): boolean {
-  const start = deliveryStart || deliveryEnd
-  const end = deliveryEnd || deliveryStart
-  if (!start) return false
-  const monthStart = `${dbYear}-${String(month).padStart(2, '0')}-01`
-  const lastDay = new Date(dbYear, month, 0).getDate()
-  const monthEnd = `${dbYear}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
-  const rangeEnd = end || start
-  return !(rangeEnd < monthStart || start > monthEnd)
-}
-
 const STATUS_BADGE: Record<string, { bg: string; color: string }> = {
   'For Preparation':            { bg: '#fef3c7', color: '#92400e' },
   'Ongoing Procurement':        { bg: '#dbeafe', color: '#1e40af' },
@@ -79,8 +63,10 @@ export default function SbfpSpreadsheetReport() {
   const [loading, setLoading]               = useState(true)
   const [year, setYear]                     = useState(String(schoolYearToDbYear(FALLBACK_SCHOOL_YEARS[0])))
   const [schoolYearOptions, setSchoolYearOptions] = useState<string[]>([...FALLBACK_SCHOOL_YEARS])
-  const [reportDate, setReportDate]         = useState(() => new Date().toISOString().split('T')[0])
-  const [deliveredPacksMode, setDeliveredPacksMode] = useState<DeliveredPacksMode>('as_of')
+  const initialDbYear = schoolYearToDbYear(FALLBACK_SCHOOL_YEARS[0])
+  const initialDeliveredRange = defaultDeliveredPackRange(initialDbYear)
+  const [deliveredFrom, setDeliveredFrom] = useState(initialDeliveredRange.from)
+  const [deliveredTo, setDeliveredTo] = useState(initialDeliveredRange.to)
   const [filterRegion, setFilterRegion]     = useState('ALL')
   const [filterCenter, setFilterCenter]     = useState('ALL')
   const [filterStatus, setFilterStatus]     = useState('ALL')
@@ -127,6 +113,14 @@ export default function SbfpSpreadsheetReport() {
       })
   }, [year])
 
+  useEffect(() => {
+    const dbY = parseInt(year, 10)
+    if (!Number.isFinite(dbY)) return
+    const { from, to } = defaultDeliveredPackRange(dbY)
+    setDeliveredFrom(from)
+    setDeliveredTo(to)
+  }, [year])
+
   // Extract distinct centers and regions
   const distinctCenters = useMemo(
     () => reportCenterFilterOptions(records as SbfpReportSourceRow[]),
@@ -170,7 +164,7 @@ export default function SbfpSpreadsheetReport() {
         if (
           Number.isFinite(month) &&
           Number.isFinite(dbYear) &&
-          !deliveryOverlapsMonth(r.delivery_start, r.delivery_end, dbYear, month)
+          !rowHasDeliveryInMonth(r as SbfpReportSourceRow, month, dbYear)
         ) {
           return false
         }
@@ -179,22 +173,20 @@ export default function SbfpSpreadsheetReport() {
     })
   }, [records, filterRegion, filterCenter, filterStatus, searchQuery, filterMonth, year, includeExcluded])
 
-  const deliveryMonthNum = filterMonth ? parseInt(filterMonth, 10) : null
   const dbYearNum = parseInt(year, 10)
 
   const viewRows = useMemo(() => {
-    const month =
-      deliveredPacksMode === 'in_month' && deliveryMonthNum != null && Number.isFinite(deliveryMonthNum)
-        ? deliveryMonthNum
-        : null
+    const dbY = Number.isFinite(dbYearNum) ? dbYearNum : undefined
+    const from = deliveredFrom
+    const to = deliveredTo >= deliveredFrom ? deliveredTo : deliveredFrom
     return (records as SbfpReportSourceRow[]).map(r =>
-      mapSbfpRowToReportView(r, reportDate, {
-        mode: deliveredPacksMode,
-        deliveryMonth: month,
-        dbYear: Number.isFinite(dbYearNum) ? dbYearNum : undefined,
+      mapSbfpRowToReportView(r, {
+        deliveredFromIso: from,
+        deliveredToIso: to,
+        dbYear: dbY,
       }),
     )
-  }, [records, reportDate, deliveredPacksMode, deliveryMonthNum, dbYearNum])
+  }, [records, deliveredFrom, deliveredTo, dbYearNum])
 
   const getViewForSource = useCallback(
     (sourceId: string | undefined) => viewRows.find(v => v.source.id === sourceId),
@@ -373,13 +365,18 @@ export default function SbfpSpreadsheetReport() {
     setFilterStatus('ALL')
     setFilterMonth('')
     setSearchQuery('')
-    setDeliveredPacksMode('as_of')
+    if (Number.isFinite(dbYearNum)) {
+      const { from, to } = defaultDeliveredPackRange(dbYearNum)
+      setDeliveredFrom(from)
+      setDeliveredTo(to)
+    }
   }
 
-  const deliveredMonthLabel =
-    deliveryMonthNum != null && Number.isFinite(deliveryMonthNum)
-      ? DELIVERY_MONTHS.find(m => m.value === String(deliveryMonthNum))?.label
-      : null
+  const formatRangeLabel = (iso: string) => {
+    const d = new Date(iso + 'T12:00:00')
+    if (Number.isNaN(d.getTime())) return iso
+    return d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+  }
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#f8fafc', overflow: 'hidden' }}>
       
@@ -499,7 +496,7 @@ export default function SbfpSpreadsheetReport() {
             <select
               value={filterMonth}
               onChange={e => setFilterMonth(e.target.value)}
-              title="Show SDOs whose delivery window overlaps this month"
+              title="Show SDOs with packs delivered in this calendar month (encoder data)"
               style={{ height: 28, padding: '0 0.5rem', borderRadius: 4, border: '1px solid #cbd5e1', fontSize: '0.78rem', background: '#fff' }}
             >
               <option value="">All Months</option>
@@ -510,35 +507,23 @@ export default function SbfpSpreadsheetReport() {
 
             <div style={{ marginLeft: 12, borderLeft: '1px solid #e2e8f0', paddingLeft: 12, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
               <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>Delivered Packs:</span>
-              <select
-                value={deliveredPacksMode}
-                onChange={e => setDeliveredPacksMode(e.target.value as DeliveredPacksMode)}
-                style={{ height: 28, padding: '0 0.5rem', borderRadius: 4, border: '1px solid #cbd5e1', fontSize: '0.78rem', background: '#fff' }}
-              >
-                <option value="as_of">As of date (cumulative)</option>
-                <option value="in_month">In delivery month only</option>
-              </select>
-              {deliveredPacksMode === 'as_of' ? (
-                <>
-                  <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>As of:</span>
-                  <input
-                    type="date"
-                    value={reportDate}
-                    onChange={e => setReportDate(e.target.value)}
-                    title="Cumulative delivered packs from SBFP “Delivered as-of” columns through this date"
-                    style={{ height: 28, padding: '0 0.5rem', borderRadius: 4, border: '1px solid #cbd5e1', fontSize: '0.78rem' }}
-                  />
-                </>
-              ) : (
-                <span
-                  style={{ fontSize: '0.75rem', color: deliveredMonthLabel ? '#475569' : '#b45309', fontWeight: 500 }}
-                  title="Uses packs completed in the selected Delivery Month (snapshot increment or monthly encoding), not cumulative totals"
-                >
-                  {deliveredMonthLabel
-                    ? `Counts for ${deliveredMonthLabel} ${dbYearNum} only`
-                    : 'Select a Delivery Month above'}
-                </span>
-              )}
+              <span style={{ fontSize: '0.78rem', color: '#64748b' }}>From</span>
+              <input
+                type="date"
+                value={deliveredFrom}
+                onChange={e => setDeliveredFrom(e.target.value)}
+                title="Start of delivery period (inclusive). Partial months are prorated from encoder monthly totals."
+                style={{ height: 28, padding: '0 0.5rem', borderRadius: 4, border: '1px solid #cbd5e1', fontSize: '0.78rem' }}
+              />
+              <span style={{ fontSize: '0.78rem', color: '#64748b' }}>To</span>
+              <input
+                type="date"
+                value={deliveredTo}
+                min={deliveredFrom}
+                onChange={e => setDeliveredTo(e.target.value)}
+                title="End of delivery period (inclusive)"
+                style={{ height: 28, padding: '0 0.5rem', borderRadius: 4, border: '1px solid #cbd5e1', fontSize: '0.78rem' }}
+              />
             </div>
 
             <label style={{ marginLeft: 12, borderLeft: '1px solid #e2e8f0', paddingLeft: 12, display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: '#475569', cursor: 'pointer' }}>
@@ -607,10 +592,11 @@ export default function SbfpSpreadsheetReport() {
         </div>
 
         <div style={{ background: '#ffffff', padding: '0.625rem 1rem', borderRadius: 8, border: '1px solid #e2e8f0' }}>
-          <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
-            {deliveredPacksMode === 'in_month' && deliveredMonthLabel
-              ? `Delivered (${deliveredMonthLabel.slice(0, 3)})`
-              : 'Delivered Packs'}
+          <div
+            style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}
+            title={`${formatRangeLabel(deliveredFrom)} – ${formatRangeLabel(deliveredTo)}`}
+          >
+            Delivered Packs
           </div>
           <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#059669', marginTop: 2 }}>
             {stats.totalDelivered.toLocaleString()}
@@ -648,7 +634,7 @@ export default function SbfpSpreadsheetReport() {
                     School-Based Feeding Program (SBFP) — Milk Procurement Monitoring Report
                   </h2>
                   <p style={{ fontSize: '0.8rem', color: '#64748b', marginTop: 4 }}>
-                    Live from each center&apos;s SBFP SDO procurement table (same fields as Section 1). Refresh after encoding; choose cumulative &quot;As of date&quot; or &quot;In delivery month only&quot; for delivered packs.
+                    Live from each center&apos;s SBFP SDO procurement table (same fields as Section 1). Refresh after encoding; use Delivered Packs From/To for the reporting period.
                   </p>
                   <div style={{ fontSize: '0.85rem', color: '#475569', marginTop: 4 }}>
                     FY {year} | Filtered as of: {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
