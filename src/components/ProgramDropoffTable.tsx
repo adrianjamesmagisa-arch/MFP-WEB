@@ -91,12 +91,24 @@ export function ProgramDropoffTable({
       return
     }
     const next = { ...row, [field]: value } as ProgramDropoffRow
-    if (['beneficiaries', 'feeding_days', 'include_in_masterlist', 'dropoff_name', 'municipality', 'province', 'procurement_id'].includes(field)) {
-      // Masterlist sync in background — do not block the row.
-      void apiSync(next).then(err => {
-        if (err) alert(err)
-      })
+    // Always push to masterlist (same as SBFP drop-off sync on every edit).
+    void apiSync(next).then(err => {
+      if (err) alert(err)
+    })
+  }
+
+  const savePatch = async (row: ProgramDropoffRow, patch: Partial<ProgramDropoffRow>) => {
+    updateLocal(row.id, patch)
+    const { error } = await supabase.from('mfp_program_dropoffs').update(patch).eq('id', row.id)
+    if (error) {
+      updateLocal(row.id, row)
+      alert(error.message)
+      return
     }
+    const next = { ...row, ...patch }
+    void apiSync(next).then(err => {
+      if (err) alert(err)
+    })
   }
 
   const addMunicipality = async () => {
@@ -164,7 +176,11 @@ export function ProgramDropoffTable({
     setBusyRowId(id)
     try {
       await runTask(async () => {
-        await apiUnlink(id)
+        const unlinkErr = await apiUnlink(id)
+        if (unlinkErr) {
+          alert(unlinkErr)
+          return
+        }
         const { error } = await supabase.from('mfp_program_dropoffs').delete().eq('id', id)
         if (error) {
           alert(error.message)
@@ -266,8 +282,7 @@ export function ProgramDropoffTable({
                           defaultValue={r.dropoff_name || r.municipality || ''}
                           onBlur={e => {
                             const v = e.target.value.trim()
-                            void save(r, 'dropoff_name', v)
-                            void save(r, 'municipality', v)
+                            void savePatch(r, { dropoff_name: v, municipality: v })
                           }}
                           style={{ minWidth: 120, width: '100%', border: 0, background: 'transparent' }}
                         />

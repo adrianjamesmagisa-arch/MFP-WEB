@@ -8,6 +8,7 @@ import {
   loadProgramProcurement,
   resyncAllProgramDropoffsToMasterlist,
   resyncProgramDropoffsForCenter,
+  deleteProgramProcurementCascade,
   type ProgramDropoffRow,
   type ProgramProcurementRow,
 } from '@/lib/program-dropoff-sync'
@@ -23,7 +24,13 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => null) as
     | {
-        action?: 'sync' | 'unlink' | 'cascade-procurement' | 'resync-all-program' | 'resync-center-program'
+        action?:
+          | 'sync'
+          | 'unlink'
+          | 'cascade-procurement'
+          | 'resync-all-program'
+          | 'resync-center-program'
+          | 'delete-procurement'
         dropoff?: ProgramDropoffRow
         dropoffId?: string
         procurementId?: string
@@ -38,6 +45,14 @@ export async function POST(req: Request) {
   if (!body?.action) return NextResponse.json({ error: 'Invalid body' }, { status: 400 })
 
   const admin = supabaseAdmin
+
+  if (body.action === 'delete-procurement') {
+    const procurementId = String(body.procurementId || '').trim()
+    if (!procurementId) return NextResponse.json({ error: 'procurementId required' }, { status: 400 })
+    const res = await deleteProgramProcurementCascade(admin, procurementId)
+    if (res.error) return NextResponse.json({ error: res.error }, { status: 500 })
+    return NextResponse.json({ ok: true, removedDropoffs: res.removedDropoffs })
+  }
 
   if (body.action === 'unlink') {
     const id = body.dropoffId || body.dropoff?.id

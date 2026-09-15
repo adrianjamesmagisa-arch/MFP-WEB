@@ -74,6 +74,10 @@ const CASCADE_FIELDS = new Set([
   'delivery_snapshots',
   'monthly_packs_delivered',
   'supplier_id',
+  'label',
+  'province',
+  'region',
+  'batch',
 ])
 
 async function apiCascade(parent: ProgramProcurementRow): Promise<string | null> {
@@ -84,6 +88,17 @@ async function apiCascade(parent: ProgramProcurementRow): Promise<string | null>
   })
   const json = await res.json().catch(() => ({}))
   if (!res.ok) return json.error || 'Cascade failed'
+  return null
+}
+
+async function apiDeleteProcurement(procurementId: string): Promise<string | null> {
+  const res = await fetch('/api/monitoring/sync-dropoff', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'delete-procurement', procurementId }),
+  })
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok) return json.error || 'Delete failed'
   return null
 }
 
@@ -114,6 +129,7 @@ export function ProgramProcurementTable({
   initialRows,
   editable,
   onRowsChange,
+  onProcurementDeleted,
 }: {
   programId: MonitoringProgramId
   center: string
@@ -123,6 +139,8 @@ export function ProgramProcurementTable({
   initialRows: ProgramProcurementRow[]
   editable: boolean
   onRowsChange?: (rows: ProgramProcurementRow[]) => void
+  /** Called after cascade delete so parent can prune municipality rows. */
+  onProcurementDeleted?: (procurementId: string) => void
 }) {
   const supabase = createClient()
   const runTask = useAsyncTask('Saving…')
@@ -151,7 +169,7 @@ export function ProgramProcurementTable({
   }, [])
 
   const cascadeIfNeeded = (row: ProgramProcurementRow, field: string) => {
-    if (CASCADE_FIELDS.has(field) || field === 'label' || field === 'region') {
+    if (CASCADE_FIELDS.has(field)) {
       // Fire-and-forget — do not block cell editing
       void apiCascade(row).then(err => {
         if (err) console.warn(err)
@@ -332,13 +350,22 @@ export function ProgramProcurementTable({
   }
 
   const deleteRow = async (id: string) => {
-    if (!confirm('Delete this procurement row? Linked drop-offs stay but lose their parent link.')) return
-    const { error } = await supabase.from(PROC_TABLE).delete().eq('id', id)
-    if (error) {
-      alert(error.message)
+    if (
+      !confirm(
+        'Delete this procurement row? Linked municipalities and their masterlist rows will also be removed.',
+      )
+    ) {
       return
     }
-    setRows(p => p.filter(r => r.id !== id))
+    await runTask(async () => {
+      const err = await apiDeleteProcurement(id)
+      if (err) {
+        alert(err)
+        return
+      }
+      setRows(p => p.filter(r => r.id !== id))
+      onProcurementDeleted?.(id)
+    }, 'Deleting procurement…', { blocking: true })
   }
 
   const colSpan =

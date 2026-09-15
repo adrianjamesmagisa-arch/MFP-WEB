@@ -164,6 +164,9 @@ export function ProgramCenterWorkspace({
               initialRows={liveProcurement}
               editable={editable}
               onRowsChange={setLiveProcurement}
+              onProcurementDeleted={procId => {
+                setLiveDropoffs(prev => prev.filter(d => d.procurement_id !== procId))
+              }}
             />
           </section>
 

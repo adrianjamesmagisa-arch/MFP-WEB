@@ -141,13 +141,20 @@ export default async function DataPage({
       <DataTable
         records={records ?? []}
         resyncDelivery={
-          profile?.role === 'encoder' && profile?.center
-            ? { center: profile.center, year: APP_YEARS[0] ?? 2026 }
+          (profile?.role === 'encoder' && profile?.center) || params.center
+            ? {
+                center: (profile?.role === 'encoder' ? profile.center : params.center) as string,
+                year: Number(params.year) || APP_YEARS[0] || 2026,
+              }
             : null
         }
         resyncProgram={
-          profile?.role === 'encoder' && profile?.center
-            ? { center: profile.center, year: APP_YEARS[0] ?? 2026, program: 'dswd' }
+          (profile?.role === 'encoder' && profile?.center) || params.center
+            ? {
+                center: (profile?.role === 'encoder' ? profile.center : params.center) as string,
+                year: Number(params.year) || APP_YEARS[0] || 2026,
+                program: 'dswd',
+              }
             : null
         }
       />

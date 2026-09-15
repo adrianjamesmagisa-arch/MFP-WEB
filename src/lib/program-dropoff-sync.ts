@@ -370,13 +370,59 @@ export async function cascadeProgramProcurementSync(
     .eq('procurement_id', procurementId)
   if (listErr) return { error: listErr.message, updated: 0 }
 
+  // Keep child geo aligned with parent when procurement label/region changes (like SBFP SDO rename).
+  const parentProvince = String(parent.province || parent.label || '').trim()
+  const parentRegion = String(parent.region || '').trim()
+  if (parentProvince || parentRegion) {
+    const geoPatch: Record<string, string> = {}
+    if (parentProvince) geoPatch.province = parentProvince
+    if (parentRegion) geoPatch.region = parentRegion
+    await supabase.from('mfp_program_dropoffs').update(geoPatch).eq('procurement_id', procurementId)
+  }
+
   let updated = 0
   for (const row of children || []) {
-    const res = await syncProgramDropoffToMasterlist(supabase, row as ProgramDropoffRow, parent)
+    const child = {
+      ...(row as ProgramDropoffRow),
+      ...(parentProvince ? { province: parentProvince } : {}),
+      ...(parentRegion ? { region: parentRegion } : {}),
+    }
+    const res = await syncProgramDropoffToMasterlist(supabase, child, parent)
     if (res.error) return { error: res.error, updated }
     updated++
   }
   return { error: null, updated }
+}
+
+/** Delete procurement + child municipalities + linked masterlist rows (SBFP SDO delete parity). */
+export async function deleteProgramProcurementCascade(
+  supabase: SupabaseLike,
+  procurementId: string,
+): Promise<{ error: string | null; removedDropoffs: number }> {
+  const { data: children, error: listErr } = await supabase
+    .from('mfp_program_dropoffs')
+    .select('id')
+    .eq('procurement_id', procurementId)
+  if (listErr) return { error: listErr.message, removedDropoffs: 0 }
+
+  const ids = (children || []).map((c: { id: string }) => c.id)
+  for (let i = 0; i < ids.length; i += 100) {
+    const chunk = ids.slice(i, i + 100)
+    const { error: unlinkErr } = await supabase
+      .from('mfp_data')
+      .delete()
+      .in('source_program_dropoff_id', chunk)
+    if (unlinkErr) return { error: unlinkErr.message, removedDropoffs: 0 }
+  }
+
+  if (ids.length) {
+    const { error: dropErr } = await supabase.from('mfp_program_dropoffs').delete().in('id', ids)
+    if (dropErr) return { error: dropErr.message, removedDropoffs: 0 }
+  }
+
+  const { error: procErr } = await supabase.from('mfp_program_procurement').delete().eq('id', procurementId)
+  if (procErr) return { error: procErr.message, removedDropoffs: ids.length }
+  return { error: null, removedDropoffs: ids.length }
 }
 
 export async function loadProgramProcurement(
