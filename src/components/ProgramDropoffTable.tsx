@@ -138,6 +138,7 @@ export function ProgramDropoffTable({
               region: parent.region || '',
               beneficiaries: 0,
               feeding_days: 0,
+              include_in_masterlist: true,
             })
             .select('*')
             .single()

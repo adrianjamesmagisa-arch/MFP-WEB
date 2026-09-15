@@ -105,9 +105,12 @@ function EditableCell({ id, field, value, type = 'text', className, style, forma
 export function DataTable({
   records,
   resyncDelivery,
+  resyncProgram,
 }: {
   records: any[]
   resyncDelivery?: { center: string; year: number } | null
+  /** Push DSWD/LDS/etc. monitoring drop-offs into masterlist for this center/year. */
+  resyncProgram?: { center: string; year: number; program?: string } | null
 }) {
   const router = useRouter()
   const supabase = createClient()
@@ -202,6 +205,40 @@ export function DataTable({
     })()
     return () => { cancelled = true }
   }, [resyncDelivery?.center, resyncDelivery?.year, router])
+
+  useEffect(() => {
+    if (!resyncProgram?.center || !resyncProgram?.year) return
+    const program = resyncProgram.program || 'dswd'
+    const storageKey = `mfp-program-resync:${program}:${resyncProgram.center}:${resyncProgram.year}`
+    if (typeof window !== 'undefined' && sessionStorage.getItem(storageKey)) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        await runTask(
+          async () => {
+            const res = await fetch('/api/monitoring/sync-dropoff', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                action: 'resync-center-program',
+                program,
+                center: resyncProgram.center,
+                year: resyncProgram.year,
+              }),
+            })
+            if (!res.ok || cancelled) return
+            sessionStorage.setItem(storageKey, '1')
+            router.refresh()
+          },
+          'Syncing DSWD monitoring to masterlist…',
+          { blocking: true },
+        )
+      } catch {
+        // ignore
+      }
+    })()
+    return () => { cancelled = true }
+  }, [resyncProgram?.center, resyncProgram?.year, resyncProgram?.program, router])
 
   const handleCellSave = (id: string, field: string, oldVal: any, newVal: any) => {
     setLocalRecords(prev => prev.map(r => r.id === id ? { ...r, [field]: newVal } : r))

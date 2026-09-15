@@ -16,6 +16,7 @@ import {
   PROGRAM_DROPOFF_ENCODER_COLUMNS,
   PROGRAM_PROCUREMENT_ENCODER_COLUMNS,
 } from '@/lib/encoder-selects'
+import { fetchAllRows } from '@/lib/supabase-paginate'
 
 export type ProgramProcurementRow = {
   id: string
@@ -222,6 +223,140 @@ export async function syncProgramDropoffToMasterlist(
   const { data, error } = await supabase.from('mfp_data').insert(insertPayload).select('id').maybeSingle()
   if (error) return { error: error.message }
   return { error: null, mfpId: data?.id ?? null }
+}
+
+async function loadProgramProcurementById(
+  supabase: SupabaseLike,
+  id: string,
+): Promise<ProgramProcurementRow | null> {
+  const { data, error } = await supabase
+    .from('mfp_program_procurement')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle()
+  if (error || !data) return null
+  return data as ProgramProcurementRow
+}
+
+/** Sync every included program drop-off into mfp_data (same idea as SBFP resync-all-deped). */
+export async function resyncAllProgramDropoffsToMasterlist(
+  supabase: SupabaseLike,
+  programId: MonitoringProgramId,
+  options?: { year?: number; enableExcluded?: boolean },
+): Promise<{ error: string | null; synced: number; orphansRemoved: number; enabled: number }> {
+  const fundedBy = MONITORING_PROGRAMS[programId].fundedBy
+  let enabled = 0
+
+  if (options?.enableExcluded) {
+    let enableQ = supabase
+      .from('mfp_program_dropoffs')
+      .update({ include_in_masterlist: true })
+      .eq('program', programId)
+      .eq('include_in_masterlist', false)
+    if (options.year) enableQ = enableQ.eq('year', options.year)
+    const { data: enabledRows, error: enableErr } = await enableQ.select('id')
+    if (enableErr) {
+      return { error: enableErr.message, synced: 0, orphansRemoved: 0, enabled: 0 }
+    }
+    enabled = (enabledRows || []).length
+  }
+
+  let dropoffs: ProgramDropoffRow[]
+  try {
+    dropoffs = await fetchAllRows<ProgramDropoffRow>(() => {
+      let q = supabase
+        .from('mfp_program_dropoffs')
+        .select(PROGRAM_DROPOFF_ENCODER_COLUMNS)
+        .eq('program', programId)
+        .neq('include_in_masterlist', false)
+      if (options?.year) q = q.eq('year', options.year)
+      return q
+    })
+  } catch (e) {
+    return {
+      error: e instanceof Error ? e.message : 'Failed to load drop-offs',
+      synced: 0,
+      orphansRemoved: 0,
+      enabled,
+    }
+  }
+
+  const parentCache = new Map<string, ProgramProcurementRow | null>()
+  let synced = 0
+  for (const row of dropoffs) {
+    const pid = row.procurement_id || ''
+    if (pid && !parentCache.has(pid)) {
+      parentCache.set(pid, await loadProgramProcurementById(supabase, pid))
+    }
+    const parent = pid ? parentCache.get(pid) : null
+    const res = await syncProgramDropoffToMasterlist(supabase, row, parent)
+    if (res.error) return { error: res.error, synced, orphansRemoved: 0, enabled }
+    synced++
+  }
+
+  const keepIds = new Set(dropoffs.map(d => d.id))
+  let orphansRemoved = 0
+  let masterRows: { id: string; source_program_dropoff_id?: string | null }[]
+  try {
+    masterRows = await fetchAllRows(() => {
+      let q = supabase
+        .from('mfp_data')
+        .select('id,source_program_dropoff_id')
+        .eq('funded_by', fundedBy)
+      if (options?.year) q = q.eq('year', options.year)
+      return q
+    })
+  } catch (e) {
+    return {
+      error: e instanceof Error ? e.message : 'Failed to load masterlist',
+      synced,
+      orphansRemoved: 0,
+      enabled,
+    }
+  }
+
+  const orphans = masterRows.filter(
+    r => !r.source_program_dropoff_id || !keepIds.has(r.source_program_dropoff_id),
+  )
+  for (let i = 0; i < orphans.length; i += 100) {
+    const chunk = orphans.slice(i, i + 100).map(r => r.id)
+    const { error } = await supabase.from('mfp_data').delete().in('id', chunk)
+    if (error) return { error: error.message, synced, orphansRemoved, enabled }
+    orphansRemoved += chunk.length
+  }
+
+  return { error: null, synced, orphansRemoved, enabled }
+}
+
+/** Re-sync all program drop-offs for one center/year (encoder masterlist load). */
+export async function resyncProgramDropoffsForCenter(
+  supabase: SupabaseLike,
+  programId: MonitoringProgramId,
+  center: string,
+  year: number,
+): Promise<{ error: string | null; synced: number }> {
+  const { data: dropoffs, error: listErr } = await supabase
+    .from('mfp_program_dropoffs')
+    .select(PROGRAM_DROPOFF_ENCODER_COLUMNS)
+    .eq('program', programId)
+    .eq('center', center)
+    .eq('year', year)
+    .neq('include_in_masterlist', false)
+  if (listErr) return { error: listErr.message, synced: 0 }
+
+  const parentCache = new Map<string, ProgramProcurementRow | null>()
+  let synced = 0
+  for (const row of (dropoffs || []) as ProgramDropoffRow[]) {
+    const pid = row.procurement_id || ''
+    if (pid && !parentCache.has(pid)) {
+      parentCache.set(pid, await loadProgramProcurementById(supabase, pid))
+    }
+    const parent = pid ? parentCache.get(pid) : null
+    const res = await syncProgramDropoffToMasterlist(supabase, row, parent)
+    if (res.error) return { error: res.error, synced }
+    synced++
+  }
+  return { error: null, synced }
 }
 
 export async function cascadeProgramProcurementSync(

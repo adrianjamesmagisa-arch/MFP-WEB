@@ -203,7 +203,7 @@ async function main() {
         feeding_days: Number(r.feeding_days) || 0,
         region,
         remarks: 'Migrated from mfp_data',
-        include_in_masterlist: false,
+        include_in_masterlist: true,
       }
 
       const { data: existingDrop } = await supabase

@@ -6,6 +6,8 @@ import {
   syncProgramDropoffToMasterlist,
   cascadeProgramProcurementSync,
   loadProgramProcurement,
+  resyncAllProgramDropoffsToMasterlist,
+  resyncProgramDropoffsForCenter,
   type ProgramDropoffRow,
   type ProgramProcurementRow,
 } from '@/lib/program-dropoff-sync'
@@ -21,11 +23,15 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => null) as
     | {
-        action?: 'sync' | 'unlink' | 'cascade-procurement'
+        action?: 'sync' | 'unlink' | 'cascade-procurement' | 'resync-all-program' | 'resync-center-program'
         dropoff?: ProgramDropoffRow
         dropoffId?: string
         procurementId?: string
         parent?: ProgramProcurementRow
+        program?: string
+        center?: string
+        year?: number
+        enableExcluded?: boolean
       }
     | null
 
@@ -38,6 +44,35 @@ export async function POST(req: Request) {
     if (!id) return NextResponse.json({ error: 'dropoffId required' }, { status: 400 })
     await admin.from('mfp_data').delete().eq('source_program_dropoff_id', id)
     return NextResponse.json({ ok: true })
+  }
+
+  if (body.action === 'resync-all-program') {
+    const programId = parseMonitoringProgram(body.program || 'dswd')
+    if (!programId) return NextResponse.json({ error: 'Invalid program' }, { status: 400 })
+    const year = body.year != null ? Number(body.year) : undefined
+    const res = await resyncAllProgramDropoffsToMasterlist(admin, programId, {
+      year: Number.isFinite(year) ? year : undefined,
+      enableExcluded: body.enableExcluded === true,
+    })
+    if (res.error) return NextResponse.json({ error: res.error }, { status: 500 })
+    return NextResponse.json({
+      ok: true,
+      synced: res.synced,
+      orphansRemoved: res.orphansRemoved,
+      enabled: res.enabled,
+    })
+  }
+
+  if (body.action === 'resync-center-program') {
+    const programId = parseMonitoringProgram(body.program || 'dswd')
+    const center = String(body.center || '').trim()
+    const year = Number(body.year)
+    if (!programId || !center || !Number.isFinite(year)) {
+      return NextResponse.json({ error: 'program, center, and year required' }, { status: 400 })
+    }
+    const res = await resyncProgramDropoffsForCenter(admin, programId, center, year)
+    if (res.error) return NextResponse.json({ error: res.error }, { status: 500 })
+    return NextResponse.json({ ok: true, synced: res.synced })
   }
 
   if (body.action === 'cascade-procurement') {

@@ -145,6 +145,11 @@ export default async function DataPage({
             ? { center: profile.center, year: APP_YEARS[0] ?? 2026 }
             : null
         }
+        resyncProgram={
+          profile?.role === 'encoder' && profile?.center
+            ? { center: profile.center, year: APP_YEARS[0] ?? 2026, program: 'dswd' }
+            : null
+        }
       />
 
       {records?.length === 0 && (
