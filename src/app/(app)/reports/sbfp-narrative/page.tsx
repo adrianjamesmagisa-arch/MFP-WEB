@@ -31,6 +31,38 @@ function regionSortKey(region: string): number {
 const PESO = '\u20B1'
 const fmtPeso = (n: number) => `${PESO}${n.toLocaleString()}`
 
+const DELIVERY_MONTHS = [
+  { value: '1', label: 'January' },
+  { value: '2', label: 'February' },
+  { value: '3', label: 'March' },
+  { value: '4', label: 'April' },
+  { value: '5', label: 'May' },
+  { value: '6', label: 'June' },
+  { value: '7', label: 'July' },
+  { value: '8', label: 'August' },
+  { value: '9', label: 'September' },
+  { value: '10', label: 'October' },
+  { value: '11', label: 'November' },
+  { value: '12', label: 'December' },
+] as const
+
+/** True when the SDO delivery window overlaps the selected calendar month in `dbYear`. */
+function deliveryOverlapsMonth(
+  deliveryStart: string | null | undefined,
+  deliveryEnd: string | null | undefined,
+  dbYear: number,
+  month: number,
+): boolean {
+  const start = deliveryStart || deliveryEnd
+  const end = deliveryEnd || deliveryStart
+  if (!start) return false
+  const monthStart = `${dbYear}-${String(month).padStart(2, '0')}-01`
+  const lastDay = new Date(dbYear, month, 0).getDate()
+  const monthEnd = `${dbYear}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+  const rangeEnd = end || start
+  return !(rangeEnd < monthStart || start > monthEnd)
+}
+
 const STATUS_BADGE: Record<string, { bg: string; color: string }> = {
   'For Preparation':            { bg: '#fef3c7', color: '#92400e' },
   'Ongoing Procurement':        { bg: '#dbeafe', color: '#1e40af' },
@@ -51,8 +83,7 @@ export default function SbfpSpreadsheetReport() {
   const [filterCenter, setFilterCenter]     = useState('ALL')
   const [filterStatus, setFilterStatus]     = useState('ALL')
   const [includeExcluded, setIncludeExcluded] = useState(false)
-  const [filterStartDate, setFilterStartDate] = useState('')
-  const [filterEndDate, setFilterEndDate]   = useState('')
+  const [filterMonth, setFilterMonth]       = useState('')
   const [searchQuery, setSearchQuery]       = useState('')
   const [activeTab, setActiveTab]           = useState<'master' | 'region_summary' | 'status_matrix'>('master')
 
@@ -131,17 +162,20 @@ export default function SbfpSpreadsheetReport() {
         const matchPr = (r.pr_number || '').toLowerCase().includes(q)
         if (!matchSdo && !matchCenter && !matchRegion && !matchPo && !matchPr) return false
       }
-      if (filterStartDate) {
-        const start = r.delivery_start || r.delivery_end
-        if (start && start < filterStartDate) return false
-      }
-      if (filterEndDate) {
-        const end = r.delivery_end || r.delivery_start
-        if (end && end > filterEndDate) return false
+      if (filterMonth) {
+        const month = parseInt(filterMonth, 10)
+        const dbYear = parseInt(year, 10)
+        if (
+          Number.isFinite(month) &&
+          Number.isFinite(dbYear) &&
+          !deliveryOverlapsMonth(r.delivery_start, r.delivery_end, dbYear, month)
+        ) {
+          return false
+        }
       }
       return true
     })
-  }, [records, filterRegion, filterCenter, filterStatus, searchQuery, filterStartDate, filterEndDate, includeExcluded])
+  }, [records, filterRegion, filterCenter, filterStatus, searchQuery, filterMonth, year, includeExcluded])
 
   const viewRows = useMemo(() => {
     return (records as SbfpReportSourceRow[]).map(r => mapSbfpRowToReportView(r, reportDate))
@@ -322,8 +356,7 @@ export default function SbfpSpreadsheetReport() {
     setFilterRegion('ALL')
     setFilterCenter('ALL')
     setFilterStatus('ALL')
-    setFilterStartDate('')
-    setFilterEndDate('')
+    setFilterMonth('')
     setSearchQuery('')
   }
   return (
@@ -440,15 +473,19 @@ export default function SbfpSpreadsheetReport() {
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <Filter size={13} /> Delivery Dates:
+              <Filter size={13} /> Delivery Month:
             </span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <input type="date" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)}
-                style={{ height: 28, padding: '0 0.5rem', borderRadius: 4, border: '1px solid #cbd5e1', fontSize: '0.78rem' }} />
-              <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>to</span>
-              <input type="date" value={filterEndDate} onChange={e => setFilterEndDate(e.target.value)}
-                style={{ height: 28, padding: '0 0.5rem', borderRadius: 4, border: '1px solid #cbd5e1', fontSize: '0.78rem' }} />
-            </div>
+            <select
+              value={filterMonth}
+              onChange={e => setFilterMonth(e.target.value)}
+              title="Show SDOs whose delivery window overlaps this month"
+              style={{ height: 28, padding: '0 0.5rem', borderRadius: 4, border: '1px solid #cbd5e1', fontSize: '0.78rem', background: '#fff' }}
+            >
+              <option value="">All Months</option>
+              {DELIVERY_MONTHS.map(m => (
+                <option key={m.value} value={m.value}>{m.label}</option>
+              ))}
+            </select>
 
             <div style={{ marginLeft: 12, borderLeft: '1px solid #e2e8f0', paddingLeft: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
               <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>Delivered As Of:</span>
