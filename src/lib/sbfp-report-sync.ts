@@ -180,10 +180,9 @@ export function deliveredPacksInDateRange(
     if (monthPacks <= 0) continue
     sum += frac >= 1 ? monthPacks : Math.round(monthPacks * frac)
   }
-  if (sum > 0) return sum
-
-  // Legacy: no monthly breakdown — best snapshot on or before range end.
-  return deliveredPacksAsOfReportDate(row, toIso, dbYear)
+  // Do not fall back to cumulative-through-end-date — that pulled August (and earlier)
+  // totals into a September-only range when rows lack snapshot columns.
+  return sum
 }
 
 export function defaultDeliveredPackRange(dbYear: number): { from: string; to: string } {
