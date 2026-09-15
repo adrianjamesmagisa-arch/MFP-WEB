@@ -11,6 +11,7 @@ import {
   reportCenterFilterOptions,
   rowHasDeliveryInMonth,
   rowMatchesReportCenterFilter,
+  resolveDeliveredPacksForReport,
   sbfpRowIncludedInReport,
   type SbfpReportSourceRow,
 } from '@/lib/sbfp-report-sync'
@@ -142,8 +143,12 @@ export default function SbfpSpreadsheetReport() {
     'Completed',
     'Failed'
   ]
+
+  const dbYearNum = parseInt(year, 10)
+
   // Filter records
   const filteredRecords = useMemo(() => {
+    const rangeTo = deliveredTo >= deliveredFrom ? deliveredTo : deliveredFrom
     return records.filter(r => {
       if (!includeExcluded && !sbfpRowIncludedInReport(r)) return false
       if (filterRegion !== 'ALL' && r.region !== filterRegion) return false
@@ -169,11 +174,29 @@ export default function SbfpSpreadsheetReport() {
           return false
         }
       }
+      if (Number.isFinite(dbYearNum) && deliveredFrom && rangeTo) {
+        const delivered = resolveDeliveredPacksForReport(r as SbfpReportSourceRow, {
+          deliveredFromIso: deliveredFrom,
+          deliveredToIso: rangeTo,
+          dbYear: dbYearNum,
+        })
+        if (delivered <= 0) return false
+      }
       return true
     })
-  }, [records, filterRegion, filterCenter, filterStatus, searchQuery, filterMonth, year, includeExcluded])
-
-  const dbYearNum = parseInt(year, 10)
+  }, [
+    records,
+    filterRegion,
+    filterCenter,
+    filterStatus,
+    searchQuery,
+    filterMonth,
+    year,
+    includeExcluded,
+    deliveredFrom,
+    deliveredTo,
+    dbYearNum,
+  ])
 
   const viewRows = useMemo(() => {
     const dbY = Number.isFinite(dbYearNum) ? dbYearNum : undefined
@@ -512,7 +535,7 @@ export default function SbfpSpreadsheetReport() {
                 type="date"
                 value={deliveredFrom}
                 onChange={e => setDeliveredFrom(e.target.value)}
-                title="Start of delivery period (inclusive). Partial months are prorated from encoder monthly totals."
+                title="Start of delivery period (inclusive). Only SDOs with packs delivered in this range appear in the table."
                 style={{ height: 28, padding: '0 0.5rem', borderRadius: 4, border: '1px solid #cbd5e1', fontSize: '0.78rem' }}
               />
               <span style={{ fontSize: '0.78rem', color: '#64748b' }}>To</span>
@@ -521,7 +544,7 @@ export default function SbfpSpreadsheetReport() {
                 value={deliveredTo}
                 min={deliveredFrom}
                 onChange={e => setDeliveredTo(e.target.value)}
-                title="End of delivery period (inclusive)"
+                title="End of delivery period (inclusive). Partial months are prorated from encoder monthly totals."
                 style={{ height: 28, padding: '0 0.5rem', borderRadius: 4, border: '1px solid #cbd5e1', fontSize: '0.78rem' }}
               />
             </div>
