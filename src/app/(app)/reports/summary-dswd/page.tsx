@@ -3,29 +3,8 @@ import { redirect } from 'next/navigation'
 import { DashboardFilter } from '@/components/DashboardFilter'
 import { PCC_CENTERS } from '@/lib/types'
 import { SummaryDswdClient } from './SummaryDswdClient'
-import { fetchAllRows } from '@/lib/supabase-paginate'
 import { resolveReportYearFilter } from '@/lib/report-year'
-import { MIN_DATA_YEAR } from '@/lib/app-years'
-
-const DSWD_SELECT = `
-  year,
-  beneficiaries,
-  milk_packs,
-  milk_cost,
-  total_funds_transferred,
-  funded_by,
-  center,
-  region,
-  province,
-  municipality,
-  date_started,
-  feeding_days,
-  mode_of_procurement,
-  supplier_id,
-  milk_type,
-  raw_milk_liters,
-  cooperatives!supplier_id ( name )
-`
+import { loadDswdMonitoringSummaryRows } from '@/lib/dswd-monitoring-report'
 
 export default async function SummaryDSWDPage(props: {
   searchParams: Promise<{ year?: string; month?: string; center?: string }>
@@ -41,38 +20,24 @@ export default async function SummaryDSWDPage(props: {
 
   const { allYears, yearNum } = resolveReportYearFilter(sp.year)
 
-  let rows = await fetchAllRows<any>(() => {
-    let query = supabase
-      .from('mfp_data')
-      .select(DSWD_SELECT)
-      .eq('funded_by', 'DSWD')
-      .gte('year', MIN_DATA_YEAR)
-    if (!allYears && yearNum != null) query = query.eq('year', yearNum)
-    if (centerFilter && centerFilter !== '__ALL_CENTERS__') {
-      query = query.eq('center', centerFilter === 'NHQGP (NIZ)' ? 'NIZ' : centerFilter)
-    }
-    return query
+  const month =
+    sp.month && sp.month !== '__ALL_MONTHS__' ? parseInt(sp.month, 10) : undefined
+  const monthNum = month != null && Number.isFinite(month) ? month : undefined
+
+  const mappedRows = await loadDswdMonitoringSummaryRows(supabase, {
+    year: allYears ? undefined : yearNum ?? undefined,
+    month: monthNum,
+    center: centerFilter,
   })
-
-  if (sp.month && rows && sp.month !== '__ALL_MONTHS__') {
-    const m = parseInt(sp.month, 10)
-    if (Number.isFinite(m)) {
-      rows = rows.filter(r => r.date_started && (new Date(r.date_started).getMonth() + 1) === m)
-    }
-  }
-
-  const mappedRows = rows.map(r => ({
-    ...r,
-    supplier_name: (r.cooperatives as any)?.name || r.supplier_id || '',
-    component: 'milk',
-  }))
 
   return (
     <div>
       <div className="page-header">
         <div>
           <h1 className="page-title" style={{ color: '#15803d' }}>🤝 Summary — DSWD</h1>
-          <p className="page-subtitle">DSWD Supplementary Feeding Program</p>
+          <p className="page-subtitle">
+            DSWD Supplementary Feeding Program — data from DSWD program monitoring (municipal drop-offs), not the MFP masterlist.
+          </p>
         </div>
         <DashboardFilter centers={PCC_CENTERS} isEncoder={isEncoder} basePath="/reports/summary-dswd" />
       </div>

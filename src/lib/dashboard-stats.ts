@@ -2,9 +2,11 @@
  * Dashboard totals.
  * DepEd beneficiaries come from SBFP SDO procurement (sbfp_data.beneficiaries_pm —
  * same as SBFP Report column K). Record counts and DepEd milk packs come from the
- * MFP masterlist (mfp_data). Other funders use the masterlist for all figures.
+ * MFP masterlist (mfp_data). DSWD uses program monitoring (drop-offs + procurement).
+ * Other funders use the masterlist for all figures.
  */
 
+import { loadDswdDashboardSlice, loadDswdMonitoringSummaryRows } from '@/lib/dswd-monitoring-report'
 import { excludeAuxSbfp } from '@/lib/sbfp-aux'
 import {
   packsForMonth,
@@ -66,7 +68,7 @@ export async function loadDashboardStats(
   const month = filters.month
   const center = filters.center?.trim() || undefined
 
-  const [sbfpRaw, master] = await Promise.all([
+  const [sbfpRaw, master, dswdSlice, dswdRows] = await Promise.all([
     fetchAllRows<any>(() => {
       let q = supabase.from('sbfp_data').select(
         'id,year,center,sdo,region,milk_type,batch,feeding_days,remarks,delivery_start,delivery_end,packs_to_deliver,packs_delivered,monthly_packs_delivered,delivery_snapshots,amount,contract_amount,raw_milk_prices,raw_milk_month,beneficiaries_pm',
@@ -81,6 +83,8 @@ export async function loadDashboardStats(
       if (year) q = q.eq('year', year)
       return q
     }),
+    loadDswdDashboardSlice(supabase, { year, month, center }),
+    loadDswdMonitoringSummaryRows(supabase, { year, month, center }),
   ])
 
   const sdos = excludeAuxSbfp(sbfpRaw).filter(r => matchesCenter(r.center, center))
@@ -115,12 +119,21 @@ export async function loadDashboardStats(
       milk_cost: depedIncome,
       total_funds: depedFunds,
     },
-    DSWD: emptyFunder('DSWD'),
+    DSWD: {
+      funded_by: 'DSWD',
+      records: dswdSlice.records,
+      beneficiaries: dswdSlice.beneficiaries,
+      milk_packs: dswdSlice.milk_packs,
+      milk_cost: dswdSlice.milk_cost,
+      total_funds: dswdSlice.total_funds,
+    },
     LDS: emptyFunder('LDS'),
   }
 
   for (const r of otherMaster) {
-    const key = String(r.funded_by || '').trim() || 'Others'
+    const fb = String(r.funded_by || '').trim()
+    if (fb === 'DSWD') continue
+    const key = fb || 'Others'
     if (!funderMap[key]) funderMap[key] = emptyFunder(key)
     funderMap[key].records += 1
     funderMap[key].beneficiaries += Number(r.beneficiaries) || 0
@@ -157,7 +170,21 @@ export async function loadDashboardStats(
     const m = depedMasterByYear.get(y) || { rec: 0, packs: 0 }
     addYear(y, m.rec, depedBeneByYear.get(y) || 0, m.packs)
   }
+  const dswdYearAgg = new Map<number, { rec: number; bene: number; packs: number }>()
+  for (const r of dswdRows) {
+    const y = Number(r.year) || year || 0
+    const cur = dswdYearAgg.get(y) || { rec: 0, bene: 0, packs: 0 }
+    cur.rec += 1
+    cur.bene += r.beneficiaries
+    cur.packs += r.milk_packs
+    dswdYearAgg.set(y, cur)
+  }
+  for (const [y, m] of dswdYearAgg) {
+    addYear(y, m.rec, m.bene, m.packs)
+  }
+
   for (const r of otherMaster) {
+    if (String(r.funded_by || '').trim() === 'DSWD') continue
     addYear(Number(r.year) || 0, 1, Number(r.beneficiaries) || 0, Number(r.milk_packs) || 0)
   }
 
@@ -167,6 +194,11 @@ export async function loadDashboardStats(
     const label = centerDisplayLabel(r.center)
     if (!label) continue
     centerMap[label] = (centerMap[label] || 0) + (Number(r.beneficiaries_pm) || 0)
+  }
+  for (const r of dswdRows) {
+    const label = centerDisplayLabel(r.center)
+    if (!label) continue
+    centerMap[label] = (centerMap[label] || 0) + r.beneficiaries
   }
 
   const by_funder = Object.values(funderMap)
