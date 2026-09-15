@@ -68,8 +68,14 @@ async function main() {
     const province = String(d.province || parent?.province || parent?.label || '').trim()
     const bene = Number(d.beneficiaries) || 0
     const days = Number(d.feeding_days) || 0
-    const milkType = parent?.milk_type || 'PM'
+    const milkType = String(parent?.milk_type || 'PM').trim().toUpperCase()
+    const litersPerPack = milkType === 'SM' || milkType.startsWith('STERIL') ? 0.18 : 0.2
     const milkPacks = bene > 0 && days > 0 ? bene * days : 0
+    const totalVol = milkPacks * litersPerPack
+    const rawMilk = totalVol * 0.2
+    const wholeMilk = rawMilk * 0.268
+    const skimMilk = rawMilk * 0.274
+    const sugar = totalVol * 0.02
     const contract = Number(parent?.contract_amount) || Number(parent?.amount) || 0
 
     const payload = {
@@ -83,7 +89,12 @@ async function main() {
       beneficiaries: bene,
       feeding_days: days,
       milk_packs: milkPacks,
-      milk_type: milkType,
+      total_volume_requirements: Number(totalVol.toFixed(4)),
+      raw_milk_liters: Number(rawMilk.toFixed(4)),
+      whole_milk_kg: Number(wholeMilk.toFixed(4)),
+      skimmed_milk_kg: Number(skimMilk.toFixed(4)),
+      sugar: Number(sugar.toFixed(4)),
+      milk_type: milkType || 'PM',
       region: d.region || parent?.region || '',
       source_program_dropoff_id: d.id,
       mode_of_procurement: parent?.mode_of_procurement || '',
