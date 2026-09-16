@@ -8,6 +8,7 @@ import { dbYearToSchoolYear } from '@/lib/sbfp-year'
 
 interface MfpRow {
   year: number
+  center: string
   beneficiaries: number
   milk_packs: number
   milk_cost: number
@@ -27,19 +28,21 @@ interface MfpRow {
 export function SummaryDepEdClient({ 
   rows,
   years,
+  dropoffSchoolsByYear,
   centerFilter,
   yearFilter,
   monthFilter
 }: { 
   rows: MfpRow[],
   years: number[],
+  dropoffSchoolsByYear: Record<number, number>,
   centerFilter: string | undefined,
   yearFilter: string | undefined,
   monthFilter: string | undefined
 }) {
   const [activeTab, setActiveTab] = useState<TabType>('overview')
 
-  const { parameters, regions, provinces, sdos, coops } = useMemo(() => {
+  const { parameters, regions, provinces, sdos, coops, coopCenters } = useMemo(() => {
   // Derive matrices
   // 1. Parameters
   const parameters = {
@@ -72,8 +75,9 @@ export function SummaryDepEdClient({
   // 4. SDO Matrix
   const sdos: Record<string, Record<number, number>> = {}
 
-  // 5. Coops Matrix
+  // 5. Coops Matrix + centers each coop served
   const coops: Record<string, Record<number, boolean>> = {}
+  const coopCenters: Record<string, Set<string>> = {}
 
   years.forEach(y => {
     parameters.feeding_days[y] = []
@@ -148,14 +152,17 @@ export function SummaryDepEdClient({
       sdos[r.division][y] = (sdos[r.division][y] || 0) + (r.beneficiaries || 0)
     }
 
-    // Coops Matrix
+    // Coops Matrix + centers
     if (r.supplier_name) {
       if (!coops[r.supplier_name]) coops[r.supplier_name] = {}
       coops[r.supplier_name][y] = true
+      if (!coopCenters[r.supplier_name]) coopCenters[r.supplier_name] = new Set()
+      const c = String(r.center || '').trim()
+      if (c) coopCenters[r.supplier_name].add(c)
     }
   })
 
-  return { parameters, regions, provinces, sdos, coops }
+  return { parameters, regions, provinces, sdos, coops, coopCenters }
   }, [rows, years])
 
   const handlePrint = (tab: TabType) => {
@@ -214,8 +221,12 @@ export function SummaryDepEdClient({
             {years.map(y => <td key={y} className="blue-text center-text">{valOrDash(parameters.regions[y].size)}</td>)}
           </tr>
           <tr>
-            <td className="blue-text">No. of Provinces</td>
-            {years.map(y => <td key={y} className="blue-text center-text">{valOrDash(parameters.provinces[y].size)}</td>)}
+            <td className="blue-text">No. of Elementary Schools (Drop-off Points)</td>
+            {years.map(y => (
+              <td key={y} className="blue-text center-text">
+                {valOrDash(dropoffSchoolsByYear[y] || 0)}
+              </td>
+            ))}
           </tr>
           <tr>
             <td className="blue-text">No. of Schools Division Offices (SDOs)</td>
@@ -404,17 +415,22 @@ export function SummaryDepEdClient({
           <thead>
             <tr className="header-row">
               <th className="label-col">Assisted Cooperatives/ Suppliers</th>
+              <th style={{ minWidth: 120 }}>Center</th>
               <ThYear />
             </tr>
           </thead>
           <tbody>
             <tr className="light-yellow-row">
               <td className="bold-text">No. of Cooperatives engaged in MFP</td>
+              <td />
               {years.map(y => <td key={y} className="bold-text center-text">{valOrDash(parameters.coops[y].size)}</td>)}
             </tr>
             {coopKeys.map(c => (
               <tr key={c}>
                 <td>{c}</td>
+                <td className="center-text" style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155' }}>
+                  {[...(coopCenters[c] || [])].sort().join(', ') || '—'}
+                </td>
                 {years.map(y => (
                   <td key={y} className="center-text" style={{ fontSize: '18px', color: '#666' }}>
                     {coops[c][y] ? '☑' : ''}

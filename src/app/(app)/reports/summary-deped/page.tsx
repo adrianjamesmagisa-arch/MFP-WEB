@@ -18,7 +18,7 @@ import {
 
 /** SBFP SDO procurement (column K = beneficiaries_pm) — not mfp_data masterlist. */
 const SBFP_DEPED_SELECT = `
-  year, center, region, sdo, milk_type, beneficiaries_pm, packs_to_deliver, packs_delivered,
+  id, year, center, region, sdo, milk_type, beneficiaries_pm, packs_to_deliver, packs_delivered,
   feeding_days, mode_of_procurement, amount, contract_amount, supplier_id,
   delivery_start, delivery_end, delivery_snapshots, monthly_packs_delivered,
   raw_milk_prices, raw_milk_month, procurement_status, include_in_report,
@@ -105,6 +105,7 @@ export default async function SummaryDepEdPage(props: {
 
     return {
       year: y,
+      center: r.center || '',
       beneficiaries: Number(r.beneficiaries_pm) || 0,
       milk_packs: packs,
       milk_cost: income > 0 ? income : funds,
@@ -121,6 +122,41 @@ export default async function SummaryDepEdPage(props: {
       milk_type: r.milk_type || '',
     }
   })
+
+  // Elementary-school drop-off points (unique schools) by year for overview KPI.
+  const filteredSdoIds = new Set(
+    rawData.map((r: any) => String(r.id || '')).filter(Boolean),
+  )
+
+  let dropRaw = await fetchAllRows<{ id: string; year: number; center: string | null; sbfp_data_id?: string | null }>(() => {
+    let q = supabase
+      .from('sbfp_dropoff_points')
+      .select('id,year,center,sbfp_data_id')
+      .gte('year', MIN_DATA_YEAR)
+    if (!allYears && yearNum != null) q = q.eq('year', yearNum)
+    if (centerAliases?.length === 1) q = q.eq('center', centerAliases[0])
+    else if (centerAliases && centerAliases.length > 1) q = q.in('center', centerAliases)
+    return q
+  })
+
+  if (filteredSdoIds.size > 0) {
+    dropRaw = dropRaw.filter(d => d.sbfp_data_id && filteredSdoIds.has(String(d.sbfp_data_id)))
+  } else {
+    dropRaw = []
+  }
+
+  const dropoffSchoolsByYear: Record<number, number> = {}
+  for (const y of yearsForUi) dropoffSchoolsByYear[y] = 0
+  const dropIdsByYear = new Map<number, Set<string>>()
+  for (const d of dropRaw) {
+    const y = Number(d.year)
+    if (!yearsForUi.includes(y)) continue
+    if (!dropIdsByYear.has(y)) dropIdsByYear.set(y, new Set())
+    dropIdsByYear.get(y)!.add(d.id)
+  }
+  for (const [y, ids] of dropIdsByYear) {
+    dropoffSchoolsByYear[y] = ids.size
+  }
 
   return (
     <div>
@@ -145,6 +181,7 @@ export default async function SummaryDepEdPage(props: {
       <SummaryDepEdClient
         rows={rows}
         years={yearsForUi}
+        dropoffSchoolsByYear={dropoffSchoolsByYear}
         centerFilter={centerFilter === '__ALL_CENTERS__' ? 'All Centers' : centerFilter}
         yearFilter={allYears ? '__ALL_YEARS__' : schoolYear ?? String(yearNum)}
         monthFilter={sp.month}
