@@ -12,6 +12,7 @@ import {
 } from '@/lib/sbfp-dropoff-sync'
 import { calcMilkFormulations, litersPerPackForMilkType } from '@/lib/mfp-formulas'
 import { inferSbfpMilkType, normalizeSbfpMilkType } from '@/lib/sbfp-pack-price'
+import { logCenterActivity } from '@/lib/center-activity'
 
 export type DropoffRow = SbfpDropoffPoint
 
@@ -250,6 +251,14 @@ export function SbfpDropoffTable({
       setRows(p => p.map(r => r.id === id ? prev : r))
       return
     }
+    void logCenterActivity(supabase, {
+      center: next.center,
+      action: 'updated',
+      source: 'sbfp_dropoff_points',
+      sourceId: id,
+      summary: `Updated drop-off · ${String(next.dropoff_name || 'school').trim() || 'school'}`,
+      detail: `Field: ${field}${next.sdo ? ` · ${next.sdo}` : ''}`,
+    })
     syncRow(next)
   }
 

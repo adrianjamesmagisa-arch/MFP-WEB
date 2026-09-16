@@ -47,7 +47,7 @@ export default async function CentersPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title">PCC Centers</h1>
-          <p className="page-subtitle">Monitor center input activity and monthly masterlists</p>
+          <p className="page-subtitle">Click a center to view its create/edit activity log</p>
         </div>
       </div>
 
@@ -78,7 +78,7 @@ export default async function CentersPage() {
 
               <div style={{ padding: '0.75rem', background: '#f8fafc', borderRadius: '0.375rem', fontSize: '0.75rem', color: '#475569', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <Calendar size={14} style={{ color: '#94a3b8' }} />
-                <span>Last input: </span>
+                <span>Last activity: </span>
                 <strong style={{ color: '#1e293b' }}>
                   {lastInputDate ? formatDistanceToNow(new Date(lastInputDate), { addSuffix: true }) : 'Never'}
                 </strong>

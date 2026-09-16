@@ -8,6 +8,7 @@ import { formatCurrency, formatNumber, formatDate } from '@/lib/utils'
 import { Edit2, Trash2 } from 'lucide-react'
 import { Spinner } from '@/components/loading/Spinner'
 import { useAsyncTask } from '@/components/loading/AsyncFeedback'
+import { logCenterActivity } from '@/lib/center-activity'
 
 function EditableCell({ id, field, value, type = 'text', className, style, format, render, onSave }: { id: string, field: string, value: any, type?: string, className?: string, style?: any, format?: (v: any) => any, render?: (v: any) => any, onSave?: (id: string, field: string, oldVal: any, newVal: any) => void }) {
   const [isEditing, setIsEditing] = useState(false);
@@ -39,8 +40,24 @@ function EditableCell({ id, field, value, type = 'text', className, style, forma
     setIsSaving(true);
     if (onSave) onSave(id, field, value, saveVal);
     try {
-      const { error } = await supabase.from('mfp_data').update({ [field]: saveVal }).eq('id', id);
+      const { data: updated, error } = await supabase
+        .from('mfp_data')
+        .update({ [field]: saveVal, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .select('id,center,elementary_school,municipality')
+        .maybeSingle();
       if (error) throw error;
+      if (updated?.center) {
+        const label = String(updated.elementary_school || updated.municipality || 'record').trim()
+        void logCenterActivity(supabase, {
+          center: updated.center,
+          action: 'updated',
+          source: 'mfp_data',
+          sourceId: id,
+          summary: `Updated MFP record · ${label}`,
+          detail: `Field: ${field}`,
+        })
+      }
     } catch (e) {
       console.error('Error saving:', e);
       setVal(value);
@@ -258,7 +275,7 @@ export function DataTable({
           if (redoStack.length === 0) return;
           const action = redoStack[redoStack.length - 1];
           setRedoStack(prev => prev.slice(0, -1));
-          await supabase.from('mfp_data').update({ [action.field]: action.newVal }).eq('id', action.id);
+          await supabase.from('mfp_data').update({ [action.field]: action.newVal, updated_at: new Date().toISOString() }).eq('id', action.id);
           setLocalRecords(prev => prev.map(r => r.id === action.id ? { ...r, [action.field]: action.newVal } : r));
           setUndoStack(prev => [...prev, action]);
         } else {
@@ -266,7 +283,7 @@ export function DataTable({
           if (undoStack.length === 0) return;
           const action = undoStack[undoStack.length - 1];
           setUndoStack(prev => prev.slice(0, -1));
-          await supabase.from('mfp_data').update({ [action.field]: action.oldVal }).eq('id', action.id);
+          await supabase.from('mfp_data').update({ [action.field]: action.oldVal, updated_at: new Date().toISOString() }).eq('id', action.id);
           setLocalRecords(prev => prev.map(r => r.id === action.id ? { ...r, [action.field]: action.oldVal } : r));
           setRedoStack(prev => [...prev, action]);
         }
@@ -276,7 +293,7 @@ export function DataTable({
         if (redoStack.length === 0) return;
         const action = redoStack[redoStack.length - 1];
         setRedoStack(prev => prev.slice(0, -1));
-        await supabase.from('mfp_data').update({ [action.field]: action.newVal }).eq('id', action.id);
+        await supabase.from('mfp_data').update({ [action.field]: action.newVal, updated_at: new Date().toISOString() }).eq('id', action.id);
         setLocalRecords(prev => prev.map(r => r.id === action.id ? { ...r, [action.field]: action.newVal } : r));
         setUndoStack(prev => [...prev, action]);
       }

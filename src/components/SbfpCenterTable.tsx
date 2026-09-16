@@ -27,6 +27,7 @@ import {
   inferSbfpMilkType,
 } from '@/lib/sbfp-pack-price'
 import { useAsyncTask } from '@/components/loading/AsyncFeedback'
+import { logCenterActivity } from '@/lib/center-activity'
 
 async function apiDropoffMasterlist(body: Record<string, unknown>): Promise<string | null> {
   const res = await fetch('/api/sbfp/sync-dropoff', {
@@ -129,11 +130,25 @@ function EditableCell({
     setEditing(false)
     setSaving(true)
     onSave(id, field, value, v)
-    const { error } = await supabase.from('sbfp_data').update({ [field]: v }).eq('id', id)
+    const { data: updated, error } = await supabase
+      .from('sbfp_data')
+      .update({ [field]: v, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select('id,center,sdo')
+      .maybeSingle()
     if (error) {
       setVal(value)
       onSave(id, field, v, value)
       alert(error.message)
+    } else if (updated?.center) {
+      void logCenterActivity(supabase, {
+        center: updated.center,
+        action: 'updated',
+        source: 'sbfp_data',
+        sourceId: id,
+        summary: `Updated SBFP procurement · ${String(updated.sdo || 'SDO').trim() || 'SDO'}`,
+        detail: `Field: ${field}`,
+      })
     }
     setSaving(false)
   }
