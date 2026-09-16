@@ -151,17 +151,20 @@ export function AsyncFeedbackProvider({ children }: { children: ReactNode }) {
   const taskList = useMemo(() => Object.values(tasks), [tasks])
   const pendingCount = taskList.length
   const blockingTasks = taskList.filter(t => t.blocking)
+  const softTasks = taskList.filter(t => !t.blocking)
   const isBlocking = blockingTasks.length > 0
-  // Full-screen modal only for navigation + explicit blocking work (delete, create year, …).
-  // Quiet cell saves must not interrupt encoders.
-  const modalActive = isNavigating || isBlocking
+  const hasSoftWork = softTasks.length > 0
+  // Full-screen modal only for explicit blocking work (delete, bulk ops).
+  // Background sync + navigation use the top bar only so tab switches stay usable.
+  const modalActive = isBlocking
   const statusMessage = isBlocking
     ? blockingTasks[blockingTasks.length - 1].message
-    : isNavigating
-      ? 'Loading page…'
-      : null
-  // Top bar only for blocking / navigation — quiet cell saves stay invisible
-  const barActive = modalActive
+    : hasSoftWork
+      ? softTasks[softTasks.length - 1].message
+      : isNavigating
+        ? 'Loading page…'
+        : null
+  const barActive = isNavigating || isBlocking || hasSoftWork
 
   const value = useMemo(
     () => ({

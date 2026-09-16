@@ -150,10 +150,16 @@ export function buildProgramMasterlistIdentity(
   return classifyProgramPatch(programId, payload)
 }
 
+const MFP_SYNC_EXISTING_COLUMNS =
+  'id,source_program_dropoff_id,funded_by,year,center,municipality,province'
+
+const WRITE_CONCURRENCY = 6
+
 export async function syncProgramDropoffToMasterlist(
   supabase: SupabaseLike,
   dropoff: ProgramDropoffRow,
   parent?: ProgramProcurementRow | null,
+  existingRow?: Record<string, unknown> | null,
 ): Promise<{ error: string | null; mfpId?: string | null }> {
   if (dropoff.include_in_masterlist === false) {
     const { error } = await supabase
@@ -173,23 +179,25 @@ export async function syncProgramDropoffToMasterlist(
   if (!parentRow && dropoff.procurement_id) {
     const { data } = await supabase
       .from('mfp_program_procurement')
-      .select('*')
+      .select(PROGRAM_PROCUREMENT_ENCODER_COLUMNS)
       .eq('id', dropoff.procurement_id)
       .maybeSingle()
     parentRow = data as ProgramProcurementRow | null
   }
 
-  const { data: byLink } = await supabase
-    .from('mfp_data')
-    .select('*')
-    .eq('source_program_dropoff_id', dropoff.id)
-    .maybeSingle()
-
-  let existing = byLink || null
+  let existing = existingRow || null
+  if (!existing) {
+    const { data: byLink } = await supabase
+      .from('mfp_data')
+      .select(MFP_SYNC_EXISTING_COLUMNS)
+      .eq('source_program_dropoff_id', dropoff.id)
+      .maybeSingle()
+    existing = byLink || null
+  }
   if (!existing) {
     const { data: byGeo } = await supabase
       .from('mfp_data')
-      .select('*')
+      .select(MFP_SYNC_EXISTING_COLUMNS)
       .eq('year', dropoff.year)
       .eq('center', dropoff.center)
       .eq('municipality', municipality)
@@ -225,17 +233,115 @@ export async function syncProgramDropoffToMasterlist(
   return { error: null, mfpId: data?.id ?? null }
 }
 
-async function loadProgramProcurementById(
+async function mapPool<T>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T) => Promise<void>,
+): Promise<void> {
+  if (items.length === 0) return
+  let next = 0
+  const runners = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (next < items.length) {
+      const i = next++
+      await worker(items[i])
+    }
+  })
+  await Promise.all(runners)
+}
+
+/** Re-sync all program drop-offs for one center/year (batched reads + bounded writes). */
+export async function resyncProgramDropoffsForCenter(
   supabase: SupabaseLike,
-  id: string,
-): Promise<ProgramProcurementRow | null> {
-  const { data, error } = await supabase
-    .from('mfp_program_procurement')
-    .select('*')
-    .eq('id', id)
-    .maybeSingle()
-  if (error || !data) return null
-  return data as ProgramProcurementRow
+  programId: MonitoringProgramId,
+  center: string,
+  year: number,
+): Promise<{ error: string | null; synced: number }> {
+  const { data: dropoffs, error: listErr } = await supabase
+    .from('mfp_program_dropoffs')
+    .select(PROGRAM_DROPOFF_ENCODER_COLUMNS)
+    .eq('program', programId)
+    .eq('center', center)
+    .eq('year', year)
+    .neq('include_in_masterlist', false)
+  if (listErr) return { error: listErr.message, synced: 0 }
+
+  const rows = (dropoffs || []) as ProgramDropoffRow[]
+  if (rows.length === 0) return { error: null, synced: 0 }
+
+  const parentIds = [
+    ...new Set(rows.map(r => r.procurement_id).filter((id): id is string => Boolean(id))),
+  ]
+  const parentCache = new Map<string, ProgramProcurementRow | null>()
+  for (let i = 0; i < parentIds.length; i += 200) {
+    const chunk = parentIds.slice(i, i + 200)
+    const { data: parents, error: parentErr } = await supabase
+      .from('mfp_program_procurement')
+      .select(PROGRAM_PROCUREMENT_ENCODER_COLUMNS)
+      .in('id', chunk)
+    if (parentErr) return { error: parentErr.message, synced: 0 }
+    for (const p of parents || []) {
+      parentCache.set((p as ProgramProcurementRow).id, p as ProgramProcurementRow)
+    }
+  }
+
+  const dropoffIds = rows.map(r => r.id)
+  const existingByLink = new Map<string, Record<string, unknown>>()
+  for (let i = 0; i < dropoffIds.length; i += 200) {
+    const chunk = dropoffIds.slice(i, i + 200)
+    const { data: linked, error: linkErr } = await supabase
+      .from('mfp_data')
+      .select(MFP_SYNC_EXISTING_COLUMNS)
+      .in('source_program_dropoff_id', chunk)
+    if (linkErr) return { error: linkErr.message, synced: 0 }
+    for (const row of linked || []) {
+      const key = String((row as { source_program_dropoff_id?: string }).source_program_dropoff_id || '')
+      if (key) existingByLink.set(key, row as Record<string, unknown>)
+    }
+  }
+
+  const fundedBy = MONITORING_PROGRAMS[programId].fundedBy
+  const { data: unlinked, error: geoErr } = await supabase
+    .from('mfp_data')
+    .select(MFP_SYNC_EXISTING_COLUMNS)
+    .eq('year', year)
+    .eq('center', center)
+    .eq('funded_by', fundedBy)
+    .is('source_program_dropoff_id', null)
+  if (geoErr) return { error: geoErr.message, synced: 0 }
+
+  const existingByGeo = new Map<string, Record<string, unknown>>()
+  for (const row of unlinked || []) {
+    const r = row as { municipality?: string; province?: string }
+    const key = `${String(r.municipality || '').trim()}|${String(r.province || '').trim()}`
+    if (key !== '|') existingByGeo.set(key, row as Record<string, unknown>)
+  }
+
+  let synced = 0
+  let firstError: string | null = null
+
+  await mapPool(rows, WRITE_CONCURRENCY, async row => {
+    if (firstError) return
+    const parent = row.procurement_id ? parentCache.get(row.procurement_id) ?? null : null
+    let existing = existingByLink.get(row.id) || null
+    if (!existing) {
+      const municipality = String(row.dropoff_name || row.municipality || '').trim()
+      const province = String(row.province || parent?.province || parent?.label || '').trim()
+      const geoKey = `${municipality}|${province}`
+      const byGeo = existingByGeo.get(geoKey)
+      if (byGeo && rowMatchesMonitoringProgram(String(byGeo.funded_by || ''), row.program)) {
+        existing = byGeo
+      }
+    }
+    const res = await syncProgramDropoffToMasterlist(supabase, row, parent, existing)
+    if (res.error) {
+      firstError = res.error
+      return
+    }
+    synced++
+  })
+
+  if (firstError) return { error: firstError, synced }
+  return { error: null, synced }
 }
 
 /** Sync every included program drop-off into mfp_data (same idea as SBFP resync-all-deped). */
@@ -281,18 +387,41 @@ export async function resyncAllProgramDropoffsToMasterlist(
     }
   }
 
+  // Reuse batched center sync when scoped to a single center+year is not available —
+  // still preload parents once for the full program list.
+  const parentIds = [
+    ...new Set(dropoffs.map(r => r.procurement_id).filter((id): id is string => Boolean(id))),
+  ]
   const parentCache = new Map<string, ProgramProcurementRow | null>()
-  let synced = 0
-  for (const row of dropoffs) {
-    const pid = row.procurement_id || ''
-    if (pid && !parentCache.has(pid)) {
-      parentCache.set(pid, await loadProgramProcurementById(supabase, pid))
+  if (parentIds.length > 0) {
+    for (let i = 0; i < parentIds.length; i += 200) {
+      const chunk = parentIds.slice(i, i + 200)
+      const { data: parents, error: parentErr } = await supabase
+        .from('mfp_program_procurement')
+        .select(PROGRAM_PROCUREMENT_ENCODER_COLUMNS)
+        .in('id', chunk)
+      if (parentErr) {
+        return { error: parentErr.message, synced: 0, orphansRemoved: 0, enabled }
+      }
+      for (const p of parents || []) {
+        parentCache.set((p as ProgramProcurementRow).id, p as ProgramProcurementRow)
+      }
     }
-    const parent = pid ? parentCache.get(pid) : null
-    const res = await syncProgramDropoffToMasterlist(supabase, row, parent)
-    if (res.error) return { error: res.error, synced, orphansRemoved: 0, enabled }
-    synced++
   }
+
+  let synced = 0
+  let firstError: string | null = null
+  await mapPool(dropoffs, WRITE_CONCURRENCY, async row => {
+    if (firstError) return
+    const parent = row.procurement_id ? parentCache.get(row.procurement_id) ?? null : null
+    const res = await syncProgramDropoffToMasterlist(supabase, row, parent)
+    if (res.error) {
+      firstError = res.error
+      return
+    }
+    synced++
+  })
+  if (firstError) return { error: firstError, synced, orphansRemoved: 0, enabled }
 
   const keepIds = new Set(dropoffs.map(d => d.id))
   let orphansRemoved = 0
@@ -326,37 +455,6 @@ export async function resyncAllProgramDropoffsToMasterlist(
   }
 
   return { error: null, synced, orphansRemoved, enabled }
-}
-
-/** Re-sync all program drop-offs for one center/year (encoder masterlist load). */
-export async function resyncProgramDropoffsForCenter(
-  supabase: SupabaseLike,
-  programId: MonitoringProgramId,
-  center: string,
-  year: number,
-): Promise<{ error: string | null; synced: number }> {
-  const { data: dropoffs, error: listErr } = await supabase
-    .from('mfp_program_dropoffs')
-    .select(PROGRAM_DROPOFF_ENCODER_COLUMNS)
-    .eq('program', programId)
-    .eq('center', center)
-    .eq('year', year)
-    .neq('include_in_masterlist', false)
-  if (listErr) return { error: listErr.message, synced: 0 }
-
-  const parentCache = new Map<string, ProgramProcurementRow | null>()
-  let synced = 0
-  for (const row of (dropoffs || []) as ProgramDropoffRow[]) {
-    const pid = row.procurement_id || ''
-    if (pid && !parentCache.has(pid)) {
-      parentCache.set(pid, await loadProgramProcurementById(supabase, pid))
-    }
-    const parent = pid ? parentCache.get(pid) : null
-    const res = await syncProgramDropoffToMasterlist(supabase, row, parent)
-    if (res.error) return { error: res.error, synced }
-    synced++
-  }
-  return { error: null, synced }
 }
 
 export async function cascadeProgramProcurementSync(

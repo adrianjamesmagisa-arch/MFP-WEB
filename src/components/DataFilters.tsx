@@ -204,7 +204,11 @@ export function DataFilters({ filterOptions }: { filterOptions?: FilterOptions }
                     >
                       <span>
                         {group.label}
-                        {activeValue && <span style={{ color: '#64748b', fontWeight: 400, marginLeft: '0.5rem' }}>: {activeValue}</span>}
+                        {activeValue && (
+                          <span style={{ color: '#64748b', fontWeight: 400, marginLeft: '0.5rem' }}>
+                            : {activeValue === '__ALL_YEARS__' ? 'All Years' : activeValue}
+                          </span>
+                        )}
                       </span>
                       {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                     </button>
@@ -217,6 +221,7 @@ export function DataFilters({ filterOptions }: { filterOptions?: FilterOptions }
                         ) : (
                           group.options.map((opt: string) => {
                             const isSelected = activeValue === opt
+                            const label = opt === '__ALL_YEARS__' ? 'All Years' : opt
                             return (
                               <label key={opt} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', padding: '0.25rem 0', cursor: 'pointer', fontSize: '0.875rem', color: isSelected ? 'var(--navy)' : '#475569', fontWeight: isSelected ? 500 : 400 }}>
                                 <input 
@@ -225,7 +230,7 @@ export function DataFilters({ filterOptions }: { filterOptions?: FilterOptions }
                                   onChange={() => handleLocalFilterChange(group.key, opt)}
                                   style={{ marginTop: '0.15rem' }}
                                 />
-                                <span style={{ lineHeight: 1.4 }}>{opt}</span>
+                                <span style={{ lineHeight: 1.4 }}>{label}</span>
                               </label>
                             )
                           })

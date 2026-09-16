@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Building, ChevronRight, CalendarDays, BarChart3 } from 'lucide-react'
+import { Building, ChevronRight, BarChart3 } from 'lucide-react'
 import {
   MONITORING_PROGRAMS,
   monitoringBasePath,
@@ -27,9 +27,6 @@ export function MonitoringSubSidebar({
   const centers = encoderCenter
     ? CENTER_SHEETS.filter(c => c.toUpperCase() === encoderCenter.toUpperCase())
     : CENTER_SHEETS
-
-  const encoderHubHref = encoderCenter ? monitoringCenterPath(programId, encoderCenter) : null
-  const hasYearInUrl = /[?&]year=\d+/.test(pathname) || pathname.includes('year=')
 
   const navMain = encoderCenter
     ? []
@@ -59,30 +56,9 @@ export function MonitoringSubSidebar({
         >
           {program.shortLabel} Monitoring
         </div>
-        {encoderCenter && encoderHubHref ? (
-          <nav style={{ paddingTop: 8 }}>
-            <Link
-              href={encoderHubHref}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                padding: '0.45rem 0',
-                fontSize: '0.78rem',
-                fontWeight: !hasYearInUrl ? 600 : 400,
-                color: !hasYearInUrl ? program.accent : '#94a3b8',
-                textDecoration: 'none',
-              }}
-            >
-              <CalendarDays size={13} />
-              <span>Program years</span>
-            </Link>
-          </nav>
-        ) : (
-          <p style={{ fontSize: '0.72rem', color: '#64748b', margin: '8px 0 0', lineHeight: 1.4 }}>
-            Masterlist rows sync to MFP Data and PIMD when you set division delivery totals.
-          </p>
-        )}
+        <p style={{ fontSize: '0.72rem', color: '#64748b', margin: '8px 0 0', lineHeight: 1.4 }}>
+          Masterlist rows sync to MFP Data and PIMD when you set division delivery totals.
+        </p>
       </div>
 
       <nav style={{ padding: '0.5rem 0' }}>

@@ -243,6 +243,7 @@ export async function syncDropoffToMasterlist(
   supabase: SupabaseLike,
   dropoff: SbfpDropoffRow,
   parent?: SbfpParentSdo | null,
+  existingRow?: MfpMasterRow | null,
 ): Promise<{ error: string | null; mfpId?: string | null }> {
   if (dropoff.include_in_masterlist === false) {
     const removed = await unlinkDropoffFromMasterlist(supabase, dropoff.id)
@@ -252,14 +253,17 @@ export async function syncDropoffToMasterlist(
   const name = String(dropoff.dropoff_name || '').trim()
   if (!name) return { error: 'dropoff_name required' }
 
-  const { data: byLink, error: linkErr } = await supabase
-    .from('mfp_data')
-    .select('*')
-    .eq('source_dropoff_id', dropoff.id)
-    .maybeSingle()
-  if (linkErr) return { error: linkErr.message }
+  let existing: MfpMasterRow | null = existingRow || null
 
-  let existing: MfpMasterRow | null = byLink || null
+  if (!existing) {
+    const { data: byLink, error: linkErr } = await supabase
+      .from('mfp_data')
+      .select('*')
+      .eq('source_dropoff_id', dropoff.id)
+      .maybeSingle()
+    if (linkErr) return { error: linkErr.message }
+    existing = byLink || null
+  }
 
   if (!existing) {
     const { data: byName } = await supabase
@@ -458,19 +462,86 @@ export async function resyncMasterlistDeliveryForCenter(
 ): Promise<{ error: string | null; updated: number }> {
   const { data: sdos, error: listErr } = await supabase
     .from('sbfp_data')
-    .select('id')
+    .select(
+      'id,sdo,region,milk_type,batch,feeding_days,remarks,delivery_start,delivery_end,packs_to_deliver,packs_delivered,monthly_packs_delivered,delivery_snapshots,supplier_id,year,center',
+    )
     .eq('center', center)
     .eq('year', year)
   if (listErr) return { error: listErr.message, updated: 0 }
 
-  let updated = 0
-  for (const row of sdos || []) {
-    const parent = await loadParentSdo(supabase, row.id)
-    if (!parent) continue
-    const res = await cascadeSdoFieldSync(supabase, row.id, parent)
-    if (res.error) return { error: res.error, updated }
-    updated += res.updated
+  const parents = (sdos || []) as Array<SbfpParentSdo & { id: string; year?: number; center?: string }>
+  if (parents.length === 0) return { error: null, updated: 0 }
+
+  const parentIds = parents.map(p => p.id)
+  const childrenByParent = new Map<string, SbfpDropoffRow[]>()
+  for (let i = 0; i < parentIds.length; i += 200) {
+    const chunk = parentIds.slice(i, i + 200)
+    const { data: allChildren, error: childErr } = await supabase
+      .from('sbfp_dropoff_points')
+      .select('*')
+      .in('sbfp_data_id', chunk)
+    if (childErr) return { error: childErr.message, updated: 0 }
+    for (const row of allChildren || []) {
+      const pid = String((row as SbfpDropoffRow).sbfp_data_id || '')
+      if (!pid) continue
+      const list = childrenByParent.get(pid) || []
+      list.push(row as SbfpDropoffRow)
+      childrenByParent.set(pid, list)
+    }
   }
+
+  const allChildren = [...childrenByParent.values()].flat()
+  const dropoffIds = allChildren.map(r => r.id)
+  const existingByLink = new Map<string, MfpMasterRow>()
+  for (let i = 0; i < dropoffIds.length; i += 200) {
+    const chunk = dropoffIds.slice(i, i + 200)
+    const { data: linked, error: linkErr } = await supabase
+      .from('mfp_data')
+      .select('*')
+      .in('source_dropoff_id', chunk)
+    if (linkErr) return { error: linkErr.message, updated: 0 }
+    for (const row of linked || []) {
+      const key = String((row as { source_dropoff_id?: string }).source_dropoff_id || '')
+      if (key) existingByLink.set(key, row as MfpMasterRow)
+    }
+  }
+
+  let updated = 0
+  let firstError: string | null = null
+  const concurrency = 6
+  let next = 0
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, parents.length) }, async () => {
+      while (next < parents.length) {
+        const i = next++
+        if (firstError) return
+        const parent = parents[i]
+        const children = childrenByParent.get(parent.id) || []
+        for (const row of children) {
+          if (firstError) return
+          const existing = existingByLink.get(row.id) || null
+          const res = await syncDropoffToMasterlist(supabase, row, parent, existing)
+          if (res.error) {
+            firstError = res.error
+            return
+          }
+          updated++
+        }
+        const division = String(children[0]?.sdo || parent.sdo || '').trim()
+        if (division) {
+          await supabase
+            .from('mfp_data')
+            .update({ supplier_id: parent.supplier_id || null })
+            .eq('year', year)
+            .eq('center', center)
+            .eq('funded_by', 'DepEd')
+            .eq('division', division)
+        }
+      }
+    }),
+  )
+
+  if (firstError) return { error: firstError, updated }
   return { error: null, updated }
 }
 

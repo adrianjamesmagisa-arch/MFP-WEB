@@ -30,9 +30,11 @@ export default async function MonitoringProgramLayout({
 
   return (
     <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
-      <Suspense fallback={<aside style={{ width: 200, flexShrink: 0 }} />}>
-        <MonitoringSubSidebar programId={programId} encoderCenter={encoderCenter} />
-      </Suspense>
+      {!encoderCenter && (
+        <Suspense fallback={<aside style={{ width: 200, flexShrink: 0 }} />}>
+          <MonitoringSubSidebar programId={programId} encoderCenter={encoderCenter} />
+        </Suspense>
+      )}
       <main
         style={{
           flex: 1,

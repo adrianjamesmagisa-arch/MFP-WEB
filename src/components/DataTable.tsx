@@ -194,17 +194,17 @@ export function DataTable({
             })
             if (!res.ok || cancelled) return
             sessionStorage.setItem(storageKey, '1')
-            router.refresh()
+            // No router.refresh() — keep encoders on the current table; next navigation picks up totals.
           },
-          'Syncing delivery totals…',
-          { blocking: true },
+          'Syncing delivery totals in background…',
+          { blocking: false },
         )
       } catch {
         // ignore — table still shows best available DB values
       }
     })()
     return () => { cancelled = true }
-  }, [resyncDelivery?.center, resyncDelivery?.year, router])
+  }, [resyncDelivery?.center, resyncDelivery?.year, runTask])
 
   useEffect(() => {
     if (!resyncProgram?.center || !resyncProgram?.year) return
@@ -228,17 +228,17 @@ export function DataTable({
             })
             if (!res.ok || cancelled) return
             sessionStorage.setItem(storageKey, '1')
-            router.refresh()
+            // Quiet background sync — do not block UI or force a full RSC reload.
           },
-          'Syncing DSWD monitoring to masterlist…',
-          { blocking: true },
+          'Syncing monitoring to masterlist in background…',
+          { blocking: false },
         )
       } catch {
         // ignore
       }
     })()
     return () => { cancelled = true }
-  }, [resyncProgram?.center, resyncProgram?.year, resyncProgram?.program, router])
+  }, [resyncProgram?.center, resyncProgram?.year, resyncProgram?.program, runTask])
 
   const handleCellSave = (id: string, field: string, oldVal: any, newVal: any) => {
     setLocalRecords(prev => prev.map(r => r.id === id ? { ...r, [field]: newVal } : r))
