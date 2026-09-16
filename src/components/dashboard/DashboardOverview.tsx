@@ -19,7 +19,6 @@ import {
   Clock,
   Database,
   DollarSign,
-  Download,
   Package,
   Search,
   SlidersHorizontal,
@@ -169,29 +168,6 @@ export function DashboardOverview({
     },
   ]
 
-  const exportSummary = () => {
-    const lines = [
-      'MFP Dashboard Export',
-      `Date,${todayLabel}`,
-      '',
-      'Metric,Value',
-      `Beneficiaries,${stats.total_beneficiaries}`,
-      `Milk Packs,${stats.total_milk_packs}`,
-      `Funds,${stats.total_funds}`,
-      `Records,${stats.total_records}`,
-      '',
-      'Center,Beneficiaries',
-      ...stats.top_centers.map(c => `${c.center},${c.beneficiaries}`),
-    ]
-    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `mfp-dashboard-${new Date().toISOString().slice(0, 10)}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
   return (
     <div className="dash-overview">
       <header className="dash-overview-header">
@@ -217,10 +193,6 @@ export function DashboardOverview({
             <span className="dash-pill">{centerFilter} only</span>
           )}
           <span className="dash-pill dash-pill-muted">{todayLabel}</span>
-          <button type="button" className="dash-btn-primary" onClick={exportSummary}>
-            <Download size={16} />
-            Export
-          </button>
         </div>
       </header>
 
