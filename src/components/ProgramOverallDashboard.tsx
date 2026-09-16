@@ -50,12 +50,18 @@ export function ProgramOverallDashboard({
   year,
   month,
   center,
+  areaLabel,
+  centerHref,
 }: {
   program: MonitoringProgramConfig
   stats: ProgramDashboardStats
   year?: number
   month?: number
   center?: string
+  /** Override first KPI / table column label (e.g. SDOs for SBFP). */
+  areaLabel?: string
+  /** Custom center open link; defaults to monitoring center path. */
+  centerHref?: (centerName: string) => string
 }) {
   const accent = program.accent
   const pct = progressPct(stats.deliveredPacks, stats.targetPacks)
@@ -73,11 +79,16 @@ export function ProgramOverallDashboard({
     year ? String(year) : 'All years',
     month ? PROGRAM_MONTHS.find(m => m.value === month)?.label : 'All months',
   ].join(' · ')
+  const areasLabel = areaLabel || (program.id === 'dswd' ? 'Provinces' : 'Areas')
+  const hrefFor = (c: string) =>
+    centerHref
+      ? centerHref(c)
+      : `${monitoringCenterPath(program.id, c)}${year ? `?year=${year}` : ''}`
 
   return (
     <div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.85rem', marginBottom: '1.25rem' }}>
-        <Kpi label={program.id === 'dswd' ? 'Provinces' : 'Areas'} value={formatNumber(stats.provinces)} icon={MapPin} color={accent} />
+        <Kpi label={areasLabel} value={formatNumber(stats.provinces)} icon={MapPin} color={accent} />
         <Kpi label="Municipalities" value={formatNumber(stats.municipalities)} icon={Building2} color="#0369a1" />
         <Kpi label="Beneficiaries" value={formatNumber(stats.beneficiaries)} icon={Users} color="#7c3aed" />
         <Kpi label="Target milk packs" value={formatNumber(stats.targetPacks)} icon={Package} color="#0f766e" />
@@ -123,7 +134,7 @@ export function ProgramOverallDashboard({
               return (
                 <div key={c.center}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginBottom: 3 }}>
-                    <Link href={`${monitoringCenterPath(program.id, c.center)}${year ? `?year=${year}` : ''}`} style={{ fontWeight: 700, color: 'var(--navy)' }}>
+                    <Link href={hrefFor(c.center)} style={{ fontWeight: 700, color: 'var(--navy)' }}>
                       {c.center}
                     </Link>
                     <span style={{ color: 'var(--gray-600)' }}>
@@ -168,7 +179,7 @@ export function ProgramOverallDashboard({
           <thead>
             <tr>
               <th>Center</th>
-              <th>{program.id === 'dswd' ? 'Provinces' : 'Areas'}</th>
+              <th>{areasLabel}</th>
               <th>Municipalities</th>
               <th>Beneficiaries</th>
               <th>Target packs</th>
@@ -190,10 +201,7 @@ export function ProgramOverallDashboard({
                   <td>{formatNumber(c.deliveredPacks)}</td>
                   <td>{p}%</td>
                   <td>
-                    <Link
-                      href={`${monitoringCenterPath(program.id, c.center)}${year ? `?year=${year}` : ''}`}
-                      style={{ fontWeight: 600, fontSize: '0.78rem' }}
-                    >
+                    <Link href={hrefFor(c.center)} style={{ fontWeight: 600, fontSize: '0.78rem' }}>
                       Open
                     </Link>
                   </td>

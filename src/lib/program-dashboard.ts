@@ -47,11 +47,11 @@ export type ProgramDashboardStats = {
   byMonth: ProgramDashMonthPoint[]
 }
 
-function emptyStatus(): ProgramDashStatus {
+export function emptyStatus(): ProgramDashStatus {
   return { prep: 0, ongoing: 0, awarded: 0, done: 0, failed: 0 }
 }
 
-function tallyStatus(status: string | null | undefined, acc: ProgramDashStatus) {
+export function tallyStatus(status: string | null | undefined, acc: ProgramDashStatus) {
   const st = (status || '').toUpperCase()
   if (st === 'FOR PREPARATION') acc.prep++
   else if (st.includes('ONGOING')) acc.ongoing++

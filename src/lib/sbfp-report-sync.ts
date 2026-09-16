@@ -39,6 +39,7 @@ export type SbfpReportSourceRow = SbfpRawMilkRow & {
   packs_delivered?: number | null
   status_of_payment?: string | null
   remarks?: string | null
+  supplier_id?: string | null
 }
 
 export function sbfpRowIncludedInReport(r: SbfpReportSourceRow): boolean {

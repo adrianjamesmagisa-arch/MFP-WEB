@@ -3,18 +3,19 @@
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
-  BarChart3, List, DollarSign, CheckSquare,
-  Building, ChevronRight, FileText, CalendarDays
+  LayoutDashboard, List, DollarSign, CheckSquare,
+  Building, ChevronRight, FileText, CalendarDays, BarChart3
 } from 'lucide-react'
 import { DEFAULT_SCHOOL_YEAR, parseSchoolYear, schoolYearLabel, FALLBACK_SCHOOL_YEARS } from '@/lib/sbfp-year'
 
 const CENTER_SHEETS = ['NHQ', 'UPLB', 'DMMMSU', 'CSU', 'MMSU', 'CLSU', 'LCSF', 'WVSU', 'USF', 'VSU', 'MLPC', 'CMU', 'USM']
 
 const mainItems = [
-  { href: '/sbfp/summary',    icon: BarChart3,    label: 'Summary' },
-  { href: '/sbfp/overall',    icon: List,         label: 'Overall' },
-  { href: '/sbfp/budget',     icon: DollarSign,   label: 'Budget Breakdown' },
-  { href: '/sbfp/activities', icon: CheckSquare,  label: 'Status of Activities' },
+  { href: '/sbfp',            icon: LayoutDashboard, label: 'Dashboard' },
+  { href: '/sbfp/summary',    icon: BarChart3,       label: 'Summary' },
+  { href: '/sbfp/overall',    icon: List,            label: 'Overall' },
+  { href: '/sbfp/budget',     icon: DollarSign,      label: 'Budget Breakdown' },
+  { href: '/sbfp/activities', icon: CheckSquare,     label: 'Status of Activities' },
 ]
 
 const reportItems = [
@@ -122,11 +123,14 @@ export function SbfpSubSidebar({
       <nav style={{ padding: '0.5rem 0' }}>
         {navMain.map(item => {
           const Icon = item.icon
-          const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+          const isActive =
+            item.href === '/sbfp'
+              ? pathname === '/sbfp'
+              : pathname === item.href || pathname.startsWith(item.href + '/')
           return (
             <Link
               key={item.href}
-              href={withSy(item.href)}
+              href={item.href === '/sbfp' ? '/sbfp' : withSy(item.href)}
               style={{
                 display: 'flex',
                 alignItems: 'center',

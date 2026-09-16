@@ -252,6 +252,12 @@ export default function SbfpSpreadsheetReport() {
       statusCounts[st] = (statusCounts[st] || 0) + 1
     })
 
+    const coopIds = new Set(
+      filteredRecords
+        .map(r => String(r.supplier_id || '').trim())
+        .filter(Boolean),
+    )
+
     const pctDelivered = totalPacks > 0 ? (totalDelivered / totalPacks) * 100 : 0
 
     return {
@@ -261,6 +267,7 @@ export default function SbfpSpreadsheetReport() {
       totalContractAmt,
       totalAmount,
       totalBeneficiaries,
+      totalCoops: coopIds.size,
       pctDelivered,
       statusCounts,
     }
@@ -275,6 +282,7 @@ export default function SbfpSpreadsheetReport() {
       contractAmt: number
       targetPacks: number
       deliveredPacks: number
+      coopIds: Set<string>
       forPrep: number
       ongoing: number
       awardedDelivery: number
@@ -292,6 +300,7 @@ export default function SbfpSpreadsheetReport() {
           contractAmt: 0,
           targetPacks: 0,
           deliveredPacks: 0,
+          coopIds: new Set(),
           forPrep: 0,
           ongoing: 0,
           awardedDelivery: 0,
@@ -306,6 +315,8 @@ export default function SbfpSpreadsheetReport() {
       const view = getViewForSource(r.id)
       entry.targetPacks += view?.packs_to_deliver ?? 0
       entry.deliveredPacks += view?.delivered_packs ?? 0
+      const coopId = String(r.supplier_id || '').trim()
+      if (coopId) entry.coopIds.add(coopId)
 
       const st = (r.procurement_status || '').toLowerCase()
       if (st === 'for preparation') entry.forPrep++
@@ -316,7 +327,9 @@ export default function SbfpSpreadsheetReport() {
       else entry.forPrep++
     })
 
-    return Array.from(map.values()).sort((a, b) => regionSortKey(a.region) - regionSortKey(b.region))
+    return Array.from(map.values())
+      .map(r => ({ ...r, coopCount: r.coopIds.size }))
+      .sort((a, b) => regionSortKey(a.region) - regionSortKey(b.region))
   }, [filteredRecords, getViewForSource])
 
   // Export to CSV Function
@@ -699,7 +712,44 @@ export default function SbfpSpreadsheetReport() {
           <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Beneficiaries</div>
           <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#7c3aed', marginTop: 2 }}>{stats.totalBeneficiaries.toLocaleString()}</div>
         </div>
+
+        <div style={{ background: '#ffffff', padding: '0.625rem 1rem', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+          <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Coops Participating</div>
+          <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#0f766e', marginTop: 2 }}>{stats.totalCoops.toLocaleString()}</div>
+        </div>
       </div>
+
+      {/* Per-region unique coop counts */}
+      {regionalSummary.length > 0 && (
+        <div className="no-print" style={{
+          padding: '0.65rem 1.5rem 0.85rem',
+          background: '#fff',
+          borderBottom: '1px solid #e2e8f0',
+        }}>
+          <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 8 }}>
+            Coops by region
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: '0.5rem' }}>
+            {regionalSummary.map(reg => (
+              <div
+                key={reg.region}
+                style={{
+                  background: '#f0fdfa',
+                  border: '1px solid #99f6e4',
+                  borderRadius: 8,
+                  padding: '0.5rem 0.65rem',
+                  textAlign: 'center',
+                }}
+                title={`${reg.coopCount} unique cooperative(s) linked to SDOs in Region ${reg.region}`}
+              >
+                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#0f766e' }}>Region {reg.region}</div>
+                <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#115e59', marginTop: 2 }}>{reg.coopCount}</div>
+                <div style={{ fontSize: '0.62rem', color: '#5eead4', fontWeight: 600 }}>coop{reg.coopCount === 1 ? '' : 's'}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {/* ?? Main Content Area ?? */}
       <div style={{ flex: 1, overflow: 'auto', padding: '1rem 1.5rem' }}>
         
@@ -864,6 +914,7 @@ export default function SbfpSpreadsheetReport() {
                       <tr style={{ background: '#e2e8f0', color: '#1e293b' }}>
                         <th style={{ border: '1px solid #cbd5e1', padding: '8px 10px', textAlign: 'center', width: 90 }}>Region</th>
                         <th style={{ border: '1px solid #cbd5e1', padding: '8px 10px', textAlign: 'right', width: 90 }}>No. of SDOs</th>
+                        <th style={{ border: '1px solid #cbd5e1', padding: '8px 10px', textAlign: 'right', width: 90 }}>Coops</th>
                         <th style={{ border: '1px solid #cbd5e1', padding: '8px 10px', textAlign: 'right' }}>Beneficiaries</th>
                         <th style={{ border: '1px solid #cbd5e1', padding: '8px 10px', textAlign: 'right' }}>Contract Amt ({PESO})</th>
                         <th style={{ border: '1px solid #cbd5e1', padding: '8px 10px', textAlign: 'right' }}>Packs to Deliver</th>
@@ -883,6 +934,7 @@ export default function SbfpSpreadsheetReport() {
                           <tr key={reg.region} style={{ background: i % 2 === 0 ? '#fff' : '#f8fafc' }}>
                             <td style={{ border: '1px solid #cbd5e1', padding: '6px 10px', textAlign: 'center', fontWeight: 800 }}>{reg.region}</td>
                             <td style={{ border: '1px solid #cbd5e1', padding: '6px 10px', textAlign: 'right', fontWeight: 600 }}>{reg.sdoCount}</td>
+                            <td style={{ border: '1px solid #cbd5e1', padding: '6px 10px', textAlign: 'right', fontWeight: 700, color: '#0f766e' }}>{reg.coopCount || '—'}</td>
                             <td style={{ border: '1px solid #cbd5e1', padding: '6px 10px', textAlign: 'right' }}>{reg.beneficiaries.toLocaleString()}</td>
                             <td style={{ border: '1px solid #cbd5e1', padding: '6px 10px', textAlign: 'right' }}>{fmtPeso(reg.contractAmt)}</td>
                             <td style={{ border: '1px solid #cbd5e1', padding: '6px 10px', textAlign: 'right', fontWeight: 700, color: '#1e40af' }}>{reg.targetPacks.toLocaleString()}</td>
@@ -901,6 +953,7 @@ export default function SbfpSpreadsheetReport() {
                       <tr style={{ background: '#dbeafe', color: '#1e3a8a', fontWeight: 800 }}>
                         <td style={{ border: '1px solid #93c5fd', padding: '8px 10px', textAlign: 'center' }}>TOTAL</td>
                         <td style={{ border: '1px solid #93c5fd', padding: '8px 10px', textAlign: 'right' }}>{stats.count}</td>
+                        <td style={{ border: '1px solid #93c5fd', padding: '8px 10px', textAlign: 'right', color: '#0f766e' }}>{stats.totalCoops}</td>
                         <td style={{ border: '1px solid #93c5fd', padding: '8px 10px', textAlign: 'right' }}>{stats.totalBeneficiaries.toLocaleString()}</td>
                         <td style={{ border: '1px solid #93c5fd', padding: '8px 10px', textAlign: 'right' }}>{fmtPeso(stats.totalContractAmt)}</td>
                         <td style={{ border: '1px solid #93c5fd', padding: '8px 10px', textAlign: 'right' }}>{stats.totalPacks.toLocaleString()}</td>
