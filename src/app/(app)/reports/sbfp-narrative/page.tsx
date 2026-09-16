@@ -15,6 +15,7 @@ import {
   sbfpRowIncludedInReport,
   type SbfpReportSourceRow,
 } from '@/lib/sbfp-report-sync'
+import { normalizeSdoName } from '@/lib/sbfp-dropoff-sync'
 
 // Philippine regional display order
 const REGION_ORDER: Record<string, number> = {
@@ -258,10 +259,17 @@ export default function SbfpSpreadsheetReport() {
         .filter(Boolean),
     )
 
+    // Unique geographic SDOs — PM/SM variants of the same division count as one.
+    const uniqueSdos = new Set(
+      filteredRecords
+        .map(r => normalizeSdoName(String(r.sdo || '')))
+        .filter(Boolean),
+    )
+
     const pctDelivered = totalPacks > 0 ? (totalDelivered / totalPacks) * 100 : 0
 
     return {
-      count: filteredRecords.length,
+      count: uniqueSdos.size,
       totalPacks,
       totalDelivered,
       totalContractAmt,
@@ -278,6 +286,7 @@ export default function SbfpSpreadsheetReport() {
     const map = new Map<string, {
       region: string
       sdoCount: number
+      sdoKeys: Set<string>
       beneficiaries: number
       contractAmt: number
       targetPacks: number
@@ -296,6 +305,7 @@ export default function SbfpSpreadsheetReport() {
         map.set(reg, {
           region: reg,
           sdoCount: 0,
+          sdoKeys: new Set(),
           beneficiaries: 0,
           contractAmt: 0,
           targetPacks: 0,
@@ -309,7 +319,11 @@ export default function SbfpSpreadsheetReport() {
         })
       }
       const entry = map.get(reg)!
-      entry.sdoCount++
+      const sdoKey = normalizeSdoName(String(r.sdo || ''))
+      if (sdoKey && !entry.sdoKeys.has(sdoKey)) {
+        entry.sdoKeys.add(sdoKey)
+        entry.sdoCount++
+      }
       entry.beneficiaries += Number(r.beneficiaries_pm) || 0
       entry.contractAmt += Number(r.contract_amount) || 0
       const view = getViewForSource(r.id)

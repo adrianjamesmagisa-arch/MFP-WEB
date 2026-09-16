@@ -5,6 +5,7 @@ import { SpreadsheetStyle } from '@/components/reports/spreadsheet/SpreadsheetSt
 import { SpreadsheetTabs, TabType } from '@/components/reports/spreadsheet/SpreadsheetTabs'
 import { getAvg, valOrDash, curOrDash } from '@/components/reports/spreadsheet/SpreadsheetUtils'
 import { dbYearToSchoolYear } from '@/lib/sbfp-year'
+import { baseSdoName, normalizeSdoName } from '@/lib/sbfp-dropoff-sync'
 
 interface MfpRow {
   year: number
@@ -42,7 +43,7 @@ export function SummaryDepEdClient({
 }) {
   const [activeTab, setActiveTab] = useState<TabType>('overview')
 
-  const { parameters, regions, provinces, sdos, coops, coopCenters } = useMemo(() => {
+  const { parameters, regions, provinces, sdos, sdoLabels, coops, coopCenters } = useMemo(() => {
   // Derive matrices
   // 1. Parameters
   const parameters = {
@@ -72,8 +73,9 @@ export function SummaryDepEdClient({
   // 3. Province Matrix
   const provinces: Record<string, Record<number, number>> = {}
 
-  // 4. SDO Matrix
+  // 4. SDO Matrix (key = normalized geographic name; label for display)
   const sdos: Record<string, Record<number, number>> = {}
+  const sdoLabels: Record<string, string> = {}
 
   // 5. Coops Matrix + centers each coop served
   const coops: Record<string, Record<number, boolean>> = {}
@@ -110,7 +112,9 @@ export function SummaryDepEdClient({
     if (r.mode_of_procurement) parameters.procurement[y].add(r.mode_of_procurement)
     if (r.region) parameters.regions[y].add(r.region)
     if (r.province) parameters.provinces[y].add(r.province)
-    if (r.division) parameters.sdos[y].add(r.division)
+    const sdoKey = normalizeSdoName(r.division || '')
+    const sdoLabel = baseSdoName(r.division || '') || r.division
+    if (sdoKey) parameters.sdos[y].add(sdoKey)
     if (r.supplier_id) parameters.coops[y].add(r.supplier_id)
 
     if (r.milk_type === 'PM') {
@@ -146,10 +150,13 @@ export function SummaryDepEdClient({
       provinces[r.province][y] = (provinces[r.province][y] || 0) + (r.beneficiaries || 0)
     }
 
-    // SDO Matrix
-    if (r.division) {
-      if (!sdos[r.division]) sdos[r.division] = {}
-      sdos[r.division][y] = (sdos[r.division][y] || 0) + (r.beneficiaries || 0)
+    // SDO Matrix — merge PM/SM name variants under one geographic label
+    if (sdoKey) {
+      if (!sdos[sdoKey]) sdos[sdoKey] = {}
+      if (!sdoLabels[sdoKey] || sdoLabel.length > sdoLabels[sdoKey].length) {
+        sdoLabels[sdoKey] = sdoLabel
+      }
+      sdos[sdoKey][y] = (sdos[sdoKey][y] || 0) + (r.beneficiaries || 0)
     }
 
     // Coops Matrix + centers
@@ -162,7 +169,7 @@ export function SummaryDepEdClient({
     }
   })
 
-  return { parameters, regions, provinces, sdos, coops, coopCenters }
+  return { parameters, regions, provinces, sdos, sdoLabels, coops, coopCenters }
   }, [rows, years])
 
   const handlePrint = (tab: TabType) => {
@@ -368,7 +375,9 @@ export function SummaryDepEdClient({
   }
 
   const renderSDO = () => {
-    const sdoKeys = Object.keys(sdos).sort()
+    const sdoKeys = Object.keys(sdos).sort((a, b) =>
+      (sdoLabels[a] || a).localeCompare(sdoLabels[b] || b),
+    )
     return (
       <div className="report-table-container print-section">
         <div className="print-header">
@@ -389,7 +398,7 @@ export function SummaryDepEdClient({
             </tr>
             {sdoKeys.map(s => (
               <tr key={s}>
-                <td>{s}</td>
+                <td>{sdoLabels[s] || s}</td>
                 {years.map(y => <td key={y} className="right-text">{valOrDash(sdos[s][y])}</td>)}
               </tr>
             ))}

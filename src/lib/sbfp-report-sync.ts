@@ -158,8 +158,14 @@ export function monthFractionInDeliveredRange(
 }
 
 /**
- * Delivered packs between two dates (inclusive): sums each overlapping month’s packs,
- * prorating when the range covers only part of a month.
+ * Delivered packs between two dates (inclusive).
+ *
+ * When “Delivered as of” snapshots exist: attribute each snapshot’s packs to its
+ * actual date (cumulative increment, or the column total when non-monotonic) and
+ * count the full amount if that date falls inside the range — no day-of-month proration.
+ *
+ * Without snapshots: sum full calendar-month packs for every month that overlaps
+ * the range (monthly map / delivery-start fallback via packsForMonth).
  */
 export function deliveredPacksInDateRange(
   row: SbfpReportSourceRow,
@@ -170,7 +176,28 @@ export function deliveredPacksInDateRange(
   const rangeStart = parseSnapshotDate(fromIso)
   const rangeEnd = parseSnapshotDate(toIso)
   if (!rangeStart || !rangeEnd || !Number.isFinite(dbYear)) return 0
-  if (rangeStart.getTime() > rangeEnd.getTime()) return 0
+  const fromMs = startOfDay(rangeStart).getTime()
+  const toMs = startOfDay(rangeEnd).getTime()
+  if (fromMs > toMs) return 0
+
+  const snaps = Array.isArray(row.delivery_snapshots) ? row.delivery_snapshots : []
+  const dated = snaps
+    .map(s => ({ date: parseSnapshotDate(s.date), packs: Number(s.packs) || 0 }))
+    .filter((s): s is { date: Date; packs: number } => s.date != null)
+    .sort((a, b) => a.date.getTime() - b.date.getTime())
+
+  if (dated.length > 0) {
+    let sum = 0
+    let maxBefore = 0
+    for (const s of dated) {
+      const dayMs = startOfDay(s.date).getTime()
+      const increment =
+        s.packs >= maxBefore ? Math.max(0, s.packs - maxBefore) : Math.max(0, s.packs)
+      if (s.packs >= maxBefore) maxBefore = s.packs
+      if (dayMs >= fromMs && dayMs <= toMs) sum += increment
+    }
+    return sum
+  }
 
   const monthOpts = reportPacksMonthOpts(row, dbYear)
   let sum = 0
@@ -179,10 +206,9 @@ export function deliveredPacksInDateRange(
     if (frac <= 0) continue
     const monthPacks = packsForMonth(row, m, monthOpts)
     if (monthPacks <= 0) continue
-    sum += frac >= 1 ? monthPacks : Math.round(monthPacks * frac)
+    // No dated snapshots: include the whole month whenever it overlaps the range.
+    sum += monthPacks
   }
-  // Do not fall back to cumulative-through-end-date — that pulled August (and earlier)
-  // totals into a September-only range when rows lack snapshot columns.
   return sum
 }
 

@@ -1,5 +1,6 @@
 import { PCC_CENTERS } from '@/lib/types'
 import { excludeAuxSbfp } from '@/lib/sbfp-aux'
+import { normalizeSdoName } from '@/lib/sbfp-dropoff-sync'
 import { packsForMonth, totalPacksDelivered, type SbfpRawMilkRow } from '@/lib/sbfp-raw-milk'
 import {
   emptyStatus,
@@ -113,6 +114,8 @@ export async function loadSbfpDashboardStats(
   }
 
   const status: ProgramDashStatus = emptyStatus()
+  /** Unique geographic SDOs per center — "Nueva Ecija (PM)" + "(SM)" count as one. */
+  const sdoSeenByCenter = new Map<string, Set<string>>()
   for (const r of sdos) {
     const key = String(r.center || '').trim()
     if (!key) continue
@@ -128,7 +131,18 @@ export async function loadSbfpDashboardStats(
       })
     }
     const row = byCenter.get(key)!
-    row.provinces++ // SDOs / divisions
+    const sdoKey = normalizeSdoName(String(r.sdo || ''))
+    if (sdoKey) {
+      let seen = sdoSeenByCenter.get(key)
+      if (!seen) {
+        seen = new Set()
+        sdoSeenByCenter.set(key, seen)
+      }
+      if (!seen.has(sdoKey)) {
+        seen.add(sdoKey)
+        row.provinces++
+      }
+    }
     row.targetPacks += Number(r.packs_to_deliver) || 0
     row.deliveredPacks += deliveredForFilter(r, filters.month, filters.year || Number(r.year) || undefined)
     row.amount += Number(r.amount || r.contract_amount) || 0
@@ -178,6 +192,14 @@ export async function loadSbfpDashboardStats(
     filters.center ? r.center === filters.center : true,
   )
 
+  // Top KPI: unique geographic SDOs across included centers (PM/SM = one).
+  const uniqueSdos = new Set<string>()
+  for (const r of rows) {
+    const seen = sdoSeenByCenter.get(r.center)
+    if (!seen) continue
+    for (const k of seen) uniqueSdos.add(k)
+  }
+
   const byMonth: ProgramDashMonthPoint[] = Array.from({ length: 12 }, (_, i) => ({
     month: i + 1,
     deliveredPacks: 0,
@@ -192,7 +214,7 @@ export async function loadSbfpDashboardStats(
   }
 
   return {
-    provinces: rows.reduce((s, r) => s + r.provinces, 0),
+    provinces: uniqueSdos.size,
     municipalities: rows.reduce((s, r) => s + r.municipalities, 0),
     beneficiaries: rows.reduce((s, r) => s + r.beneficiaries, 0),
     targetPacks: rows.reduce((s, r) => s + r.targetPacks, 0),
