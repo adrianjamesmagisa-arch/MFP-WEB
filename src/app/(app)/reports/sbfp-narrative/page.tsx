@@ -719,35 +719,57 @@ export default function SbfpSpreadsheetReport() {
         </div>
       </div>
 
-      {/* Per-region unique coop counts */}
+      {/* Compact per-region unique coop counts */}
       {regionalSummary.length > 0 && (
-        <div className="no-print" style={{
-          padding: '0.65rem 1.5rem 0.85rem',
-          background: '#fff',
-          borderBottom: '1px solid #e2e8f0',
-        }}>
-          <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 8 }}>
+        <div
+          className="no-print"
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: '0.35rem 0.4rem',
+            padding: '0.4rem 1.5rem 0.55rem',
+            background: '#fff',
+            borderBottom: '1px solid #e2e8f0',
+          }}
+        >
+          <span
+            style={{
+              fontSize: '0.65rem',
+              fontWeight: 700,
+              color: '#64748b',
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+              marginRight: 4,
+            }}
+          >
             Coops by region
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: '0.5rem' }}>
-            {regionalSummary.map(reg => (
-              <div
+          </span>
+          {regionalSummary.map(reg => {
+            const active = reg.coopCount > 0
+            return (
+              <span
                 key={reg.region}
+                title={`${reg.coopCount} unique cooperative(s) in Region ${reg.region}`}
                 style={{
-                  background: '#f0fdfa',
-                  border: '1px solid #99f6e4',
-                  borderRadius: 8,
-                  padding: '0.5rem 0.65rem',
-                  textAlign: 'center',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  padding: '0.15rem 0.45rem',
+                  borderRadius: 999,
+                  fontSize: '0.68rem',
+                  fontWeight: 700,
+                  lineHeight: 1.2,
+                  background: active ? '#ccfbf1' : '#f8fafc',
+                  border: `1px solid ${active ? '#5eead4' : '#e2e8f0'}`,
+                  color: active ? '#0f766e' : '#94a3b8',
                 }}
-                title={`${reg.coopCount} unique cooperative(s) linked to SDOs in Region ${reg.region}`}
               >
-                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#0f766e' }}>Region {reg.region}</div>
-                <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#115e59', marginTop: 2 }}>{reg.coopCount}</div>
-                <div style={{ fontSize: '0.62rem', color: '#5eead4', fontWeight: 600 }}>coop{reg.coopCount === 1 ? '' : 's'}</div>
-              </div>
-            ))}
-          </div>
+                {reg.region}
+                <span style={{ fontWeight: 800, color: active ? '#115e59' : '#cbd5e1' }}>{reg.coopCount}</span>
+              </span>
+            )
+          })}
         </div>
       )}
       {/* ?? Main Content Area ?? */}
