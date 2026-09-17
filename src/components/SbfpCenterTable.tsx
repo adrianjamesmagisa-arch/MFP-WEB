@@ -940,7 +940,16 @@ export function SbfpCenterTable({
   return (
     <>
       {allowAdd && editable && center !== 'OVERALL' && dbYear && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            alignItems: 'center',
+            gap: '0.5rem',
+            marginBottom: '0.5rem',
+            flexWrap: 'wrap',
+          }}
+        >
           <button
             type="button"
             onClick={() => {
@@ -948,10 +957,11 @@ export function SbfpCenterTable({
               if (el && typeof el.showPicker === 'function') el.showPicker()
               else el?.click()
             }}
-            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md text-sm font-medium border bg-background hover:bg-muted"
+            className="btn btn-outline"
+            style={{ height: 36, padding: '0 0.85rem', lineHeight: 1 }}
           >
-            <CalendarPlus size={14} />
-            Add delivered-as-of date
+            <CalendarPlus size={15} style={{ flexShrink: 0 }} />
+            <span>Add delivered-as-of date</span>
           </button>
           <input
             ref={addSnapRef}
@@ -970,10 +980,11 @@ export function SbfpCenterTable({
             type="button"
             onClick={handleAdd}
             disabled={adding}
-            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            className="btn btn-gold"
+            style={{ height: 36, padding: '0 0.85rem', lineHeight: 1, opacity: adding ? 0.6 : 1 }}
           >
-            <Plus size={14} />
-            {adding ? 'Adding…' : 'Add SDO'}
+            <Plus size={15} style={{ flexShrink: 0 }} />
+            <span>{adding ? 'Adding…' : 'Add SDO'}</span>
           </button>
         </div>
       )}

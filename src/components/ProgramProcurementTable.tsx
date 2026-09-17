@@ -401,15 +401,16 @@ export function ProgramProcurementTable({
         >
           <button
             type="button"
-            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md text-sm font-medium border bg-background hover:bg-muted"
+            className="btn btn-outline"
+            style={{ height: 36, padding: '0 0.85rem', lineHeight: 1 }}
             onClick={() => {
               const el = addSnapRef.current
               if (el && typeof el.showPicker === 'function') el.showPicker()
               else el?.click()
             }}
           >
-            <CalendarPlus size={14} />
-            Add delivered-as-of date
+            <CalendarPlus size={15} style={{ flexShrink: 0 }} />
+            <span>Add delivered-as-of date</span>
           </button>
           <input
             ref={addSnapRef}
@@ -426,12 +427,13 @@ export function ProgramProcurementTable({
           />
           <button
             type="button"
-            className="btn btn-outline"
+            className="btn btn-gold"
             onClick={addRow}
             disabled={adding}
-            style={{ fontSize: '0.8rem' }}
+            style={{ height: 36, padding: '0 0.85rem', lineHeight: 1, fontSize: '0.875rem', opacity: adding ? 0.6 : 1 }}
           >
-            <Plus size={14} /> {adding ? 'Adding…' : `Add ${areaColumnLabel.toLowerCase()}`}
+            <Plus size={15} style={{ flexShrink: 0 }} />
+            <span>{adding ? 'Adding…' : `Add ${areaColumnLabel.toLowerCase()}`}</span>
           </button>
         </div>
       )}
