@@ -52,6 +52,7 @@ export function SbfpCenterWorkspace({
   const sy = parseSchoolYear(searchParams.get('sy'), schoolYears)
   const year = schoolYearToDbYear(sy)
   const editable = userRole !== 'viewer'
+  const isEncoder = userRole === 'encoder'
 
   // Nueva Ecija (PM)+(SM) count as one geographic SDO
   const total = new Set(records.map(r => normalizeSdoName(r.sdo || '')).filter(Boolean)).size
@@ -249,21 +250,25 @@ export function SbfpCenterWorkspace({
         />
       </section>
 
-      <section className="flex flex-col gap-2">
-        <h2 className="text-base font-semibold">2. Center Budget (A–F)</h2>
-        <SbfpCenterBudgetForm center={center} year={year} initial={budget} editable={editable} />
-      </section>
+      {!isEncoder && (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-base font-semibold">2. Center Budget (A–F)</h2>
+          <SbfpCenterBudgetForm center={center} year={year} initial={budget} editable={editable} />
+        </section>
+      )}
 
-      <section className="flex flex-col gap-2">
-        <h2 className="text-base font-semibold">3. Milk Capacity (for Summary)</h2>
-        <SbfpCenterCapacityForm
-          center={center}
-          year={year}
-          initial={capacity}
-          packsToDeliverSum={totalPacks}
-          editable={editable}
-        />
-      </section>
+      {!isEncoder && (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-base font-semibold">3. Milk Capacity (for Summary)</h2>
+          <SbfpCenterCapacityForm
+            center={center}
+            year={year}
+            initial={capacity}
+            packsToDeliverSum={totalPacks}
+            editable={editable}
+          />
+        </section>
+      )}
     </div>
   )
 }
