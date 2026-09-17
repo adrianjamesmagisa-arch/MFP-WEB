@@ -9,7 +9,7 @@ import {
   SBFP_RAW_MILK_MONTHS,
   readMonthlyMap,
   packsForMonth,
-  totalPacksDelivered,
+  packsDeliveredFromTracking,
   incomeForMonth,
   sumRowIncome,
   rawMilkUtilizedLiters,
@@ -570,10 +570,12 @@ function SnapshotCell({
 // Main table
 // ─────────────────────────────────────────────
 export function SbfpCenterTable({
-  center, initialRecords, userRole, year, allowAdd = false,
+  center, initialRecords, onRecordsChange, userRole, year, allowAdd = false,
 }: {
   center: string
   initialRecords: any[]
+  /** Keep parent KPI cards / drop-off SDO filter in sync without page refresh. */
+  onRecordsChange?: (rows: any[]) => void
   userRole?: string | null
   year?: number
   allowAdd?: boolean
@@ -597,6 +599,9 @@ export function SbfpCenterTable({
   }
 
   useEffect(() => { setRows(initialRecords) }, [initialRecords])
+  useEffect(() => {
+    onRecordsChange?.(rows)
+  }, [rows, onRecordsChange])
   useEffect(() => {
     supabase
       .from('cooperatives')
@@ -653,7 +658,8 @@ export function SbfpCenterTable({
     setUndoStack(p => [...p, { id, field, oldV, newV }])
     setRedoStack([])
     if (nextRow && (field === 'monthly_packs_delivered' || field === 'delivery_snapshots')) {
-      const total = totalPacksDelivered(nextRow)
+      // Ignore legacy packs_delivered so clearing/deleting snapshots actually zeros the total.
+      const total = packsDeliveredFromTracking(nextRow)
       if (total !== (Number(nextRow.packs_delivered) || 0)) {
         nextRow = { ...nextRow, packs_delivered: total }
         setRows(p => p.map(r => r.id === id ? { ...r, packs_delivered: total } : r))
@@ -826,7 +832,7 @@ export function SbfpCenterTable({
       if (!oldSnaps.some((s: any) => s.date === date)) return
       const newSnaps = oldSnaps.filter((s: any) => s.date !== date)
       const nextRow = { ...r, delivery_snapshots: newSnaps }
-      const total = totalPacksDelivered(nextRow)
+      const total = packsDeliveredFromTracking(nextRow)
       const { error } = await supabase
         .from('sbfp_data')
         .update({ delivery_snapshots: newSnaps, packs_delivered: total })

@@ -18,11 +18,11 @@ import {
   incomeForMonth,
   monthKeyFromDateValue,
   packsForMonth,
+  packsDeliveredFromTracking,
   parseSnapshotDate,
   rawMilkUtilizedLiters,
   readMonthlyMap,
   sumRowIncome,
-  totalPacksDelivered,
   SBFP_RAW_MILK_MONTHS,
 } from '@/lib/sbfp-raw-milk'
 import { useAsyncTask } from '@/components/loading/AsyncFeedback'
@@ -198,7 +198,8 @@ export function ProgramProcurementTable({
       nextRow &&
       (field === 'delivery_snapshots' || field === 'monthly_packs_delivered')
     ) {
-      const total = totalPacksDelivered(rawMilkRow(nextRow))
+      // Ignore legacy packs_delivered so clearing/deleting snapshots actually zeros the total.
+      const total = packsDeliveredFromTracking(rawMilkRow(nextRow))
       if (total !== (Number(nextRow.packs_delivered) || 0)) {
         nextRow = { ...nextRow, packs_delivered: total }
         setRows(p => p.map(r => (r.id === id ? { ...r, packs_delivered: total } : r)))
@@ -290,7 +291,7 @@ export function ProgramProcurementTable({
             if (!oldSnaps.some(s => s.date === date)) return
             const newSnaps = oldSnaps.filter(s => s.date !== date)
             const nextRow = { ...r, delivery_snapshots: newSnaps }
-            const total = totalPacksDelivered(rawMilkRow(nextRow))
+            const total = packsDeliveredFromTracking(rawMilkRow(nextRow))
             const { error } = await supabase
               .from(PROC_TABLE)
               .update({ delivery_snapshots: newSnaps, packs_delivered: total })

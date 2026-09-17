@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { SbfpCenterTable } from '@/components/SbfpCenterTable'
 import { SbfpCenterBudgetForm, type BudgetRow } from '@/components/SbfpCenterBudgetForm'
@@ -10,7 +11,10 @@ import { SbfpStaffHiringTable, type HiringRow } from '@/components/SbfpStaffHiri
 import { SbfpDropoffTable, type DropoffRow } from '@/components/SbfpDropoffTable'
 import { SbfpCreateSchoolYearButton } from '@/components/SbfpCreateSchoolYearButton'
 import { parseSchoolYear, schoolYearLabel, schoolYearToDbYear } from '@/lib/sbfp-year'
-import { totalPacksDelivered } from '@/lib/sbfp-raw-milk'
+import {
+  deliveryAccomplishmentPct,
+  packsForDeliveryProgress,
+} from '@/lib/sbfp-raw-milk'
 import { normalizeSdoName } from '@/lib/sbfp-dropoff-sync'
 
 export function SbfpCenterWorkspace({
@@ -54,11 +58,26 @@ export function SbfpCenterWorkspace({
   const editable = userRole !== 'viewer'
   const isEncoder = userRole === 'encoder'
 
+  // Live copy so KPI cards + drop-off SDO filter update when procurement adds/edits/deletes
+  // without a full page refresh (server `records` only refresh on navigation).
+  const [liveRecords, setLiveRecords] = useState(records)
+  useEffect(() => {
+    setLiveRecords(records)
+  }, [records])
+
   // Nueva Ecija (PM)+(SM) count as one geographic SDO
-  const total = new Set(records.map(r => normalizeSdoName(r.sdo || '')).filter(Boolean)).size
-  const totalPacks = records.reduce((s, r) => s + (r.packs_to_deliver || 0), 0)
-  const totalDelivered = records.reduce((s, r) => s + totalPacksDelivered(r), 0)
-  const statCounts = records.reduce((acc, r) => {
+  const total = new Set(liveRecords.map(r => normalizeSdoName(r.sdo || '')).filter(Boolean)).size
+  // Same rules as PIMD accomplishment: skip Failed + rows unchecked "In Report?"
+  const reportable = liveRecords.filter(r => {
+    const st = String(r.procurement_status || '').toUpperCase()
+    if (st === 'FAILED') return false
+    if (r.include_in_report === false) return false
+    return true
+  })
+  const totalPacks = reportable.reduce((s, r) => s + (Number(r.packs_to_deliver) || 0), 0)
+  const totalDelivered = reportable.reduce((s, r) => s + packsForDeliveryProgress(r), 0)
+  const deliveryPct = deliveryAccomplishmentPct(totalDelivered, totalPacks)
+  const statCounts = liveRecords.reduce((acc, r) => {
     const st = (r.procurement_status || '').toUpperCase()
     if (st === 'FOR PREPARATION') acc.prep++
     else if (st.includes('ONGOING')) acc.ongoing++
@@ -139,7 +158,7 @@ export function SbfpCenterWorkspace({
             <div className="text-xs text-red-600 mt-1">Failed</div>
           </div>
           <div className="rounded-lg border bg-card p-3 text-center">
-            <div className="text-lg font-bold">{totalPacks ? `${Math.round((totalDelivered / totalPacks) * 100)}%` : '0%'}</div>
+            <div className="text-lg font-bold">{deliveryPct.toFixed(1)}%</div>
             <div className="text-xs text-muted-foreground mt-1">Delivery Progress</div>
           </div>
         </div>
@@ -156,6 +175,7 @@ export function SbfpCenterWorkspace({
           center={center}
           year={year}
           initialRecords={records}
+          onRecordsChange={setLiveRecords}
           userRole={userRole}
           allowAdd
         />
@@ -190,7 +210,7 @@ export function SbfpCenterWorkspace({
             <SbfpDropoffTable
               center={center}
               year={year}
-              sdoOptions={records.map((r: any) => ({
+              sdoOptions={liveRecords.map((r: any) => ({
                 id: r.id,
                 sdo: r.sdo,
                 region: r.region,

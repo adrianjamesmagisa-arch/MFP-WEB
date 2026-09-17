@@ -172,14 +172,47 @@ export function incrementFromSnapshots(
   return maxInMonth
 }
 
-/** Best available total packs delivered (monthly sum, latest snapshot, or legacy). */
-export function totalPacksDelivered(row: SbfpRawMilkRow): number {
+/** Total from monthly columns + delivered-as-of snapshots only (ignores legacy packs_delivered). */
+export function packsDeliveredFromTracking(row: SbfpRawMilkRow): number {
   const monthly = readMonthlyMap(row.monthly_packs_delivered)
   const monthlySum = Object.values(monthly).reduce((s, n) => s + (Number(n) || 0), 0)
   const snaps = Array.isArray(row.delivery_snapshots) ? row.delivery_snapshots : []
   const latestSnap = snaps.reduce((best, s) => Math.max(best, Number(s?.packs) || 0), 0)
+  return Math.max(monthlySum, latestSnap)
+}
+
+/**
+ * Best available total packs delivered (monthly sum, latest snapshot, or legacy).
+ * Use packsDeliveredFromTracking when rewriting packs_delivered after CRUD — otherwise
+ * deleting snapshots still Math.max() with the old legacy total and the value sticks.
+ */
+export function totalPacksDelivered(row: SbfpRawMilkRow): number {
+  const tracked = packsDeliveredFromTracking(row)
   const legacy = Number(row.packs_delivered) || 0
-  return Math.max(monthlySum, latestSnap, legacy)
+  return Math.max(tracked, legacy)
+}
+
+/**
+ * Packs that count toward center Delivery Progress / PIMD-style accomplishment.
+ * Prefers dated evidence (monthly columns or “delivered as of” snapshots).
+ * Bare legacy `packs_delivered` only counts when status is Completed/Done — so a stray
+ * Ongoing total left after delete-testing cannot inflate % above PIMD.
+ */
+export function packsForDeliveryProgress(
+  row: SbfpRawMilkRow & { procurement_status?: string | null },
+): number {
+  const tracked = packsDeliveredFromTracking(row)
+  if (tracked > 0) return tracked
+  const st = String(row.procurement_status || '').toUpperCase()
+  if (st === 'DONE' || st === 'COMPLETED') {
+    return Number(row.packs_delivered) || 0
+  }
+  return 0
+}
+
+/** One-decimal accomplishment %, capped at 100 — same formula as PIMD factsheet. */
+export function deliveryAccomplishmentPct(delivered: number, target: number): number {
+  return target > 0 ? Math.min(Math.round((delivered / target) * 1000) / 10, 100) : 0
 }
 
 /**
