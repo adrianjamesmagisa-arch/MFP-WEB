@@ -7,8 +7,6 @@ import type { SbfpDropoffPoint } from '@/lib/types'
 import {
   resolveDropoffFeedingDays,
   parseFeedingDaysFromText,
-  normalizeSdoName,
-  baseSdoName,
   composeSdoWithMilkType,
 } from '@/lib/sbfp-dropoff-sync'
 import { calcMilkFormulations, litersPerPackForMilkType } from '@/lib/mfp-formulas'
@@ -217,45 +215,21 @@ export function SbfpDropoffTable({
   useEffect(() => { setRows(initialRows || []) }, [initialRows])
 
   const sdoSelectOptions = useMemo(() => {
-    // Count how many variants each base SDO name has
-    const byBase = new Map<string, SdoOption[]>()
-    for (const o of sdoOptions) {
-      const key = normalizeSdoName(o.sdo)
-      if (!key) continue
-      if (!byBase.has(key)) byBase.set(key, [])
-      byBase.get(key)!.push(o)
-    }
-
-    const result: (SdoOption & { displayLabel: string; variantIds: string[] })[]=  []
-    for (const variants of byBase.values()) {
-      for (const v of variants) {
-        // Always show milk-type suffix (Cagayan - SM) so drop-offs match procurement labels.
-        const label =
-          composeSdoWithMilkType(v.sdo, v.milk_type) ||
-          v.sdo ||
-          ''
-        result.push({
-          ...v,
-          displayLabel: label,
-          variantIds: variants.map(x => x.id),
-        })
-      }
-    }
-    return result.sort((a, b) => a.displayLabel.localeCompare(b.displayLabel))
+    return sdoOptions
+      .map(o => ({
+        ...o,
+        displayLabel:
+          composeSdoWithMilkType(o.sdo, o.milk_type) || o.sdo || '',
+      }))
+      .filter(o => o.displayLabel)
+      .sort((a, b) => a.displayLabel.localeCompare(b.displayLabel))
   }, [sdoOptions])
 
   const visible = useMemo(() => {
     if (filterSdo === 'ALL') return rows
-    const opt = sdoSelectOptions.find(o => o.id === filterSdo)
-    if (opt) {
-      const base = normalizeSdoName(baseSdoName(opt.displayLabel) || opt.displayLabel)
-      return rows.filter(r =>
-        r.sbfp_data_id === opt.id ||
-        normalizeSdoName(r.sdo) === base,
-      )
-    }
+    // Strict match on procurement row id so PM and SM of the same SDO stay separate.
     return rows.filter(r => r.sbfp_data_id === filterSdo)
-  }, [rows, filterSdo, sdoSelectOptions])
+  }, [rows, filterSdo])
 
   const syncRow = (row: DropoffRow) => {
     // Background sync — do not block the encoder
@@ -270,17 +244,15 @@ export function SbfpDropoffTable({
 
     let patch: Partial<DropoffRow> = { [field]: value }
     if (field === 'sbfp_data_id') {
-      const opt = sdoSelectOptions.find(o =>
-        o.id === value || ((o as any).variantIds || []).includes(value),
-      )
+      const opt = sdoSelectOptions.find(o => o.id === value)
       const inferredDays =
         (opt?.feeding_days && opt.feeding_days > 0 ? opt.feeding_days : null) ||
         parseFeedingDaysFromText(opt?.sdo, opt?.remarks) ||
         0
-      // Store geographic SDO only — milk type lives on procurement / masterlist
+      // Keep full procurement label (… - PM / SM) so rows stay tied to the correct milk type.
       patch = {
-        sbfp_data_id: opt?.id || value || null,
-        sdo: opt ? (baseSdoName(opt.sdo) || opt.sdo) : '',
+        sbfp_data_id: value || null,
+        sdo: opt ? (composeSdoWithMilkType(opt.sdo, opt.milk_type) || opt.sdo) : '',
         region: opt?.region || prev.region,
       }
       if (!(Number(prev.feeding_days) > 0) && inferredDays > 0) {
@@ -325,7 +297,10 @@ export function SbfpDropoffTable({
       (first.feeding_days && first.feeding_days > 0 ? first.feeding_days : null) ||
       parseFeedingDaysFromText(first.sdo) ||
       0
-    const sdoLabel = first.sdo
+    const sdoLabel =
+      first.displayLabel ||
+      composeSdoWithMilkType(first.sdo, first.milk_type) ||
+      first.sdo
     const sdoKey = (sdoLabel || '').trim().toLowerCase()
     const dropoff_name = nextDefaultDropoffName(sdoLabel, rows, reservedDropoffNamesRef.current)
     const reserveKey = `${sdoKey}\u0000${dropoff_name}`
@@ -522,11 +497,7 @@ export function SbfpDropoffTable({
               )}
               {visible.map(r => {
                 const bg = selected.has(r.id) ? '#e0e7ff' : '#fff'
-                const parentOpt = sdoSelectOptions.find(o =>
-                  o.id === r.sbfp_data_id ||
-                  ((o as any).variantIds || []).includes(r.sbfp_data_id) ||
-                  (r.sdo && normalizeSdoName(o.sdo) === normalizeSdoName(r.sdo)),
-                )
+                const parentOpt = sdoSelectOptions.find(o => o.id === r.sbfp_data_id)
                 const selectValue = parentOpt?.id || ''
                 const milkType =
                   inferSbfpMilkType(parentOpt?.sdo, parentOpt?.remarks, r.sdo) ||
