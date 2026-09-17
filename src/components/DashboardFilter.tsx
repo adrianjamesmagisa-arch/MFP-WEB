@@ -1,10 +1,11 @@
 'use client'
 
+import { useCallback, useEffect, useTransition } from 'react'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
-import { useCallback } from 'react'
 import { APP_YEAR_STRINGS, defaultReportYearString } from '@/lib/app-years'
 import { normalizeSchoolYearParam } from '@/lib/report-year'
 import { parseSchoolYear } from '@/lib/sbfp-year'
+import { useAsyncFeedback } from '@/components/loading/AsyncFeedback'
 
 const MONTHS = [
   { value: '1', label: 'January' },
@@ -38,6 +39,8 @@ export function DashboardFilter({
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const path = basePath || pathname || '/dashboard'
+  const [isPending, startTransition] = useTransition()
+  const { beginTask, endTask } = useAsyncFeedback()
 
   const useSchoolYears = Boolean(schoolYears && schoolYears.length > 0)
   const defaultYear = useSchoolYears
@@ -55,6 +58,12 @@ export function DashboardFilter({
 
   const years = useSchoolYears ? schoolYears! : APP_YEAR_STRINGS
 
+  useEffect(() => {
+    if (isPending) beginTask('dashboard-filter', 'Loading dashboard…', { blocking: true })
+    else endTask('dashboard-filter')
+    return () => endTask('dashboard-filter')
+  }, [isPending, beginTask, endTask])
+
   const updateFilters = useCallback((year: string, month: string, center: string) => {
     const params = new URLSearchParams(searchParams.toString())
 
@@ -68,7 +77,9 @@ export function DashboardFilter({
     if (center) params.set('center', center)
     else params.delete('center')
 
-    router.push(`${path}?${params.toString()}`)
+    startTransition(() => {
+      router.push(`${path}?${params.toString()}`)
+    })
   }, [router, searchParams, path, defaultYear])
 
   return (
@@ -78,6 +89,7 @@ export function DashboardFilter({
           className="form-input"
           style={{ width: '200px', padding: '0.4rem 0.75rem', fontSize: '0.9rem' }}
           value={currentCenter}
+          disabled={isPending}
           onChange={(e) => updateFilters(currentYear, currentMonth, e.target.value)}
         >
           <option value="">All Centers</option>
@@ -91,6 +103,7 @@ export function DashboardFilter({
         className="form-input"
         style={{ width: useSchoolYears ? '190px' : '150px', padding: '0.4rem 0.75rem', fontSize: '0.9rem' }}
         value={currentYear}
+        disabled={isPending}
         onChange={(e) => updateFilters(e.target.value, currentMonth, currentCenter)}
       >
         <option value="__ALL_YEARS__">{useSchoolYears ? 'All School Years' : 'All Years'}</option>
@@ -103,6 +116,7 @@ export function DashboardFilter({
         className="form-input"
         style={{ width: '150px', padding: '0.4rem 0.75rem', fontSize: '0.9rem' }}
         value={currentMonth}
+        disabled={isPending}
         onChange={(e) => updateFilters(currentYear, e.target.value, currentCenter)}
       >
         <option value="">All Months</option>
