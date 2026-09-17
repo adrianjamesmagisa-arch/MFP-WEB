@@ -1,9 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
-import { Plus } from 'lucide-react'
 import { DataFilters } from '@/components/DataFilters'
 import { DataTable } from '@/components/DataTable'
+import { ExportMfpCsvButton } from '@/components/ExportMfpCsvButton'
 import { REGIONS, PCC_CENTERS } from '@/lib/types'
 import { APP_YEAR_STRINGS, APP_YEARS, defaultReportYearString } from '@/lib/app-years'
 import { MFP_DATA_LIST_COLUMNS } from '@/lib/encoder-selects'
@@ -176,9 +175,15 @@ export default async function DataPage({
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.75rem' }}>
-          <Link href="/data/new" className="btn btn-gold">
-            <Plus size={16} /> Add Record
-          </Link>
+          <ExportMfpCsvButton
+            records={records ?? []}
+            centerLabel={
+              profile?.role === 'encoder' && profile?.center
+                ? profile.center
+                : params.center || null
+            }
+            yearLabel={listYear}
+          />
         </div>
       </div>
 

@@ -21,6 +21,7 @@ import {
 } from '@/lib/sbfp-report-sync'
 import { normalizeSdoName } from '@/lib/sbfp-dropoff-sync'
 import { excludeAuxSbfp, isSbfpAuxRow } from '@/lib/sbfp-aux'
+import { sbfpCenterAliases, sbfpNavCenter } from '@/lib/center-aliases'
 
 // Philippine regional display order
 const REGION_ORDER: Record<string, number> = {
@@ -84,8 +85,27 @@ export default function SbfpSpreadsheetReport() {
   const [filterMonth, setFilterMonth]       = useState('')
   const [searchQuery, setSearchQuery]       = useState('')
   const [activeTab, setActiveTab]           = useState<'master' | 'region_summary' | 'center_summary' | 'status_matrix'>('master')
+  /** When set, center filter is locked to the encoder's assigned center. */
+  const [lockedCenter, setLockedCenter]     = useState<string | null>(null)
 
   const supabase = createClient()
+
+  useEffect(() => {
+    void (async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role,center')
+        .eq('id', user.id)
+        .single()
+      if (profile?.role === 'encoder' && profile.center) {
+        const label = reportCenterLabel(sbfpNavCenter(profile.center) || profile.center)
+        setLockedCenter(label)
+        setFilterCenter(label)
+      }
+    })()
+  }, [])
 
   useEffect(() => {
     supabase
@@ -102,26 +122,31 @@ export default function SbfpSpreadsheetReport() {
 
   useEffect(() => {
     setLoading(true)
-    supabase
+    let query = supabase
       .from('sbfp_data')
       .select(SBFP_DATA_ENCODER_COLUMNS)
       .eq('year', parseInt(year, 10))
-      .then(({ data, error }) => {
-        if (error) {
-          console.error('Error fetching SBFP data:', error)
-          setRecords([])
-        } else {
-          const rows = excludeAuxSbfp((data || []) as unknown as SbfpReportSourceRow[])
-          const sorted = rows.sort((a, b) => {
-            const rA = regionSortKey(a.region || ''), rB = regionSortKey(b.region || '')
-            if (rA !== rB) return rA - rB
-            return (a.sdo || '').localeCompare(b.sdo || '')
-          })
-          setRecords(sorted)
-        }
-        setLoading(false)
-      })
-  }, [year])
+    if (lockedCenter) {
+      const aliases = sbfpCenterAliases(lockedCenter)
+      if (aliases.length === 1) query = query.eq('center', aliases[0])
+      else if (aliases.length > 1) query = query.in('center', aliases)
+    }
+    query.then(({ data, error }) => {
+      if (error) {
+        console.error('Error fetching SBFP data:', error)
+        setRecords([])
+      } else {
+        const rows = excludeAuxSbfp((data || []) as unknown as SbfpReportSourceRow[])
+        const sorted = rows.sort((a, b) => {
+          const rA = regionSortKey(a.region || ''), rB = regionSortKey(b.region || '')
+          if (rA !== rB) return rA - rB
+          return (a.sdo || '').localeCompare(b.sdo || '')
+        })
+        setRecords(sorted)
+      }
+      setLoading(false)
+    })
+  }, [year, lockedCenter])
 
   useEffect(() => {
     const dbY = parseInt(year, 10)
@@ -584,11 +609,32 @@ export default function SbfpSpreadsheetReport() {
 
             <div>
               <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>Center</div>
-              <select value={filterCenter} onChange={e => setFilterCenter(e.target.value)}
-                style={{ height: 34, padding: '0 0.75rem', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: '0.85rem', background: '#fff' }}>
-                <option value="ALL">All Centers ({distinctCenters.length})</option>
-                {distinctCenters.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
+              {lockedCenter ? (
+                <div
+                  style={{
+                    height: 34,
+                    padding: '0 0.75rem',
+                    borderRadius: 6,
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.85rem',
+                    background: '#f1f5f9',
+                    color: '#334155',
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    minWidth: 120,
+                  }}
+                  title="Locked to your assigned center"
+                >
+                  {lockedCenter}
+                </div>
+              ) : (
+                <select value={filterCenter} onChange={e => setFilterCenter(e.target.value)}
+                  style={{ height: 34, padding: '0 0.75rem', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: '0.85rem', background: '#fff' }}>
+                  <option value="ALL">All Centers ({distinctCenters.length})</option>
+                  {distinctCenters.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              )}
             </div>
 
             <div>

@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import {
   LayoutDashboard, Database, Users,
   Building2, LogOut, ChevronRight, ChevronDown,
-  FileBarChart2, BarChart3, BookOpenCheck, HeartHandshake, Church, Package, Milk, Landmark, Layers
+  FileBarChart2, BarChart3, BookOpenCheck, HeartHandshake, Church, Milk, Landmark, Layers
 } from 'lucide-react'
 import { sbfpEncoderHomePath, monitoringEncoderHomePath } from '@/lib/center-aliases'
 import type { MonitoringProgramId } from '@/lib/monitoring-programs'
@@ -34,7 +34,6 @@ const reportItems = [
   { href: '/reports/summary-deped',icon: BookOpenCheck,  label: 'Summary DepEd' },
   { href: '/reports/summary-lds',  icon: Church,         label: 'Summary LDS' },
   { href: '/reports/summary-dswd', icon: HeartHandshake, label: 'Summary DSWD' },
-  { href: '/reports/packs',        icon: Package,        label: 'Packs Delivered' },
 ]
 
 export default function Sidebar({ userRole, userCenter, userName }: {
@@ -87,17 +86,8 @@ export default function Sidebar({ userRole, userCenter, userName }: {
         : `/monitoring/${item.program}`,
   }))
 
-  // Encoders only see the PIMD Report — hide the summary/narrative reports
-  const ENCODER_HIDDEN_REPORTS = [
-    '/reports/sbfp-narrative',
-    '/reports/summary-deped',
-    '/reports/summary-lds',
-    '/reports/summary-dswd',
-    '/reports/packs',
-  ]
-  const visibleReportItems = userRole === 'encoder'
-    ? reportItems.filter(item => !ENCODER_HIDDEN_REPORTS.includes(item.href))
-    : reportItems
+  // Encoders see the same Reports menu; each report page locks data to their center.
+  const visibleReportItems = reportItems
 
   return (
     <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`} style={{ height: '100vh', overflowY: 'auto', flexShrink: 0, transition: 'width 0.2s ease' }}>
