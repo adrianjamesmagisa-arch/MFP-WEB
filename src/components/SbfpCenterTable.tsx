@@ -737,18 +737,7 @@ export function SbfpCenterTable({
         }).then(err => {
           if (err) alert(err)
         })
-      } else if (
-        field === 'region' ||
-        field === 'milk_type' ||
-        field === 'batch' ||
-        field === 'feeding_days' ||
-        field === 'remarks' ||
-        field === 'delivery_start' ||
-        field === 'delivery_end' ||
-        field === 'packs_to_deliver' ||
-        field === 'packs_delivered' ||
-        field === 'supplier_id'
-      ) {
+      } else if (field === 'milk_type') {
         void apiDropoffMasterlist({
           action: 'cascade-fields',
           sbfpDataId: id,
