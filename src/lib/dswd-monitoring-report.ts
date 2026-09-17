@@ -10,7 +10,7 @@ import {
   PROGRAM_PROCUREMENT_ENCODER_COLUMNS,
 } from '@/lib/encoder-selects'
 import type { ProgramDropoffRow, ProgramProcurementRow } from '@/lib/program-dropoff-sync'
-import { sumRowIncome, type SbfpRawMilkRow } from '@/lib/sbfp-raw-milk'
+import { sumRowIncome, totalPacksDelivered, type SbfpRawMilkRow } from '@/lib/sbfp-raw-milk'
 
 export type DswdSummaryRow = {
   year: number
@@ -140,8 +140,17 @@ export type DswdDashboardSlice = {
   records: number
   beneficiaries: number
   milk_packs: number
+  target_milk_packs: number
+  delivered_milk_packs: number
   milk_cost: number
   total_funds: number
+  by_year: { year: number; target_milk_packs: number; delivered_milk_packs: number }[]
+  by_center: {
+    center: string
+    target_milk_packs: number
+    delivered_milk_packs: number
+    beneficiaries: number
+  }[]
 }
 
 /** Aggregate DSWD monitoring for dashboard cards (no masterlist). */
@@ -170,12 +179,72 @@ export async function loadDswdDashboardSlice(
     (s, p) => s + sumRowIncome(p as SbfpRawMilkRow, { year: p.year }),
     0,
   )
+  const targetPacks = scopedProcs.reduce((s, p) => s + (Number(p.packs_to_deliver) || 0), 0)
+  const deliveredPacks = scopedProcs.reduce((s, p) => {
+    const fromTracking = totalPacksDelivered(p as SbfpRawMilkRow)
+    return s + (fromTracking || Number(p.packs_delivered) || 0)
+  }, 0)
+  const dropoffPacks = rows.reduce((s, r) => s + r.milk_packs, 0)
+
+  const yearMap = new Map<number, { target: number; delivered: number }>()
+  for (const p of scopedProcs) {
+    const y = Number(p.year) || 0
+    if (!y) continue
+    const cur = yearMap.get(y) || { target: 0, delivered: 0 }
+    cur.target += Number(p.packs_to_deliver) || 0
+    cur.delivered += totalPacksDelivered(p as SbfpRawMilkRow) || Number(p.packs_delivered) || 0
+    yearMap.set(y, cur)
+  }
+  if (yearMap.size === 0) {
+    for (const r of rows) {
+      const y = Number(r.year) || 0
+      if (!y) continue
+      const cur = yearMap.get(y) || { target: 0, delivered: 0 }
+      cur.target += r.milk_packs
+      yearMap.set(y, cur)
+    }
+  }
+
+  const centerMap = new Map<string, { target: number; delivered: number; beneficiaries: number }>()
+  for (const p of scopedProcs) {
+    const label = String(p.center || '').trim()
+    if (!label) continue
+    const cur = centerMap.get(label) || { target: 0, delivered: 0, beneficiaries: 0 }
+    cur.target += Number(p.packs_to_deliver) || 0
+    cur.delivered += totalPacksDelivered(p as SbfpRawMilkRow) || Number(p.packs_delivered) || 0
+    centerMap.set(label, cur)
+  }
+  for (const r of rows) {
+    const label = String(r.center || '').trim()
+    if (!label) continue
+    const cur = centerMap.get(label) || { target: 0, delivered: 0, beneficiaries: 0 }
+    cur.beneficiaries += r.beneficiaries
+    if (cur.target === 0) cur.target += r.milk_packs
+    centerMap.set(label, cur)
+  }
 
   return {
     records: rows.length,
     beneficiaries: rows.reduce((s, r) => s + r.beneficiaries, 0),
-    milk_packs: rows.reduce((s, r) => s + r.milk_packs, 0),
+    milk_packs: deliveredPacks || dropoffPacks,
+    target_milk_packs: targetPacks > 0 ? targetPacks : dropoffPacks,
+    delivered_milk_packs: deliveredPacks,
     milk_cost: milkCost > 0 ? milkCost : totalFunds,
     total_funds: totalFunds,
+    by_year: [...yearMap.entries()]
+      .map(([y, v]) => ({
+        year: y,
+        target_milk_packs: v.target,
+        delivered_milk_packs: v.delivered,
+      }))
+      .sort((a, b) => a.year - b.year),
+    by_center: [...centerMap.entries()]
+      .map(([c, v]) => ({
+        center: c,
+        target_milk_packs: v.target,
+        delivered_milk_packs: v.delivered,
+        beneficiaries: v.beneficiaries,
+      }))
+      .sort((a, b) => b.target_milk_packs - a.target_milk_packs),
   }
 }

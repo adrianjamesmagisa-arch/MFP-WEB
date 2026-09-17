@@ -50,6 +50,69 @@ export function isFailedSbfpStatus(procurement_status?: string | null): boolean 
   return String(procurement_status || '').toUpperCase() === 'FAILED'
 }
 
+/** Canonical filter / matrix buckets — DB often stores short labels like "Ongoing". */
+export type SbfpStatusBucket =
+  | 'prep'
+  | 'ongoing'
+  | 'awarded_delivery'
+  | 'awarded_ongoing'
+  | 'completed'
+  | 'failed'
+  | 'other'
+
+export const SBFP_STATUS_FILTER_OPTIONS: { value: SbfpStatusBucket | 'ALL'; label: string }[] = [
+  { value: 'ALL', label: 'All Statuses' },
+  { value: 'prep', label: 'For Preparation' },
+  { value: 'ongoing', label: 'Ongoing' },
+  { value: 'awarded_delivery', label: 'Awarded (For Delivery)' },
+  { value: 'awarded_ongoing', label: 'Awarded (Ongoing Delivery)' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'failed', label: 'Failed' },
+]
+
+export function sbfpStatusBucket(procurement_status?: string | null): SbfpStatusBucket {
+  const st = String(procurement_status || '').trim().toLowerCase()
+  if (!st || st === 'for preparation') return 'prep'
+  if (st === 'failed') return 'failed'
+  if (st === 'completed' || st === 'done') return 'completed'
+  if (st.includes('awarded') && st.includes('ongoing')) return 'awarded_ongoing'
+  if (st.includes('awarded')) return 'awarded_delivery'
+  if (st.includes('ongoing')) return 'ongoing'
+  return 'other'
+}
+
+/** True when row matches the report Procurement Status filter (bucket or exact label). */
+export function rowMatchesSbfpStatusFilter(
+  procurement_status: string | null | undefined,
+  filterStatus: string,
+): boolean {
+  if (!filterStatus || filterStatus === 'ALL') return true
+  const bucket = sbfpStatusBucket(procurement_status)
+  if (filterStatus === bucket) return true
+  // Legacy exact / label match (older bookmarks or hardcoded option values)
+  const want = filterStatus.trim().toLowerCase()
+  const got = String(procurement_status || '').trim().toLowerCase()
+  if (got === want) return true
+  if (want === 'for preparation' && bucket === 'prep') return true
+  if ((want === 'ongoing' || want.includes('ongoing procurement') || want.includes('ongoing (for award)')) && bucket === 'ongoing') {
+    return true
+  }
+  if (want.includes('awarded') && want.includes('ongoing') && bucket === 'awarded_ongoing') return true
+  if (want.includes('awarded') && bucket === 'awarded_delivery') return true
+  if ((want === 'completed' || want === 'done') && bucket === 'completed') return true
+  if (want === 'failed' && bucket === 'failed') return true
+  return false
+}
+
+/**
+ * Default report visibility: In Report rows, plus Failed (even if unchecked),
+ * so the Procurement Status filter and SDO counts stay useful.
+ */
+export function sbfpRowVisibleInReportDefault(r: SbfpReportSourceRow): boolean {
+  if (sbfpRowIncludedInReport(r)) return true
+  return isFailedSbfpStatus(r.procurement_status)
+}
+
 /** Display center label (NHQ → NHQGP (NIZ), etc.). */
 export function reportCenterLabel(rawCenter: string | null | undefined): string {
   if (!rawCenter) return '—'

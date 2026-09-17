@@ -9,6 +9,7 @@ import {
   parseFeedingDaysFromText,
   normalizeSdoName,
   baseSdoName,
+  composeSdoWithMilkType,
 } from '@/lib/sbfp-dropoff-sync'
 import { calcMilkFormulations, litersPerPackForMilkType } from '@/lib/mfp-formulas'
 import { inferSbfpMilkType, normalizeSbfpMilkType } from '@/lib/sbfp-pack-price'
@@ -72,7 +73,7 @@ function nextDefaultDropoffName(
 }
 
 function EditableText({
-  value, align = 'left', type = 'text', disabled, onCommit, title, cellStyle,
+  value, align = 'left', type = 'text', disabled, onCommit, title, cellStyle, wrap,
 }: {
   value: string | number | null | undefined
   align?: 'left' | 'right' | 'center'
@@ -81,13 +82,32 @@ function EditableText({
   onCommit: (next: string | number | null) => void
   title?: string
   cellStyle?: CSSProperties
+  /** Allow long text to wrap fully inside the cell (no ellipsis / clipping). */
+  wrap?: boolean
 }) {
   const [editing, setEditing] = useState(false)
   const [val, setVal] = useState<string>(value == null ? '' : String(value))
-  const ref = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const areaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => { setVal(value == null ? '' : String(value)) }, [value])
-  useEffect(() => { if (editing) ref.current?.focus() }, [editing])
+  useEffect(() => {
+    if (!editing) return
+    if (wrap && type === 'text') areaRef.current?.focus()
+    else inputRef.current?.focus()
+  }, [editing, wrap, type])
+
+  const wrapStyle: CSSProperties = wrap
+    ? {
+        whiteSpace: 'normal',
+        overflowWrap: 'anywhere',
+        wordBreak: 'break-word',
+        lineHeight: 1.35,
+        verticalAlign: 'top',
+        overflow: 'visible',
+        textOverflow: 'clip',
+      }
+    : {}
 
   const save = () => {
     setEditing(false)
@@ -99,32 +119,64 @@ function EditableText({
     }
   }
 
+  const display =
+    value == null || value === ''
+      ? '—'
+      : type === 'number'
+        ? Number(value).toLocaleString()
+        : String(value)
+
   if (disabled) {
     return (
-      <td style={{ textAlign: align, ...cellStyle }} title={title}>
-        {value == null || value === '' ? '—' : type === 'number' ? Number(value).toLocaleString() : String(value)}
+      <td style={{ textAlign: align, ...wrapStyle, ...cellStyle }} title={title || (wrap ? String(value || '') : undefined)}>
+        {display}
       </td>
     )
   }
 
   if (editing) {
+    const fieldStyle: CSSProperties = {
+      width: '100%',
+      border: '1px solid #3b82f6',
+      outline: 'none',
+      padding: '2px 4px',
+      fontSize: 'inherit',
+      textAlign: align,
+      boxSizing: 'border-box',
+      ...(wrap
+        ? { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word', resize: 'vertical', minHeight: 48, lineHeight: 1.35 }
+        : {}),
+    }
     return (
-      <td style={{ padding: 2, background: '#fff', ...cellStyle }}>
-        <input
-          ref={ref}
-          type={type}
-          value={val}
-          onChange={e => setVal(e.target.value)}
-          onBlur={save}
-          onKeyDown={e => {
-            if (e.key === 'Enter') save()
-            if (e.key === 'Escape') { setVal(value == null ? '' : String(value)); setEditing(false) }
-          }}
-          style={{
-            width: '100%', border: '1px solid #3b82f6', outline: 'none',
-            padding: '2px 4px', fontSize: 'inherit', textAlign: align, boxSizing: 'border-box',
-          }}
-        />
+      <td style={{ padding: 2, background: '#fff', ...wrapStyle, ...cellStyle }}>
+        {wrap && type === 'text' ? (
+          <textarea
+            ref={areaRef}
+            value={val}
+            onChange={e => setVal(e.target.value)}
+            onBlur={save}
+            onKeyDown={e => {
+              if (e.key === 'Escape') { setVal(value == null ? '' : String(value)); setEditing(false) }
+              // Enter inserts newline; Ctrl/Cmd+Enter saves
+              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) save()
+            }}
+            rows={3}
+            style={fieldStyle}
+          />
+        ) : (
+          <input
+            ref={inputRef}
+            type={type}
+            value={val}
+            onChange={e => setVal(e.target.value)}
+            onBlur={save}
+            onKeyDown={e => {
+              if (e.key === 'Enter') save()
+              if (e.key === 'Escape') { setVal(value == null ? '' : String(value)); setEditing(false) }
+            }}
+            style={fieldStyle}
+          />
+        )}
       </td>
     )
   }
@@ -132,14 +184,10 @@ function EditableText({
   return (
     <td
       onClick={() => setEditing(true)}
-      title={title || 'Click to edit'}
-      style={{ textAlign: align, cursor: 'pointer', ...cellStyle }}
+      title={title || (wrap ? String(value || '') : 'Click to edit')}
+      style={{ textAlign: align, cursor: 'pointer', ...wrapStyle, ...cellStyle }}
     >
-      {value == null || value === ''
-        ? '—'
-        : type === 'number'
-          ? Number(value).toLocaleString()
-          : String(value)}
+      {display}
     </td>
   )
 }
@@ -180,11 +228,12 @@ export function SbfpDropoffTable({
 
     const result: (SdoOption & { displayLabel: string; variantIds: string[] })[]=  []
     for (const variants of byBase.values()) {
-      const isDuplicate = variants.length > 1
       for (const v of variants) {
-        // For duplicate SDOs (same base, different milk type), keep the (PM)/(SM) suffix
-        // so encoders can tell them apart. For unique SDOs, strip to base name.
-        const label = isDuplicate ? (v.sdo || '') : (baseSdoName(v.sdo) || v.sdo)
+        // Always show milk-type suffix (Cagayan - SM) so drop-offs match procurement labels.
+        const label =
+          composeSdoWithMilkType(v.sdo, v.milk_type) ||
+          v.sdo ||
+          ''
         result.push({
           ...v,
           displayLabel: label,
@@ -333,20 +382,34 @@ export function SbfpDropoffTable({
   }
 
   // Sticky: first 3 columns (checkbox + SDO + Drop-off school).
-  const stickyTh = (left: number, width: number, edge = false): CSSProperties => ({
+  const stickyTh = (left: number, width: number, edge = false, wrap = false): CSSProperties => ({
     position: 'sticky', left, top: 0, zIndex: 20,
     width, minWidth: width, maxWidth: width,
     background: 'var(--navy)', color: '#fff',
     boxShadow: edge ? '3px 0 6px rgba(15,23,42,0.18)' : undefined,
+    ...(wrap
+      ? { whiteSpace: 'normal', overflowWrap: 'anywhere', wordBreak: 'break-word', lineHeight: 1.25 }
+      : {}),
   })
-  const stickyTd = (left: number, width: number, bg: string, edge = false): CSSProperties => ({
+  const stickyTd = (left: number, width: number, bg: string, edge = false, wrap = false): CSSProperties => ({
     position: 'sticky', left, zIndex: 5,
     width, minWidth: width, maxWidth: width,
     background: bg,
     boxShadow: edge ? '3px 0 6px rgba(15,23,42,0.12)' : undefined,
+    ...(wrap
+      ? {
+          whiteSpace: 'normal',
+          overflowWrap: 'anywhere',
+          wordBreak: 'break-word',
+          lineHeight: 1.35,
+          verticalAlign: 'top',
+          overflow: 'visible',
+          textOverflow: 'clip',
+        }
+      : {}),
   })
-  const SL = { check: 0, sdo: 36, school: 196 } as const
-  const SW = { check: 36, sdo: 160, school: 220 } as const
+  const SL = { check: 0, sdo: 36, school: 216 } as const
+  const SW = { check: 36, sdo: 180, school: 280 } as const
 
   return (
     <div className="flex flex-col gap-2">
@@ -416,7 +479,7 @@ export function SbfpDropoffTable({
                   />
                 </th>
                 <th style={{ ...stickyTh(SL.sdo, SW.sdo) }}>SDO</th>
-                <th style={{ ...stickyTh(SL.school, SW.school, true) }}>Drop-off Point (School)</th>
+                <th style={{ ...stickyTh(SL.school, SW.school, true, true) }}>Drop-off Point (School)</th>
                 <th style={{ minWidth: 110, textAlign: 'right' }}>Beneficiaries</th>
                 <th style={{ minWidth: 100, textAlign: 'right' }} title="Encoder input — Milk packs = Beneficiaries × Feeding days">
                   Feeding Days
@@ -476,17 +539,10 @@ export function SbfpDropoffTable({
                 } : null)
                 const calc = calcMilkFormulations(Number(r.beneficiaries) || 0, days, milkType)
                 const fmt4 = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 4 })
-                // Show (PM)/(SM) label when the SDO has duplicates (multiple milk types)
-                const isDuplicateSdo = sdoSelectOptions.filter(o =>
-                  normalizeSdoName(o.displayLabel) === normalizeSdoName(baseSdoName(parentOpt?.sdo || '') || parentOpt?.sdo || '')
-                  || normalizeSdoName(o.displayLabel) === normalizeSdoName(r.sdo || '')
-                ).length > 1 || (parentOpt && sdoSelectOptions.filter(o =>
-                  normalizeSdoName(baseSdoName(o.displayLabel) || o.displayLabel) ===
-                  normalizeSdoName(baseSdoName(parentOpt.sdo) || parentOpt.sdo)
-                ).length > 1)
-                const displaySdo = isDuplicateSdo
-                  ? (parentOpt?.sdo || baseSdoName(r.sdo || '') || r.sdo || '—')
-                  : (baseSdoName(r.sdo || '') || r.sdo || '—')
+                const displaySdo =
+                  (parentOpt
+                    ? composeSdoWithMilkType(parentOpt.sdo, parentOpt.milk_type) || parentOpt.sdo
+                    : composeSdoWithMilkType(r.sdo, milkType) || r.sdo) || '—'
                 const volFactor = litersPerPackForMilkType(milkType)
                 return (
                   <tr key={r.id} style={{ background: bg }}>
@@ -503,15 +559,21 @@ export function SbfpDropoffTable({
                         }}
                       />
                     </td>
-                    <td style={stickyTd(SL.sdo, SW.sdo, bg)}>
+                    <td style={{ ...stickyTd(SL.sdo, SW.sdo, bg), whiteSpace: 'normal', verticalAlign: 'top' }}>
                       {editable ? (
                         <select
                           value={selectValue}
                           onChange={e => updateField(r.id, 'sbfp_data_id', e.target.value || null)}
-                          style={{ width: '100%', border: 0, background: 'transparent', fontSize: 'inherit' }}
+                          style={{
+                            width: '100%',
+                            border: 0,
+                            background: 'transparent',
+                            fontSize: 'inherit',
+                            whiteSpace: 'normal',
+                          }}
                           title={
                             selectValue
-                              ? 'SDO (PM/SM/CM variants count as one)'
+                              ? displaySdo
                               : r.sdo
                                 ? `Stored as “${r.sdo}” but not linked — pick an SDO`
                                 : 'Select SDO'
@@ -529,8 +591,9 @@ export function SbfpDropoffTable({
                     <EditableText
                       value={r.dropoff_name}
                       disabled={!editable}
+                      wrap
                       onCommit={v => updateField(r.id, 'dropoff_name', String(v || '').trim() || r.dropoff_name)}
-                      cellStyle={stickyTd(SL.school, SW.school, bg, true)}
+                      cellStyle={stickyTd(SL.school, SW.school, bg, true, true)}
                     />
                     <EditableText
                       value={r.beneficiaries}

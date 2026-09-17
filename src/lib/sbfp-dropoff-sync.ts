@@ -85,17 +85,53 @@ type SupabaseLike = {
 }
 
 /**
- * Display / count name for an SDO — strips milk-type tags.
- * "Nueva Ecija (PM)" and "Nueva Ecija (SM)" → "Nueva Ecija"
- * "Zambales - PM" → "Zambales"
+ * Geographic / lot label only — strips milk-type tags but keeps Lot N.
+ * "Cavite - PM" → "Cavite"
+ * "Cotabato - Lot 1 PM" → "Cotabato - Lot 1"
+ * "Davao Occidental CM" → "Davao Occidental"
+ * "SDO BATAAN (Pasteurized Milk)" → "BATAAN"
  */
-export function baseSdoName(value: string): string {
+export function stripMilkTypeFromSdoName(value: string): string {
   return String(value || '')
     .replace(/^\d+\.\s*/g, '')
     .replace(/^sdo\s+/i, '')
     .replace(/\s*\((PM|SM|SMP|CM|SPM|Sterilized|Pasteurized|Commercial)[^)]*\)\s*/gi, ' ')
-    .replace(/\s*[-–—]\s*(PM|SM|SMP|CM|SPM)\b/gi, ' ')
+    // milk-type tags with or without a hyphen: "- PM", " PM", "SMP" (do not strip "Lot N")
+    .replace(/\s*[-–—]?\s*(PM|SM|SMP|CM|SPM)\b/gi, ' ')
     .replace(/\s*[-–—]?\s*\d+\s*Feeding\s*Days?/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[-–—]+$/g, '')
+    .trim()
+}
+
+/**
+ * Standard stored SDO label: "{base} - {PM|SM|CM}".
+ * Base keeps Lot N; milk suffix always comes from milk_type (or inferred).
+ */
+export function composeSdoWithMilkType(
+  sdoOrBase: string | null | undefined,
+  milkType: unknown,
+): string {
+  const base = stripMilkTypeFromSdoName(String(sdoOrBase || ''))
+  const milk = normalizeSbfpMilkType(milkType)
+  if (!base) return ''
+  if (!milk) return base
+  return `${base} - ${milk}`
+}
+
+/**
+ * Display / count name for an SDO — strips milk-type and lot tags.
+ * "Nueva Ecija (PM)" and "Nueva Ecija (SM)" → "Nueva Ecija"
+ * "Zambales - PM" → "Zambales"
+ * "Cavite - CM" / "Cavite - PM" → "Cavite"
+ * "Cotabato - Lot 1 PM" / "Cotabato - Lot 4 SMP" → "Cotabato"
+ * "Zamboanga City lot 1" / "lot 2" → "Zamboanga City"
+ */
+export function baseSdoName(value: string): string {
+  return stripMilkTypeFromSdoName(value)
+    // " - Lot 1", "Lot 2", "lot 3" (procurement lots of the same SDO)
+    .replace(/\s*[-–—]?\s*lot\s*\d+\b/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .replace(/[-–—]+$/g, '')
@@ -104,11 +140,18 @@ export function baseSdoName(value: string): string {
 
 /** Normalize SDO labels from Excel for fuzzy match / unique counting. */
 export function normalizeSdoName(value: string): string {
-  return baseSdoName(value)
+  let key = baseSdoName(value)
     .toLowerCase()
     // common spelling variants
     .replace(/\bozamis\b/g, 'ozamiz')
     .replace(/\bciity\b/g, 'city')
+
+  // Pangasinan I: District 1 = its own SDO; Districts 2 and 3 count as one.
+  if (/\bpangasinan\s+i\s+district\s+[23]\b/.test(key)) {
+    key = 'pangasinan i district 2-3'
+  }
+
+  return key
 }
 
 /** Prefer PM over SM/CM when several procurement rows are the same geographic SDO. */

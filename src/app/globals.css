@@ -584,6 +584,30 @@ h1, h2, h3 {
   letter-spacing: -0.02em;
 }
 
+.dash-kpi-card-split {
+  grid-column: span 1;
+}
+
+.dash-kpi-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.dash-kpi-value-sm {
+  margin-top: 0.25rem;
+  font-size: 1.25rem;
+}
+
+.dash-kpi-sub {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #64748b;
+  margin: 0.2rem 0 0.35rem;
+  line-height: 1.25;
+}
+
 .dash-charts-row {
   display: grid;
   grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr);
@@ -746,6 +770,78 @@ h1, h2, h3 {
   border-radius: 999px;
 }
 
+.dash-bar-wrap {
+  position: relative;
+  padding: 6px 0;
+  cursor: default;
+}
+
+.dash-bar-track-split {
+  display: flex;
+  height: 8px;
+  background: #e2e8f0;
+}
+
+.dash-bar-fill-delivered {
+  background: linear-gradient(90deg, #312e81, #4f46e5);
+  border-radius: 999px 0 0 999px;
+  flex-shrink: 0;
+}
+
+.dash-bar-fill-dswd {
+  background: linear-gradient(90deg, #4338ca, #818cf8);
+  border-radius: 999px 0 0 999px;
+  flex-shrink: 0;
+}
+
+.dash-bar-fill-remaining {
+  background: #cbd5e1;
+  border-radius: 0 999px 999px 0;
+  flex-shrink: 0;
+}
+
+.dash-bar-label {
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+
+.dash-bar-fill-delivered:only-child,
+.dash-bar-track-split .dash-bar-fill-delivered[style*="width: 100%"] {
+  border-radius: 999px;
+}
+
+.dash-bar-tooltip {
+  display: none;
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 6px);
+  z-index: 30;
+  min-width: 220px;
+  padding: 0.55rem 0.7rem;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  border-radius: 8px;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.25);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.dash-bar-tooltip-meta {
+  margin-top: 0.3rem;
+  color: #94a3b8;
+  font-size: 0.68rem;
+}
+
+.dash-bar-wrap:hover .dash-bar-tooltip {
+  display: block;
+}
+
 .dash-funder-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -791,6 +887,7 @@ h1, h2, h3 {
   font-size: 0.68rem;
   color: #94a3b8;
   margin-top: 2px;
+  line-height: 1.25;
 }
 
 .dash-funder-foot {

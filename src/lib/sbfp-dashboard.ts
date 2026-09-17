@@ -47,7 +47,7 @@ export async function loadSbfpDashboardStats(
   let sdoQ = supabase
     .from('sbfp_data')
     .select(
-      'id,year,center,sdo,procurement_status,packs_to_deliver,packs_delivered,amount,contract_amount,beneficiaries_pm,delivery_start,delivery_end,monthly_packs_delivered,delivery_snapshots,raw_milk_prices',
+      'id,year,center,sdo,milk_type,procurement_status,packs_to_deliver,packs_delivered,amount,contract_amount,beneficiaries_pm,delivery_start,delivery_end,monthly_packs_delivered,delivery_snapshots,raw_milk_prices',
     )
   let dropQ = supabase
     .from('sbfp_dropoff_points')

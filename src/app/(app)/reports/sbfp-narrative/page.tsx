@@ -2,20 +2,25 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Printer, Download, Filter, Search, RotateCcw, Table, BarChart2, Layers } from 'lucide-react'
+import { Printer, Download, Filter, Search, RotateCcw, Table, BarChart2, Layers, Building2 } from 'lucide-react'
 import { SBFP_DATA_ENCODER_COLUMNS } from '@/lib/encoder-selects'
 import { dbYearToSchoolYear, FALLBACK_SCHOOL_YEARS, schoolYearToDbYear } from '@/lib/sbfp-year'
 import {
   defaultDeliveredPackRange,
   mapSbfpRowToReportView,
   reportCenterFilterOptions,
+  reportCenterLabel,
   rowHasDeliveryInMonth,
   rowMatchesReportCenterFilter,
+  rowMatchesSbfpStatusFilter,
   resolveDeliveredPacksForReport,
-  sbfpRowIncludedInReport,
+  sbfpRowVisibleInReportDefault,
+  sbfpStatusBucket,
+  SBFP_STATUS_FILTER_OPTIONS,
   type SbfpReportSourceRow,
 } from '@/lib/sbfp-report-sync'
 import { normalizeSdoName } from '@/lib/sbfp-dropoff-sync'
+import { excludeAuxSbfp, isSbfpAuxRow } from '@/lib/sbfp-aux'
 
 // Philippine regional display order
 const REGION_ORDER: Record<string, number> = {
@@ -52,6 +57,7 @@ const DELIVERY_MONTHS = [
 
 const STATUS_BADGE: Record<string, { bg: string; color: string }> = {
   'For Preparation':            { bg: '#fef3c7', color: '#92400e' },
+  'Ongoing':                    { bg: '#dbeafe', color: '#1e40af' },
   'Ongoing Procurement':        { bg: '#dbeafe', color: '#1e40af' },
   'Ongoing (For Award)':        { bg: '#bfdbfe', color: '#1e3a8a' },
   'Awarded (For Delivery)':     { bg: '#ede9fe', color: '#5b21b6' },
@@ -77,7 +83,7 @@ export default function SbfpSpreadsheetReport() {
   const [includeExcluded, setIncludeExcluded] = useState(false)
   const [filterMonth, setFilterMonth]       = useState('')
   const [searchQuery, setSearchQuery]       = useState('')
-  const [activeTab, setActiveTab]           = useState<'master' | 'region_summary' | 'status_matrix'>('master')
+  const [activeTab, setActiveTab]           = useState<'master' | 'region_summary' | 'center_summary' | 'status_matrix'>('master')
 
   const supabase = createClient()
 
@@ -105,7 +111,7 @@ export default function SbfpSpreadsheetReport() {
           console.error('Error fetching SBFP data:', error)
           setRecords([])
         } else {
-          const rows = (data || []) as unknown as SbfpReportSourceRow[]
+          const rows = excludeAuxSbfp((data || []) as unknown as SbfpReportSourceRow[])
           const sorted = rows.sort((a, b) => {
             const rA = regionSortKey(a.region || ''), rB = regionSortKey(b.region || '')
             if (rA !== rB) return rA - rB
@@ -133,19 +139,18 @@ export default function SbfpSpreadsheetReport() {
 
   const distinctRegions = useMemo(() => {
     const set = new Set<string>()
-    records.forEach(r => { if (r.region) set.add(r.region) })
+    records.forEach(r => {
+      if (isSbfpAuxRow(r)) return
+      const region = String(r.region || '').trim()
+      if (!region) return
+      // Aux worksheets sometimes stash "HIRING" / "PPMP" in the region column.
+      if (/^(hiring|ppmp)$/i.test(region)) return
+      set.add(region)
+    })
     return Array.from(set).sort((a, b) => regionSortKey(a) - regionSortKey(b))
   }, [records])
 
-  const distinctStatuses = [
-    'For Preparation',
-    'Ongoing Procurement',
-    'Ongoing (For Award)',
-    'Awarded (For Delivery)',
-    'Awarded (Ongoing Delivery)',
-    'Completed',
-    'Failed'
-  ]
+  const distinctStatuses = SBFP_STATUS_FILTER_OPTIONS.filter(o => o.value !== 'ALL')
 
   const dbYearNum = parseInt(year, 10)
 
@@ -161,10 +166,11 @@ export default function SbfpSpreadsheetReport() {
   const filteredRecords = useMemo(() => {
     const { from: rangeFrom, to: rangeTo } = effectiveDeliveredRange
     return records.filter(r => {
-      if (!includeExcluded && !sbfpRowIncludedInReport(r)) return false
+      // In Report rows + Failed (so status filter/counts work). Checkbox still shows all excluded.
+      if (!includeExcluded && !sbfpRowVisibleInReportDefault(r as SbfpReportSourceRow)) return false
       if (filterRegion !== 'ALL' && r.region !== filterRegion) return false
       if (!rowMatchesReportCenterFilter(r as SbfpReportSourceRow, filterCenter)) return false
-      if (filterStatus !== 'ALL' && (r.procurement_status || '').toLowerCase() !== filterStatus.toLowerCase()) return false
+      if (!rowMatchesSbfpStatusFilter(r.procurement_status, filterStatus)) return false
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim()
         const matchSdo = (r.sdo || '').toLowerCase().includes(q)
@@ -249,8 +255,8 @@ export default function SbfpSpreadsheetReport() {
       totalAmount += Number(r.amount) || 0
       totalBeneficiaries += Number(r.beneficiaries_pm) || 0
 
-      const st = r.procurement_status || 'For Preparation'
-      statusCounts[st] = (statusCounts[st] || 0) + 1
+      const bucket = sbfpStatusBucket(r.procurement_status)
+      statusCounts[bucket] = (statusCounts[bucket] || 0) + 1
     })
 
     const coopIds = new Set(
@@ -270,6 +276,7 @@ export default function SbfpSpreadsheetReport() {
 
     return {
       count: uniqueSdos.size,
+      rowCount: filteredRecords.length,
       totalPacks,
       totalDelivered,
       totalContractAmt,
@@ -297,6 +304,7 @@ export default function SbfpSpreadsheetReport() {
       awardedDelivery: number
       awardedOngoing: number
       completed: number
+      failed: number
     }>()
 
     filteredRecords.forEach(r => {
@@ -316,6 +324,7 @@ export default function SbfpSpreadsheetReport() {
           awardedDelivery: 0,
           awardedOngoing: 0,
           completed: 0,
+          failed: 0,
         })
       }
       const entry = map.get(reg)!
@@ -332,12 +341,13 @@ export default function SbfpSpreadsheetReport() {
       const coopId = String(r.supplier_id || '').trim()
       if (coopId) entry.coopIds.add(coopId)
 
-      const st = (r.procurement_status || '').toLowerCase()
-      if (st === 'for preparation') entry.forPrep++
-      else if (st.includes('ongoing procurement') || st.includes('ongoing (for award)')) entry.ongoing++
-      else if (st.includes('awarded (for delivery)')) entry.awardedDelivery++
-      else if (st.includes('awarded (ongoing delivery)')) entry.awardedOngoing++
-      else if (st.includes('completed') || st.includes('done')) entry.completed++
+      const bucket = sbfpStatusBucket(r.procurement_status)
+      if (bucket === 'prep') entry.forPrep++
+      else if (bucket === 'ongoing') entry.ongoing++
+      else if (bucket === 'awarded_delivery') entry.awardedDelivery++
+      else if (bucket === 'awarded_ongoing') entry.awardedOngoing++
+      else if (bucket === 'completed') entry.completed++
+      else if (bucket === 'failed') entry.failed++
       else entry.forPrep++
     })
 
@@ -345,6 +355,97 @@ export default function SbfpSpreadsheetReport() {
       .map(r => ({ ...r, coopCount: r.coopIds.size }))
       .sort((a, b) => regionSortKey(a.region) - regionSortKey(b.region))
   }, [filteredRecords, getViewForSource])
+
+  // Center Aggregations (same columns as regional summary)
+  const centerSummary = useMemo(() => {
+    const map = new Map<string, {
+      center: string
+      sdoCount: number
+      sdoKeys: Set<string>
+      beneficiaries: number
+      contractAmt: number
+      targetPacks: number
+      deliveredPacks: number
+      coopIds: Set<string>
+      forPrep: number
+      ongoing: number
+      awardedDelivery: number
+      awardedOngoing: number
+      completed: number
+      failed: number
+    }>()
+
+    filteredRecords.forEach(r => {
+      const centerKey = reportCenterLabel(r.center)
+      const label = centerKey === '—' ? 'UNASSIGNED' : centerKey
+      if (!map.has(label)) {
+        map.set(label, {
+          center: label,
+          sdoCount: 0,
+          sdoKeys: new Set(),
+          beneficiaries: 0,
+          contractAmt: 0,
+          targetPacks: 0,
+          deliveredPacks: 0,
+          coopIds: new Set(),
+          forPrep: 0,
+          ongoing: 0,
+          awardedDelivery: 0,
+          awardedOngoing: 0,
+          completed: 0,
+          failed: 0,
+        })
+      }
+      const entry = map.get(label)!
+      const sdoKey = normalizeSdoName(String(r.sdo || ''))
+      if (sdoKey && !entry.sdoKeys.has(sdoKey)) {
+        entry.sdoKeys.add(sdoKey)
+        entry.sdoCount++
+      }
+      entry.beneficiaries += Number(r.beneficiaries_pm) || 0
+      entry.contractAmt += Number(r.contract_amount) || 0
+      const view = getViewForSource(r.id)
+      entry.targetPacks += view?.packs_to_deliver ?? 0
+      entry.deliveredPacks += view?.delivered_packs ?? 0
+      const coopId = String(r.supplier_id || '').trim()
+      if (coopId) entry.coopIds.add(coopId)
+
+      const bucket = sbfpStatusBucket(r.procurement_status)
+      if (bucket === 'prep') entry.forPrep++
+      else if (bucket === 'ongoing') entry.ongoing++
+      else if (bucket === 'awarded_delivery') entry.awardedDelivery++
+      else if (bucket === 'awarded_ongoing') entry.awardedOngoing++
+      else if (bucket === 'completed') entry.completed++
+      else if (bucket === 'failed') entry.failed++
+      else entry.forPrep++
+    })
+
+    return Array.from(map.values())
+      .map(r => ({ ...r, coopCount: r.coopIds.size }))
+      .sort((a, b) => a.center.localeCompare(b.center))
+  }, [filteredRecords, getViewForSource])
+
+  /** # column: one number per geographic SDO (PM/SM/CM / lots share a merged cell). */
+  const sdoIndexMeta = useMemo(() => {
+    const meta: Array<{ number: number; rowSpan: number }> = []
+    let geoNum = 0
+    let i = 0
+    while (i < filteredRecords.length) {
+      const key = normalizeSdoName(String(filteredRecords[i].sdo || '')) || `__row_${i}`
+      let span = 1
+      while (
+        i + span < filteredRecords.length &&
+        (normalizeSdoName(String(filteredRecords[i + span].sdo || '')) || `__row_${i + span}`) === key
+      ) {
+        span++
+      }
+      geoNum++
+      meta[i] = { number: geoNum, rowSpan: span }
+      for (let j = 1; j < span; j++) meta[i + j] = { number: geoNum, rowSpan: 0 }
+      i += span
+    }
+    return meta
+  }, [filteredRecords])
 
   // Export to CSV Function
   const exportToCSV = () => {
@@ -383,7 +484,7 @@ export default function SbfpSpreadsheetReport() {
       const v = getViewForSource(r.id)
       if (!v) return
       const row = [
-        idx + 1,
+        sdoIndexMeta[idx]?.number ?? idx + 1,
         v.region === '—' ? '' : v.region,
         v.sdo === '—' ? '' : v.sdo,
         v.center,
@@ -504,7 +605,9 @@ export default function SbfpSpreadsheetReport() {
               <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
                 style={{ height: 34, padding: '0 0.75rem', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: '0.85rem', background: '#fff' }}>
                 <option value="ALL">All Statuses</option>
-                {distinctStatuses.map(s => <option key={s} value={s}>{s}</option>)}
+                {distinctStatuses.map(s => (
+                  <option key={s.value} value={s.value}>{s.label}</option>
+                ))}
               </select>
             </div>
 
@@ -653,7 +756,7 @@ export default function SbfpSpreadsheetReport() {
                 display: 'flex', alignItems: 'center', gap: 5
               }}
             >
-              <Table size={13} /> SDO Masterlist ({filteredRecords.length})
+              <Table size={13} /> SDO Masterlist
             </button>
 
             <button
@@ -667,6 +770,19 @@ export default function SbfpSpreadsheetReport() {
               }}
             >
               <BarChart2 size={13} /> Regional Summary
+            </button>
+
+            <button
+              onClick={() => setActiveTab('center_summary')}
+              style={{
+                padding: '4px 12px', fontSize: '0.78rem', fontWeight: 600, borderRadius: 4, border: 'none', cursor: 'pointer',
+                background: activeTab === 'center_summary' ? '#ffffff' : 'transparent',
+                color: activeTab === 'center_summary' ? '#1e293b' : '#64748b',
+                boxShadow: activeTab === 'center_summary' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                display: 'flex', alignItems: 'center', gap: 5
+              }}
+            >
+              <Building2 size={13} /> Center Summary
             </button>
 
             <button
@@ -854,10 +970,26 @@ export default function SbfpSpreadsheetReport() {
                         const statusCfg = STATUS_BADGE[v.procurement_status] || { bg: '#f1f5f9', color: '#475569' }
                         const rowBg = i % 2 === 0 ? '#ffffff' : '#f8fafc'
                         const delivered = v.delivered_packs
+                        const idxMeta = sdoIndexMeta[i] || { number: i + 1, rowSpan: 1 }
 
                         return (
                           <tr key={r.id || i} style={{ background: rowBg }}>
-                            <td style={{ border: '1px solid #cbd5e1', padding: '4px 6px', textAlign: 'center', color: '#64748b' }}>{i + 1}</td>
+                            {idxMeta.rowSpan > 0 && (
+                              <td
+                                rowSpan={idxMeta.rowSpan}
+                                style={{
+                                  border: '1px solid #cbd5e1',
+                                  padding: '4px 6px',
+                                  textAlign: 'center',
+                                  color: '#64748b',
+                                  fontWeight: 700,
+                                  verticalAlign: 'middle',
+                                  background: idxMeta.rowSpan > 1 ? '#f1f5f9' : undefined,
+                                }}
+                              >
+                                {idxMeta.number}
+                              </td>
+                            )}
                             <td style={{ border: '1px solid #cbd5e1', padding: '4px 6px', textAlign: 'center', fontWeight: 700 }}>{v.region}</td>
                             <td style={{ border: '1px solid #cbd5e1', padding: '4px 8px', fontWeight: 600, color: '#0f172a' }}>{v.sdo}</td>
                             <td style={{ border: '1px solid #cbd5e1', padding: '4px 6px', textAlign: 'center', color: '#475569' }}>{v.center}</td>
@@ -905,7 +1037,7 @@ export default function SbfpSpreadsheetReport() {
                       <tfoot>
                         <tr style={{ background: '#dbeafe', color: '#1e3a8a', fontWeight: 800, borderTop: '2px solid #3b82f6' }}>
                           <td colSpan={6} style={{ border: '1px solid #93c5fd', padding: '8px 10px', textAlign: 'left' }}>
-                            GRAND TOTAL ({filteredRecords.length} SDOs)
+                            GRAND TOTAL ({stats.count} SDOs · {stats.rowCount} rows)
                           </td>
                           <td style={{ border: '1px solid #93c5fd', padding: '8px', textAlign: 'right' }}>
                             {fmtPeso(stats.totalAmount)}
@@ -961,6 +1093,7 @@ export default function SbfpSpreadsheetReport() {
                         <th style={{ border: '1px solid #cbd5e1', padding: '8px 8px', textAlign: 'center', width: 90 }}>Awarded (Del)</th>
                         <th style={{ border: '1px solid #cbd5e1', padding: '8px 8px', textAlign: 'center', width: 90 }}>Awarded (Ong)</th>
                         <th style={{ border: '1px solid #cbd5e1', padding: '8px 8px', textAlign: 'center', width: 80 }}>Done</th>
+                        <th style={{ border: '1px solid #cbd5e1', padding: '8px 8px', textAlign: 'center', width: 80 }}>Failed</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -981,6 +1114,7 @@ export default function SbfpSpreadsheetReport() {
                             <td style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'center' }}>{reg.awardedDelivery || '—'}</td>
                             <td style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'center' }}>{reg.awardedOngoing || '—'}</td>
                             <td style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'center', fontWeight: 700, color: '#047857' }}>{reg.completed || '—'}</td>
+                            <td style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'center', fontWeight: 700, color: '#b91c1c' }}>{reg.failed || '—'}</td>
                           </tr>
                         )
                       })}
@@ -995,7 +1129,80 @@ export default function SbfpSpreadsheetReport() {
                         <td style={{ border: '1px solid #93c5fd', padding: '8px 10px', textAlign: 'right' }}>{stats.totalPacks.toLocaleString()}</td>
                         <td style={{ border: '1px solid #93c5fd', padding: '8px 10px', textAlign: 'right', color: '#047857' }}>{stats.totalDelivered.toLocaleString()}</td>
                         <td style={{ border: '1px solid #93c5fd', padding: '8px 10px', textAlign: 'right' }}>{stats.pctDelivered.toFixed(1)}%</td>
-                        <td colSpan={5} style={{ border: '1px solid #93c5fd' }}></td>
+                        <td colSpan={6} style={{ border: '1px solid #93c5fd' }}></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* VIEW 2b: Center Summary — same format as regional, grouped by center */}
+            {activeTab === 'center_summary' && (
+              <div style={{ background: '#ffffff', borderRadius: 8, border: '1px solid #cbd5e1', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
+                  <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#1e293b' }}>
+                    Center Milk Procurement & Delivery Matrix
+                  </h3>
+                  <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 2 }}>
+                    Aggregated by PCC center (same columns as Regional Summary)
+                  </div>
+                </div>
+
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', fontFamily: 'Arial, sans-serif' }}>
+                    <thead>
+                      <tr style={{ background: '#e2e8f0', color: '#1e293b' }}>
+                        <th style={{ border: '1px solid #cbd5e1', padding: '8px 10px', textAlign: 'center', width: 120 }}>Center</th>
+                        <th style={{ border: '1px solid #cbd5e1', padding: '8px 10px', textAlign: 'right', width: 90 }}>No. of SDOs</th>
+                        <th style={{ border: '1px solid #cbd5e1', padding: '8px 10px', textAlign: 'right', width: 90 }}>Coops</th>
+                        <th style={{ border: '1px solid #cbd5e1', padding: '8px 10px', textAlign: 'right' }}>Beneficiaries</th>
+                        <th style={{ border: '1px solid #cbd5e1', padding: '8px 10px', textAlign: 'right' }}>Contract Amt ({PESO})</th>
+                        <th style={{ border: '1px solid #cbd5e1', padding: '8px 10px', textAlign: 'right' }}>Packs to Deliver</th>
+                        <th style={{ border: '1px solid #cbd5e1', padding: '8px 10px', textAlign: 'right' }}>Delivered Packs</th>
+                        <th style={{ border: '1px solid #cbd5e1', padding: '8px 10px', textAlign: 'right' }}>% Delivered</th>
+                        <th style={{ border: '1px solid #cbd5e1', padding: '8px 8px', textAlign: 'center', width: 80 }}>Prep</th>
+                        <th style={{ border: '1px solid #cbd5e1', padding: '8px 8px', textAlign: 'center', width: 80 }}>Ongoing</th>
+                        <th style={{ border: '1px solid #cbd5e1', padding: '8px 8px', textAlign: 'center', width: 90 }}>Awarded (Del)</th>
+                        <th style={{ border: '1px solid #cbd5e1', padding: '8px 8px', textAlign: 'center', width: 90 }}>Awarded (Ong)</th>
+                        <th style={{ border: '1px solid #cbd5e1', padding: '8px 8px', textAlign: 'center', width: 80 }}>Done</th>
+                        <th style={{ border: '1px solid #cbd5e1', padding: '8px 8px', textAlign: 'center', width: 80 }}>Failed</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {centerSummary.map((c, i) => {
+                        const pct = c.targetPacks > 0 ? (c.deliveredPacks / c.targetPacks) * 100 : 0
+                        return (
+                          <tr key={c.center} style={{ background: i % 2 === 0 ? '#fff' : '#f8fafc' }}>
+                            <td style={{ border: '1px solid #cbd5e1', padding: '6px 10px', textAlign: 'center', fontWeight: 800 }}>{c.center}</td>
+                            <td style={{ border: '1px solid #cbd5e1', padding: '6px 10px', textAlign: 'right', fontWeight: 600 }}>{c.sdoCount}</td>
+                            <td style={{ border: '1px solid #cbd5e1', padding: '6px 10px', textAlign: 'right', fontWeight: 700, color: '#0f766e' }}>{c.coopCount || '—'}</td>
+                            <td style={{ border: '1px solid #cbd5e1', padding: '6px 10px', textAlign: 'right' }}>{c.beneficiaries.toLocaleString()}</td>
+                            <td style={{ border: '1px solid #cbd5e1', padding: '6px 10px', textAlign: 'right' }}>{fmtPeso(c.contractAmt)}</td>
+                            <td style={{ border: '1px solid #cbd5e1', padding: '6px 10px', textAlign: 'right', fontWeight: 700, color: '#1e40af' }}>{c.targetPacks.toLocaleString()}</td>
+                            <td style={{ border: '1px solid #cbd5e1', padding: '6px 10px', textAlign: 'right', fontWeight: 700, color: '#047857' }}>{c.deliveredPacks.toLocaleString()}</td>
+                            <td style={{ border: '1px solid #cbd5e1', padding: '6px 10px', textAlign: 'right', fontWeight: 600 }}>{pct.toFixed(1)}%</td>
+                            <td style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'center' }}>{c.forPrep || '—'}</td>
+                            <td style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'center' }}>{c.ongoing || '—'}</td>
+                            <td style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'center' }}>{c.awardedDelivery || '—'}</td>
+                            <td style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'center' }}>{c.awardedOngoing || '—'}</td>
+                            <td style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'center', fontWeight: 700, color: '#047857' }}>{c.completed || '—'}</td>
+                            <td style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'center', fontWeight: 700, color: '#b91c1c' }}>{c.failed || '—'}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr style={{ background: '#dbeafe', color: '#1e3a8a', fontWeight: 800 }}>
+                        <td style={{ border: '1px solid #93c5fd', padding: '8px 10px', textAlign: 'center' }}>TOTAL</td>
+                        <td style={{ border: '1px solid #93c5fd', padding: '8px 10px', textAlign: 'right' }}>{stats.count}</td>
+                        <td style={{ border: '1px solid #93c5fd', padding: '8px 10px', textAlign: 'right', color: '#0f766e' }}>{stats.totalCoops}</td>
+                        <td style={{ border: '1px solid #93c5fd', padding: '8px 10px', textAlign: 'right' }}>{stats.totalBeneficiaries.toLocaleString()}</td>
+                        <td style={{ border: '1px solid #93c5fd', padding: '8px 10px', textAlign: 'right' }}>{fmtPeso(stats.totalContractAmt)}</td>
+                        <td style={{ border: '1px solid #93c5fd', padding: '8px 10px', textAlign: 'right' }}>{stats.totalPacks.toLocaleString()}</td>
+                        <td style={{ border: '1px solid #93c5fd', padding: '8px 10px', textAlign: 'right', color: '#047857' }}>{stats.totalDelivered.toLocaleString()}</td>
+                        <td style={{ border: '1px solid #93c5fd', padding: '8px 10px', textAlign: 'right' }}>{stats.pctDelivered.toFixed(1)}%</td>
+                        <td colSpan={6} style={{ border: '1px solid #93c5fd' }}></td>
                       </tr>
                     </tfoot>
                   </table>
@@ -1024,15 +1231,15 @@ export default function SbfpSpreadsheetReport() {
                     </tr>
                   </thead>
                   <tbody>
-                    {distinctStatuses.map(st => {
-                      const count = stats.statusCounts[st] || 0
-                      const pct = stats.count > 0 ? (count / stats.count) * 100 : 0
-                      const cfg = STATUS_BADGE[st] || { bg: '#f1f5f9', color: '#475569' }
+                    {distinctStatuses.map(({ value, label }) => {
+                      const count = stats.statusCounts[value] || 0
+                      const pct = stats.rowCount > 0 ? (count / stats.rowCount) * 100 : 0
+                      const cfg = STATUS_BADGE[label] || { bg: '#f1f5f9', color: '#475569' }
                       return (
-                        <tr key={st}>
+                        <tr key={value}>
                           <td style={{ border: '1px solid #cbd5e1', padding: '8px 12px' }}>
                             <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: '0.75rem', fontWeight: 700, background: cfg.bg, color: cfg.color }}>
-                              {st}
+                              {label}
                             </span>
                           </td>
                           <td style={{ border: '1px solid #cbd5e1', padding: '8px 12px', textAlign: 'right', fontWeight: 700 }}>
@@ -1047,8 +1254,8 @@ export default function SbfpSpreadsheetReport() {
                   </tbody>
                   <tfoot>
                     <tr style={{ background: '#dbeafe', fontWeight: 800, color: '#1e3a8a' }}>
-                      <td style={{ border: '1px solid #93c5fd', padding: '8px 12px' }}>TOTAL SDOs</td>
-                      <td style={{ border: '1px solid #93c5fd', padding: '8px 12px', textAlign: 'right' }}>{stats.count}</td>
+                      <td style={{ border: '1px solid #93c5fd', padding: '8px 12px' }}>TOTAL rows (unique SDOs: {stats.count})</td>
+                      <td style={{ border: '1px solid #93c5fd', padding: '8px 12px', textAlign: 'right' }}>{stats.rowCount}</td>
                       <td style={{ border: '1px solid #93c5fd', padding: '8px 12px', textAlign: 'right' }}>100.0%</td>
                     </tr>
                   </tfoot>

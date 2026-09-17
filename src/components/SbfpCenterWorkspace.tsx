@@ -160,7 +160,7 @@ export function SbfpCenterWorkspace({
         />
       </section>
 
-      <section id="dropoff-points" className="flex flex-col gap-2 scroll-mt-4">
+      <section id="dropoff-points" className="flex flex-col gap-2 scroll-mt-4 w-full min-w-0">
         <h2 className="text-base font-semibold">1b. Drop-off Points (Schools)</h2>
         <p className="text-xs text-muted-foreground">
           Schools / drop-off points under each SDO. Enter <strong>beneficiaries</strong> and <strong>feeding days</strong> —

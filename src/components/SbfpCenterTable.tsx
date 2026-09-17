@@ -26,6 +26,7 @@ import {
   fixedPackPriceForMilkType,
   inferSbfpMilkType,
 } from '@/lib/sbfp-pack-price'
+import { composeSdoWithMilkType } from '@/lib/sbfp-dropoff-sync'
 import { useAsyncTask } from '@/components/loading/AsyncFeedback'
 import { logCenterActivity } from '@/lib/center-activity'
 
@@ -694,33 +695,71 @@ export function SbfpCenterTable({
       }
     }
 
-    if (nextRow && field === 'sdo' && String(oldV) !== String(newV)) {
-      // Auto-detect milk type from label e.g. "Zambales (SM)" → SM
-      const inferred = inferSbfpMilkType(String(newV || ''))
+    // Keep SDO label in sync with milk type: "Cavite - PM" / "Cavite - SM" / "Cavite - CM"
+    if (nextRow && (field === 'sdo' || field === 'milk_type')) {
+      const inferred =
+        field === 'sdo' ? inferSbfpMilkType(String(newV || '')) : null
+      const milk =
+        inferred ||
+        normalizeSbfpMilkType(nextRow.milk_type) ||
+        normalizeSbfpMilkType(field === 'milk_type' ? newV : nextRow.milk_type)
+      const composed = composeSdoWithMilkType(
+        field === 'sdo' ? String(newV || '') : String(nextRow.sdo || ''),
+        milk || nextRow.milk_type,
+      )
+      const namePatch: Record<string, unknown> = {}
       if (inferred && inferred !== normalizeSbfpMilkType(nextRow.milk_type)) {
+        namePatch.milk_type = inferred
+        nextRow = { ...nextRow, milk_type: inferred }
         const price = inferred === 'CM' ? nextRow.pack_unit_price : fixedPackPriceForMilkType(inferred)
         const derived = packsFromAmount(nextRow.amount, inferred, price)
-        const patch: Record<string, unknown> = { milk_type: inferred }
-        nextRow = { ...nextRow, milk_type: inferred }
         if (derived != null && derived !== (Number(nextRow.packs_to_deliver) || 0)) {
-          patch.packs_to_deliver = derived
+          namePatch.packs_to_deliver = derived
           nextRow = { ...nextRow, packs_to_deliver: derived }
         }
-        setRows(p => p.map(r => (r.id === id ? { ...r, ...patch } : r)))
-        void supabase.from('sbfp_data').update(patch).eq('id', id)
       }
-      void apiDropoffMasterlist({
-        action: 'cascade-rename',
-        sbfpDataId: id,
-        newSdoName: String(newV || ''),
-        parent: nextRow,
-      }).then(err => {
-        if (err) alert(err)
-      })
+      if (composed && composed !== String(nextRow.sdo || '')) {
+        namePatch.sdo = composed
+        nextRow = { ...nextRow, sdo: composed }
+      }
+      if (Object.keys(namePatch).length) {
+        setRows(p => p.map(r => (r.id === id ? { ...r, ...namePatch } : r)))
+        void supabase.from('sbfp_data').update(namePatch).eq('id', id).then(({ error }) => {
+          if (error) alert(`Could not update SDO name: ${error.message}`)
+        })
+      }
+      if (field === 'sdo' || namePatch.sdo) {
+        void apiDropoffMasterlist({
+          action: 'cascade-rename',
+          sbfpDataId: id,
+          newSdoName: String(nextRow.sdo || ''),
+          parent: nextRow,
+        }).then(err => {
+          if (err) alert(err)
+        })
+      } else if (
+        field === 'region' ||
+        field === 'milk_type' ||
+        field === 'batch' ||
+        field === 'feeding_days' ||
+        field === 'remarks' ||
+        field === 'delivery_start' ||
+        field === 'delivery_end' ||
+        field === 'packs_to_deliver' ||
+        field === 'packs_delivered' ||
+        field === 'supplier_id'
+      ) {
+        void apiDropoffMasterlist({
+          action: 'cascade-fields',
+          sbfpDataId: id,
+          parent: nextRow,
+        }).then(err => {
+          if (err) alert(err)
+        })
+      }
     } else if (
       nextRow &&
       (field === 'region' ||
-        field === 'milk_type' ||
         field === 'batch' ||
         field === 'feeding_days' ||
         field === 'remarks' ||
@@ -839,7 +878,7 @@ export function SbfpCenterTable({
       year: dbYear,
       center,
       region: '',
-      sdo: 'New SDO',
+      sdo: composeSdoWithMilkType('New SDO', 'PM'),
       procurement_status: 'For Preparation',
       include_in_report: true,
       packs_to_deliver: 0,
