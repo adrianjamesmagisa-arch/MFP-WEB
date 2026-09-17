@@ -396,7 +396,7 @@ export function SbfpDropoffTable({
             onChange={e => setFilterSdo(e.target.value)}
             className="h-9 px-2 rounded-md border text-sm bg-background"
           >
-            <option value="ALL">All SDOs ({rows.length})</option>
+            <option value="ALL">All SDOs</option>
             {sdoSelectOptions.map(o => (
               <option key={o.id} value={o.id}>{o.displayLabel}</option>
             ))}
