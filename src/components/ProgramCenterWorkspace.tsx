@@ -8,6 +8,11 @@ import type { ProgramDropoffRow, ProgramProcurementRow } from '@/lib/program-dro
 import { ProgramProcurementTable } from '@/components/ProgramProcurementTable'
 import { ProgramDropoffTable } from '@/components/ProgramDropoffTable'
 import { MFP_GEO_NA } from '@/lib/mfp-record-classification'
+import { composeSdoWithMilkType, normalizeSdoName } from '@/lib/sbfp-dropoff-sync'
+import {
+  deliveryAccomplishmentPct,
+  packsForDeliveryProgress,
+} from '@/lib/sbfp-raw-milk'
 
 function areaLabel(programId: MonitoringProgramId): string {
   if (programId === 'dswd') return 'Province'
@@ -50,9 +55,27 @@ export function ProgramCenterWorkspace({
     setLiveDropoffs(dropoffRows)
   }, [dropoffRows])
 
-  const totalAreas = liveProcurement.length
-  const totalPacks = liveProcurement.reduce((s, r) => s + (Number(r.packs_to_deliver) || 0), 0)
-  const totalDelivered = liveProcurement.reduce((s, r) => s + (Number(r.packs_delivered) || 0), 0)
+  const totalAreas = new Set(
+    liveProcurement.map(r => normalizeSdoName(r.label || r.province || '')).filter(Boolean),
+  ).size
+  const reportable = liveProcurement.filter(r => {
+    const st = String(r.procurement_status || '').toUpperCase()
+    if (st === 'FAILED') return false
+    if (r.include_in_report === false) return false
+    return true
+  })
+  const totalPacks = reportable.reduce((s, r) => s + (Number(r.packs_to_deliver) || 0), 0)
+  const totalDelivered = reportable.reduce(
+    (s, r) =>
+      s +
+      packsForDeliveryProgress(
+        r as import('@/lib/sbfp-raw-milk').SbfpRawMilkRow & {
+          procurement_status?: string | null
+        },
+      ),
+    0,
+  )
+  const deliveryPct = deliveryAccomplishmentPct(totalDelivered, totalPacks)
   const statCounts = liveProcurement.reduce(
     (acc, r) => {
       const st = (r.procurement_status || '').toUpperCase()
@@ -70,13 +93,18 @@ export function ProgramCenterWorkspace({
     program.pimdFunder ? `&funder=${encodeURIComponent(program.pimdFunder)}` : ''
   }`
 
-  const parentOptions = liveProcurement.map(r => ({
-    id: r.id,
-    label: r.label || r.province || '',
-    region: r.region,
-    province: r.province,
-    milk_type: r.milk_type,
-  }))
+  const parentOptions = liveProcurement.map(r => {
+    const raw = r.label || r.province || ''
+    const displayLabel = composeSdoWithMilkType(raw, r.milk_type) || raw
+    return {
+      id: r.id,
+      label: displayLabel,
+      displayLabel,
+      region: r.region,
+      province: r.province || displayLabel,
+      milk_type: r.milk_type,
+    }
+  })
 
   return (
     <div className="flex flex-col gap-5">
@@ -135,14 +163,12 @@ export function ProgramCenterWorkspace({
               <div className="text-2xl font-bold text-emerald-800">{statCounts.done}</div>
               <div className="text-xs text-emerald-700 mt-1">Completed</div>
             </div>
-            <div className="rounded-lg border bg-card p-3 text-center">
-              <div className="text-lg font-bold">{liveDropoffs.length}</div>
-              <div className="text-xs text-muted-foreground mt-1">Municipalities</div>
+            <div className="rounded-lg border bg-red-50 p-3 text-center">
+              <div className="text-2xl font-bold text-red-800">{statCounts.failed}</div>
+              <div className="text-xs text-red-700 mt-1">Failed</div>
             </div>
             <div className="rounded-lg border bg-card p-3 text-center">
-              <div className="text-lg font-bold">
-                {totalPacks ? `${Math.round((totalDelivered / totalPacks) * 100)}%` : '0%'}
-              </div>
+              <div className="text-lg font-bold">{deliveryPct.toFixed(1)}%</div>
               <div className="text-xs text-muted-foreground mt-1">Delivery progress</div>
             </div>
           </div>
@@ -161,7 +187,7 @@ export function ProgramCenterWorkspace({
               center={center}
               year={year}
               areaColumnLabel={areaColumnLabel}
-              initialRows={liveProcurement}
+              initialRows={procurementRows}
               editable={editable}
               onRowsChange={setLiveProcurement}
               onProcurementDeleted={procId => {
@@ -182,7 +208,7 @@ export function ProgramCenterWorkspace({
               year={year}
               areaColumnLabel={areaColumnLabel}
               parentOptions={parentOptions}
-              initialRows={liveDropoffs}
+              initialRows={dropoffRows}
               editable={editable}
               onRowsChange={setLiveDropoffs}
             />

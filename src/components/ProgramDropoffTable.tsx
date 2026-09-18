@@ -33,7 +33,14 @@ async function apiUnlink(id: string): Promise<string | null> {
   return null
 }
 
-type ParentOption = { id: string; label: string; region?: string | null; province?: string | null; milk_type?: string | null }
+type ParentOption = {
+  id: string
+  label: string
+  displayLabel?: string
+  region?: string | null
+  province?: string | null
+  milk_type?: string | null
+}
 
 export function ProgramDropoffTable({
   programId,
@@ -223,7 +230,7 @@ export function ProgramDropoffTable({
             <option value="">All ({parentOptions.length} {areaColumnLabel.toLowerCase()}{parentOptions.length === 1 ? '' : 's'})</option>
             {parentOptions.map(p => (
               <option key={p.id} value={p.id}>
-                {p.label || 'Untitled'}
+                {p.displayLabel || p.label || 'Untitled'}
               </option>
             ))}
           </select>
@@ -271,11 +278,43 @@ export function ProgramDropoffTable({
               {filtered.map(r => {
                 const mt = milkTypeFor(r)
                 const calc = calcMilkFormulations(Number(r.beneficiaries) || 0, Number(r.feeding_days) || 0, mt)
-                const parentLabel = parentOptions.find(p => p.id === r.procurement_id)?.label || r.province || '—'
+                const parentOpt = parentOptions.find(p => p.id === r.procurement_id)
+                const parentLabel =
+                  parentOpt?.displayLabel || parentOpt?.label || r.province || '—'
                 const rowBg = '#fff'
                 return (
                   <tr key={r.id} style={{ opacity: busyRowId === r.id ? 0.7 : 1, background: rowBg }}>
-                    <td style={stickyTd(SL.area, SW.area, rowBg)}>{parentLabel}</td>
+                    <td style={stickyTd(SL.area, SW.area, rowBg)}>
+                      {editable ? (
+                        <select
+                          value={r.procurement_id || ''}
+                          onChange={e => {
+                            const nextParent = parentOptions.find(p => p.id === e.target.value)
+                            if (!nextParent) return
+                            void savePatch(r, {
+                              procurement_id: nextParent.id,
+                              province: nextParent.province || nextParent.label,
+                              region: nextParent.region || r.region,
+                            })
+                          }}
+                          style={{
+                            width: '100%',
+                            border: 0,
+                            background: 'transparent',
+                            fontSize: 'inherit',
+                          }}
+                        >
+                          <option value="">—</option>
+                          {parentOptions.map(p => (
+                            <option key={p.id} value={p.id}>
+                              {p.displayLabel || p.label}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        parentLabel
+                      )}
+                    </td>
                     <td style={stickyTd(SL.muni, SW.muni, rowBg)}>
                       {editable ? (
                         <input

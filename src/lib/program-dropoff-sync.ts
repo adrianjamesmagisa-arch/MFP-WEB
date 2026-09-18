@@ -3,7 +3,7 @@
  */
 
 import { calcMilkFormulations } from '@/lib/mfp-formulas'
-import { toDateInputValue, totalPacksDelivered } from '@/lib/sbfp-raw-milk'
+import { packsDeliveredFromTracking, toDateInputValue } from '@/lib/sbfp-raw-milk'
 import { classifyDswdMasterlistPatch, MFP_GEO_NA } from '@/lib/mfp-record-classification'
 import {
   MONITORING_PROGRAMS,
@@ -124,7 +124,7 @@ export function buildProgramMasterlistIdentity(
     payload.date_completed = toDateInputValue(parent.delivery_end) || null
     payload.target_milk_packs_to_deliver = Number(parent.packs_to_deliver) || 0
     payload.total_milk_packs_delivered =
-      totalPacksDelivered(parent as import('@/lib/sbfp-raw-milk').SbfpRawMilkRow) ||
+      packsDeliveredFromTracking(parent as import('@/lib/sbfp-raw-milk').SbfpRawMilkRow) ||
       Number(parent.packs_delivered) ||
       0
     const contract = Number(parent.contract_amount) || Number(parent.amount) || 0

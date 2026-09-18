@@ -1,5 +1,10 @@
 'use client'
 
+/**
+ * @deprecated Legacy DSWD workspace (edits mfp_data rows directly).
+ * Use ProgramCenterWorkspace at /monitoring/dswd/center/[center] instead.
+ */
+
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'

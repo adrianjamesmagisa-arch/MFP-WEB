@@ -28,11 +28,13 @@ import {
 import { useAsyncTask } from '@/components/loading/AsyncFeedback'
 import {
   fixedPackPriceForMilkType,
+  inferSbfpMilkType,
   normalizeSbfpMilkType,
   packsFromAmount,
   resolvePackUnitPrice,
   SBFP_MILK_TYPE_VALUES,
 } from '@/lib/sbfp-pack-price'
+import { baseSdoName, composeSdoWithMilkType } from '@/lib/sbfp-dropoff-sync'
 import { nextIncrementedName } from '@/lib/next-incremented-name'
 
 function rawMilkRow(r: ProgramProcurementRow): SbfpRawMilkRow {
@@ -187,21 +189,15 @@ export function ProgramProcurementTable({
       }),
     )
 
-    if (field === 'label' && nextRow) {
-      const row = nextRow as ProgramProcurementRow
-      nextRow = { ...row, province: String(newV || '') }
-      setRows(p => p.map(r => (r.id === id ? { ...r, province: String(newV || '') } : r)))
-      void supabase.from(PROC_TABLE).update({ province: String(newV || '') }).eq('id', id)
-    }
-
     if (
       nextRow &&
       (field === 'delivery_snapshots' || field === 'monthly_packs_delivered')
     ) {
       // Ignore legacy packs_delivered so clearing/deleting snapshots actually zeros the total.
       const total = packsDeliveredFromTracking(rawMilkRow(nextRow))
-      if (total !== (Number(nextRow.packs_delivered) || 0)) {
-        nextRow = { ...nextRow, packs_delivered: total }
+      const rowAfterTrack = nextRow as ProgramProcurementRow
+      if (total !== (Number(rowAfterTrack.packs_delivered) || 0)) {
+        nextRow = { ...rowAfterTrack, packs_delivered: total }
         setRows(p => p.map(r => (r.id === id ? { ...r, packs_delivered: total } : r)))
         void supabase.from(PROC_TABLE).update({ packs_delivered: total }).eq('id', id)
       }
@@ -230,6 +226,52 @@ export function ProgramProcurementTable({
       if (Object.keys(patch).length) {
         setRows(p => p.map(r => (r.id === id ? { ...r, ...patch } : r)))
         void supabase.from(PROC_TABLE).update(patch).eq('id', id)
+      }
+      if ((milk === 'PM' || milk === 'SM') && !(Number(nextRow.amount) > 0)) {
+        alert('Enter Amount (₱) first — Target packs = Amount ÷ Pack ₱')
+      }
+    }
+
+    // Keep province/area label in sync with milk type: "Cavite - PM" / "Cavite - SM" / "Cavite - CM"
+    if (nextRow && (field === 'label' || field === 'milk_type')) {
+      const inferred = field === 'label' ? inferSbfpMilkType(String(newV || '')) : null
+      const milk =
+        inferred ||
+        normalizeSbfpMilkType(field === 'milk_type' ? newV : nextRow.milk_type) ||
+        normalizeSbfpMilkType(nextRow.milk_type)
+      const baseForCompose =
+        field === 'label'
+          ? String(newV || '')
+          : baseSdoName(String(nextRow.label || nextRow.province || ''))
+      const composed = composeSdoWithMilkType(baseForCompose, milk || nextRow.milk_type)
+      const namePatch: Record<string, unknown> = {}
+      if (inferred && inferred !== normalizeSbfpMilkType(nextRow.milk_type)) {
+        namePatch.milk_type = inferred
+        nextRow = { ...nextRow, milk_type: inferred }
+        const price =
+          inferred === 'CM' ? nextRow.pack_unit_price : fixedPackPriceForMilkType(inferred)
+        const derived = packsFromAmount(nextRow.amount, inferred, price)
+        if (derived != null && derived !== (Number(nextRow.packs_to_deliver) || 0)) {
+          namePatch.packs_to_deliver = derived
+          nextRow = { ...nextRow, packs_to_deliver: derived }
+        }
+      }
+      const curLabel = String(nextRow.label || '')
+      const curProvince = String(nextRow.province || '')
+      const suffixChanged =
+        field === 'milk_type' &&
+        normalizeSbfpMilkType(String(newV || '')) !== normalizeSbfpMilkType(String(oldV || ''))
+      if (composed && (suffixChanged || composed !== curLabel || composed !== curProvince)) {
+        namePatch.label = composed
+        namePatch.province = composed
+        nextRow = { ...nextRow, label: composed, province: composed }
+      }
+      if (Object.keys(namePatch).length) {
+        setRows(p => p.map(r => (r.id === id ? { ...r, ...namePatch } : r)))
+        void supabase.from(PROC_TABLE).update(namePatch).eq('id', id).then(({ error }) => {
+          if (error) alert(`Could not update ${areaColumnLabel} name: ${error.message}`)
+        })
+        cascadeIfNeeded(nextRow, 'label')
       }
     }
 
@@ -317,10 +359,11 @@ export function ProgramProcurementTable({
   const addRow = async () => {
     if (adding) return
     setAdding(true)
-    const defaultLabel = nextIncrementedName(`New ${areaColumnLabel}`, [
+    const baseLabel = nextIncrementedName(`New ${areaColumnLabel}`, [
       ...rows.flatMap(r => [r.label, r.province]),
       ...reservedLabelsRef.current,
     ])
+    const defaultLabel = composeSdoWithMilkType(baseLabel, 'PM') || baseLabel
     reservedLabelsRef.current.add(defaultLabel.toLowerCase())
     const { data, error } = await supabase
       .from(PROC_TABLE)
