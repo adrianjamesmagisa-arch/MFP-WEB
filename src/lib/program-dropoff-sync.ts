@@ -70,6 +70,16 @@ export type ProgramDropoffRow = {
   include_in_masterlist?: boolean | null
 }
 
+/** Drop-offs under the given procurement rows (PIMD / reports). */
+export function filterProgramDropoffsForProcurement<
+  D extends { procurement_id?: string | null },
+  P extends { id?: string },
+>(dropoffs: D[], procurementRows: P[]): D[] {
+  if (!procurementRows.length || !dropoffs.length) return []
+  const ids = new Set(procurementRows.map(r => r.id).filter(Boolean) as string[])
+  return dropoffs.filter(d => d.procurement_id && ids.has(d.procurement_id))
+}
+
 type SupabaseLike = { from: (table: string) => any }
 
 function classifyProgramPatch(

@@ -196,12 +196,17 @@ export function SbfpDropoffTable({
   sdoOptions,
   initialRows,
   editable,
+  pruneSbfpDataId,
+  onPruneComplete,
 }: {
   center: string
   year: number
   sdoOptions: SdoOption[]
   initialRows: DropoffRow[]
   editable: boolean
+  /** When an SDO is deleted from procurement, remove its schools without page refresh. */
+  pruneSbfpDataId?: string | null
+  onPruneComplete?: () => void
 }) {
   const supabase = createClient()
   const [rows, setRows] = useState<DropoffRow[]>(initialRows || [])
@@ -213,6 +218,13 @@ export function SbfpDropoffTable({
   const reservedDropoffNamesRef = useRef(new Set<string>())
 
   useEffect(() => { setRows(initialRows || []) }, [initialRows])
+
+  useEffect(() => {
+    if (!pruneSbfpDataId) return
+    setRows(p => p.filter(r => r.sbfp_data_id !== pruneSbfpDataId))
+    setFilterSdo(f => (f === pruneSbfpDataId ? 'ALL' : f))
+    onPruneComplete?.()
+  }, [pruneSbfpDataId, onPruneComplete])
 
   const sdoSelectOptions = useMemo(() => {
     return sdoOptions

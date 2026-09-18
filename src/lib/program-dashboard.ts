@@ -1,6 +1,7 @@
 import { PCC_CENTERS } from '@/lib/types'
 import { rowMatchesMonitoringProgram, type MonitoringProgramId } from '@/lib/monitoring-programs'
-import { packsForMonth, totalPacksDelivered, type SbfpRawMilkRow } from '@/lib/sbfp-raw-milk'
+import { computeSbfpAccomplishment, filterReportableSbfpRows } from '@/lib/sbfp-accomplishment'
+import { packsForMonth, type SbfpRawMilkRow } from '@/lib/sbfp-raw-milk'
 import type { ProgramDropoffRow, ProgramProcurementRow } from '@/lib/program-dropoff-sync'
 
 type SupabaseLike = { from: (table: string) => any }
@@ -60,12 +61,6 @@ export function tallyStatus(status: string | null | undefined, acc: ProgramDashS
   else if (st === 'FAILED') acc.failed++
 }
 
-function deliveredForFilter(row: ProgramProcurementRow, month?: number, year?: number) {
-  const raw = row as unknown as SbfpRawMilkRow
-  if (month != null) return packsForMonth(raw, month, { year })
-  return totalPacksDelivered(raw) || Number(row.packs_delivered) || 0
-}
-
 export async function loadProgramDashboardStats(
   supabase: SupabaseLike,
   programId: MonitoringProgramId,
@@ -93,6 +88,9 @@ export async function loadProgramDashboardStats(
     await Promise.all([procQ, dropQ, mfpQ])
 
   const procurement = (!procErr && procRaw ? procRaw : []) as ProgramProcurementRow[]
+  const reportableProcurement = filterReportableSbfpRows(
+    procurement as unknown as import('@/lib/sbfp-accomplishment').SbfpAccomplishmentRow[],
+  ) as ProgramProcurementRow[]
   const dropoffs = (!dropErr && dropRaw ? dropRaw : []) as ProgramDropoffRow[]
   type MfpDashRow = {
     center?: string | null
@@ -143,10 +141,18 @@ export async function loadProgramDashboardStats(
     }
     const row = byCenter.get(key)!
     row.provinces++
-    row.targetPacks += Number(r.packs_to_deliver) || 0
-    row.deliveredPacks += deliveredForFilter(r, filters.month, filters.year || r.year)
     row.amount += Number(r.amount || r.contract_amount) || 0
     tallyStatus(r.procurement_status, status)
+  }
+
+  for (const [key, row] of byCenter) {
+    const centerRows = reportableProcurement.filter(r => String(r.center || '').trim() === key)
+    const acc = computeSbfpAccomplishment(centerRows as import('@/lib/sbfp-accomplishment').SbfpAccomplishmentRow[], {
+      month: filters.month,
+      year: filters.year,
+    })
+    row.targetPacks = acc.target
+    row.deliveredPacks = acc.delivered
   }
 
   for (const r of dropoffs) {
@@ -174,7 +180,7 @@ export async function loadProgramDashboardStats(
     month: i + 1,
     deliveredPacks: 0,
   }))
-  for (const r of procurement) {
+  for (const r of reportableProcurement) {
     for (let m = 1; m <= 12; m++) {
       if (filters.month && filters.month !== m) continue
       byMonth[m - 1].deliveredPacks += packsForMonth(r as unknown as SbfpRawMilkRow, m, {

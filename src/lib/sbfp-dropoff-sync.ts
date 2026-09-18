@@ -154,6 +154,53 @@ export function normalizeSdoName(value: string): string {
   return key
 }
 
+/** Drop-offs linked to procurement SDO rows (by sbfp_data_id or normalized sdo label). */
+export function filterDropoffsForProcurementRows<
+  D extends { sbfp_data_id?: string | null; sdo?: string | null },
+  P extends { id?: string; sdo?: string | null },
+>(dropoffs: D[], procurementRows: P[]): D[] {
+  if (!procurementRows.length || !dropoffs.length) return []
+  const ids = new Set(procurementRows.map(r => r.id).filter(Boolean) as string[])
+  const sdoKeys = new Set(
+    procurementRows.map(r => normalizeSdoName(String(r.sdo || ''))).filter(Boolean),
+  )
+  return dropoffs.filter(d => {
+    if (d.sbfp_data_id && ids.has(d.sbfp_data_id)) return true
+    const key = normalizeSdoName(String(d.sdo || ''))
+    return Boolean(key && sdoKeys.has(key))
+  })
+}
+
+export function geographyCountsFromDropoffs(
+  dropoffs: Array<{
+    dropoff_name?: string | null
+    province?: string | null
+    municipality?: string | null
+    district?: string | null
+  }>,
+): { schools: number; provinces: number; districts: number; municipalities: number } {
+  const schools = new Set<string>()
+  const provinces = new Set<string>()
+  const districts = new Set<string>()
+  const municipalities = new Set<string>()
+  for (const d of dropoffs) {
+    const school = String(d.dropoff_name || '').trim()
+    if (school) schools.add(school.toLowerCase())
+    const prov = String(d.province || '').trim()
+    if (prov) provinces.add(prov.toLowerCase())
+    const dist = String(d.district || '').trim()
+    if (dist) districts.add(dist.toLowerCase())
+    const muni = String(d.municipality || '').trim()
+    if (muni) municipalities.add(muni.toLowerCase())
+  }
+  return {
+    schools: schools.size,
+    provinces: provinces.size,
+    districts: districts.size,
+    municipalities: municipalities.size,
+  }
+}
+
 /** Prefer PM over SM/CM when several procurement rows are the same geographic SDO. */
 export function pickPreferredSdoVariant<T extends { sdo?: string | null; milk_type?: string | null }>(
   variants: T[],

@@ -250,16 +250,12 @@ export function deliveredPacksInDateRange(
     .sort((a, b) => a.date.getTime() - b.date.getTime())
 
   if (dated.length > 0) {
-    let sum = 0
-    let maxBefore = 0
-    for (const s of dated) {
-      const dayMs = startOfDay(s.date).getTime()
-      const increment =
-        s.packs >= maxBefore ? Math.max(0, s.packs - maxBefore) : Math.max(0, s.packs)
-      if (s.packs >= maxBefore) maxBefore = s.packs
-      if (dayMs >= fromMs && dayMs <= toMs) sum += increment
-    }
-    return sum
+    return dated
+      .filter(s => {
+        const dayMs = startOfDay(s.date).getTime()
+        return dayMs >= fromMs && dayMs <= toMs
+      })
+      .reduce((sum, s) => sum + Math.max(0, s.packs), 0)
   }
 
   const monthOpts = reportPacksMonthOpts(row, dbYear)

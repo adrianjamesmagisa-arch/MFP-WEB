@@ -120,24 +120,70 @@ export function packsForMonth(
 
   const monthly = readMonthlyMap(row.monthly_packs_delivered)
   const key = monthKey(month)
-  if (
-    !opts?.preferSnapshotsOverMonthly &&
-    Object.prototype.hasOwnProperty.call(monthly, key)
-  ) {
+  const snaps = Array.isArray(row.delivery_snapshots) ? row.delivery_snapshots : []
+  const hasSnapsInMonth =
+    sumSnapshotPacksInCalendarMonth(snaps, month, opts?.year) != null ||
+    (opts?.year != null &&
+      sumSnapshotPacksInCalendarMonth(snaps, month, undefined) != null)
+
+  // Dated “Delivered as of” columns win over stale monthly_packs_delivered (often one tranche only).
+  if (hasSnapsInMonth || opts?.preferSnapshotsOverMonthly || rowHasDeliverySnapshotPacks(row)) {
+    let snapSum = sumSnapshotPacksInCalendarMonth(snaps, month, opts?.year)
+    if ((snapSum == null || snapSum === 0) && opts?.year != null) {
+      snapSum = sumSnapshotPacksInCalendarMonth(snaps, month, undefined)
+    }
+    if (snapSum != null && snapSum > 0) return snapSum
+    const increment = incrementFromSnapshots(snaps, month, opts?.year)
+    if (increment != null && increment > 0) return increment
+  }
+
+  if (Object.prototype.hasOwnProperty.call(monthly, key)) {
     return Math.max(0, Number(monthly[key]) || 0)
   }
 
-  const increment = incrementFromSnapshots(row.delivery_snapshots, month, opts?.year)
+  const snapSum = sumSnapshotPacksInCalendarMonth(snaps, month, opts?.year)
+  if (snapSum != null) return snapSum
+
+  const increment = incrementFromSnapshots(snaps, month, opts?.year)
   if (increment != null) return increment
 
   const allowLegacy = opts?.allowLegacyFallback !== false
-  const snaps = Array.isArray(row.delivery_snapshots) ? row.delivery_snapshots : []
   const hasAnyMonthly = Object.keys(monthly).length > 0
   if (allowLegacy && !hasAnyMonthly && snaps.length === 0) {
     const startKey = monthKeyFromDeliveryStart(row.delivery_start)
     if (startKey === key) return Number(row.packs_delivered) || 0
   }
   return 0
+}
+
+/**
+ * Sum pack values on every “Delivered as of” snapshot dated in this calendar month.
+ * Encoders often enter each delivery tranche per column (Aug + Sep columns all count).
+ */
+export function sumSnapshotPacksInCalendarMonth(
+  snaps: DeliverySnapshot[] | null | undefined,
+  month: number,
+  year?: number,
+): number | null {
+  if (!Array.isArray(snaps) || snaps.length === 0) return null
+  let sum = 0
+  let any = false
+  for (const s of snaps) {
+    const d = parseSnapshotDate(s.date)
+    if (!d) continue
+    if (d.getMonth() + 1 !== month) continue
+    if (year != null && d.getFullYear() !== year) continue
+    sum += Math.max(0, Number(s.packs) || 0)
+    any = true
+  }
+  return any ? sum : null
+}
+
+/** YTD from snapshots: sum of every dated column (each tranche counts once). */
+export function totalPacksFromSnapshotTranches(row: SbfpRawMilkRow): number {
+  const snaps = Array.isArray(row.delivery_snapshots) ? row.delivery_snapshots : []
+  if (snaps.length === 0) return 0
+  return snaps.reduce((s, snap) => s + Math.max(0, Number(snap?.packs) || 0), 0)
 }
 
 /** Cumulative snapshot increment completed during `month`. */
@@ -176,9 +222,8 @@ export function incrementFromSnapshots(
 export function packsDeliveredFromTracking(row: SbfpRawMilkRow): number {
   const monthly = readMonthlyMap(row.monthly_packs_delivered)
   const monthlySum = Object.values(monthly).reduce((s, n) => s + (Number(n) || 0), 0)
-  const snaps = Array.isArray(row.delivery_snapshots) ? row.delivery_snapshots : []
-  const latestSnap = snaps.reduce((best, s) => Math.max(best, Number(s?.packs) || 0), 0)
-  return Math.max(monthlySum, latestSnap)
+  const trancheSum = totalPacksFromSnapshotTranches(row)
+  return Math.max(monthlySum, trancheSum)
 }
 
 /**

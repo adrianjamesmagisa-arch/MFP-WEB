@@ -8,11 +8,11 @@
  */
 
 import { loadDswdDashboardSlice, loadDswdMonitoringSummaryRows } from '@/lib/dswd-monitoring-report'
+import { computeSbfpAccomplishment, filterReportableSbfpRows } from '@/lib/sbfp-accomplishment'
 import { excludeAuxSbfp } from '@/lib/sbfp-aux'
 import {
   packsForMonth,
   sumGrossIncomeRawMilk,
-  totalPacksDelivered,
   type SbfpRawMilkRow,
 } from '@/lib/sbfp-raw-milk'
 import { fetchAllRows } from '@/lib/supabase-paginate'
@@ -94,15 +94,6 @@ function masterInMonth(r: { date_started?: string | null }, month: number | unde
   return new Date(r.date_started).getMonth() + 1 === month
 }
 
-function deliveredForSdo(
-  row: SbfpRawMilkRow & { packs_delivered?: number | null },
-  month?: number,
-  year?: number,
-) {
-  if (month != null) return packsForMonth(row, month, { year })
-  return totalPacksDelivered(row) || Number(row.packs_delivered) || 0
-}
-
 export async function loadDashboardStats(
   supabase: SupabaseLike,
   filters: { year?: number; month?: number; center?: string },
@@ -114,7 +105,7 @@ export async function loadDashboardStats(
   const [sbfpRaw, master, dswdSlice, dswdRows] = await Promise.all([
     fetchAllRows<any>(() => {
       let q = supabase.from('sbfp_data').select(
-        'id,year,center,sdo,region,milk_type,batch,feeding_days,remarks,delivery_start,delivery_end,packs_to_deliver,packs_delivered,monthly_packs_delivered,delivery_snapshots,amount,contract_amount,raw_milk_prices,raw_milk_month,beneficiaries_pm',
+        'id,year,center,sdo,region,milk_type,batch,feeding_days,remarks,delivery_start,delivery_end,packs_to_deliver,packs_delivered,monthly_packs_delivered,delivery_snapshots,amount,contract_amount,raw_milk_prices,raw_milk_month,beneficiaries_pm,procurement_status,include_in_report',
       )
       if (year) q = q.eq('year', year)
       return q
@@ -133,6 +124,13 @@ export async function loadDashboardStats(
   ])
 
   const sdos = excludeAuxSbfp(sbfpRaw).filter(r => matchesCenter(r.center, center))
+  type DepedSdoRow = SbfpRawMilkRow & {
+    year?: number | null
+    center?: string | null
+    procurement_status?: string | null
+    include_in_report?: boolean | null
+  }
+  const reportableSdos = filterReportableSbfpRows(sdos as DepedSdoRow[])
   const scopedSdos = month != null
     ? sdos.filter(s => sdoInMonth(s as SbfpRawMilkRow, month, year || s.year))
     : sdos
@@ -142,11 +140,9 @@ export async function loadDashboardStats(
   const otherMaster = scopedMaster.filter(r => String(r.funded_by || '').trim() !== 'DepEd')
 
   const depedBene = scopedSdos.reduce((s, r) => s + (Number(r.beneficiaries_pm) || 0), 0)
-  const depedTarget = scopedSdos.reduce((s, r) => s + (Number(r.packs_to_deliver) || 0), 0)
-  const depedDelivered = scopedSdos.reduce(
-    (s, r) => s + deliveredForSdo(r as SbfpRawMilkRow, month, year || Number(r.year) || undefined),
-    0,
-  )
+  const depedAcc = computeSbfpAccomplishment(reportableSdos, { month, year })
+  const depedTarget = depedAcc.target
+  const depedDelivered = depedAcc.delivered
   const depedTargetFallback = depedMaster.reduce(
     (s, r) => s + (Number(r.target_milk_packs_to_deliver || r.milk_packs) || 0),
     0,
@@ -155,8 +151,9 @@ export async function loadDashboardStats(
     (s, r) => s + (Number(r.total_milk_packs_delivered) || 0),
     0,
   )
-  const depedTargetPacks = depedTarget > 0 ? depedTarget : depedTargetFallback
-  const depedDeliveredPacks = depedDelivered > 0 ? depedDelivered : depedDeliveredFallback
+  const hasLiveDeped = reportableSdos.length > 0
+  const depedTargetPacks = hasLiveDeped ? depedTarget : depedTargetFallback
+  const depedDeliveredPacks = hasLiveDeped ? depedDelivered : depedDeliveredFallback
 
   const depedFunds = scopedSdos.reduce((s, r) => {
     const contract = Number(r.contract_amount) || 0
@@ -256,10 +253,17 @@ export async function loadDashboardStats(
   for (const r of scopedSdos) {
     const y = Number(r.year) || year || 0
     depedBeneByYear.set(y, (depedBeneByYear.get(y) || 0) + (Number(r.beneficiaries_pm) || 0))
-    const cur = depedPacksByYear.get(y) || { target: 0, delivered: 0 }
-    cur.target += Number(r.packs_to_deliver) || 0
-    cur.delivered += deliveredForSdo(r as SbfpRawMilkRow, month, year || y || undefined)
-    depedPacksByYear.set(y, cur)
+  }
+  const yearsSeen = new Set<number>()
+  for (const r of reportableSdos) {
+    const y = Number(r.year) || year || 0
+    if (!y) continue
+    yearsSeen.add(y)
+  }
+  for (const y of yearsSeen) {
+    const rowsForYear = reportableSdos.filter(r => (Number(r.year) || year || 0) === y)
+    const acc = computeSbfpAccomplishment(rowsForYear, { month, year: year || y })
+    depedPacksByYear.set(y, { target: acc.target, delivered: acc.delivered })
   }
   const depedMasterByYear = new Map<number, { rec: number; target: number; delivered: number }>()
   for (const r of depedMaster) {
@@ -345,8 +349,20 @@ export async function loadDashboardStats(
     if (!label) continue
     const cur = bumpCenter(label)
     cur.beneficiaries += Number(r.beneficiaries_pm) || 0
-    cur.deped_target += Number(r.packs_to_deliver) || 0
-    cur.deped_delivered += deliveredForSdo(r as SbfpRawMilkRow, month, year || Number(r.year) || undefined)
+  }
+  const depedCenterLabels = new Set<string>()
+  for (const r of reportableSdos) {
+    const label = centerDisplayLabel(String(r.center || ''))
+    if (label) depedCenterLabels.add(label)
+  }
+  for (const label of depedCenterLabels) {
+    const rowsForCenter = reportableSdos.filter(
+      row => centerDisplayLabel(String(row.center || '')) === label,
+    )
+    const acc = computeSbfpAccomplishment(rowsForCenter, { month, year })
+    const cur = bumpCenter(label)
+    cur.deped_target = acc.target
+    cur.deped_delivered = acc.delivered
   }
   for (const c of dswdSlice.by_center) {
     const label = centerDisplayLabel(c.center) || String(c.center || '').trim()

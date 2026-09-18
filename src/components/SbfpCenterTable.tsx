@@ -553,7 +553,7 @@ function SnapshotCell({
   return (
     <td
       onClick={() => setEditing(true)}
-      title="Cumulative packs delivered as of this date — click to edit"
+      title="Packs delivered for this delivery date (each column adds to the month total) — click to edit"
       style={{
         textAlign: 'right', fontWeight: 600, cursor: 'pointer',
         color: packs ? '#2563eb' : undefined,
@@ -570,12 +570,14 @@ function SnapshotCell({
 // Main table
 // ─────────────────────────────────────────────
 export function SbfpCenterTable({
-  center, initialRecords, onRecordsChange, userRole, year, allowAdd = false,
+  center, initialRecords, onRecordsChange, onProcurementDeleted, userRole, year, allowAdd = false,
 }: {
   center: string
   initialRecords: any[]
   /** Keep parent KPI cards / drop-off SDO filter in sync without page refresh. */
   onRecordsChange?: (rows: any[]) => void
+  /** After SDO delete succeeds — parent can prune drop-off schools from section 1b. */
+  onProcurementDeleted?: (sbfpDataId: string) => void
   userRole?: string | null
   year?: number
   allowAdd?: boolean
@@ -862,6 +864,7 @@ export function SbfpCenterTable({
       }
       await supabase.from('sbfp_data').delete().eq('id', id)
       setRows(p => p.filter(r => r.id !== id))
+      onProcurementDeleted?.(id)
       await maybeRecompute('packs_to_deliver')
     }, 'Deleting record…', { blocking: true })
   }
@@ -1383,8 +1386,10 @@ export function SbfpCenterTable({
                 }
                 await supabase.from('sbfp_data').delete().eq('id', id)
               }
+              const deletedIds = [...selected]
               setRows(p => p.filter(r => !selected.has(r.id)))
               setSelected(new Set())
+              for (const id of deletedIds) onProcurementDeleted?.(id)
               await maybeRecompute('packs_to_deliver')
             })()
           }} className="btn btn-gold" style={{ padding: '0.5rem 1rem', borderRadius: 50, background: '#ef4444', border: 'none' }}>

@@ -4,9 +4,20 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { PCC_CENTERS } from '@/lib/types'
+import { computeSbfpAccomplishment, filterReportableSbfpRows } from '@/lib/sbfp-accomplishment'
 import { sumGrossIncomeRawMilk, packsForMonth, totalPacksDelivered } from '@/lib/sbfp-raw-milk'
 import { excludeAuxSbfp } from '@/lib/sbfp-aux'
-import { normalizeSdoName } from '@/lib/sbfp-dropoff-sync'
+import {
+  PROGRAM_DROPOFF_ENCODER_COLUMNS,
+  PROGRAM_PROCUREMENT_ENCODER_COLUMNS,
+} from '@/lib/encoder-selects'
+import { monitoringProgramIdForPimdFunder } from '@/lib/monitoring-programs'
+import { filterProgramDropoffsForProcurement } from '@/lib/program-dropoff-sync'
+import {
+  filterDropoffsForProcurementRows,
+  geographyCountsFromDropoffs,
+  normalizeSdoName,
+} from '@/lib/sbfp-dropoff-sync'
 import { calcMilkFormulations, litersPerPackForMilkType, packagingSizeForMilkType, normalizeMilkTypeCode } from '@/lib/mfp-formulas'
 import { APP_YEAR_STRINGS } from '@/lib/app-years'
 import { mfpCenterAliases, sbfpCenterAliases, centerDisplayLabel } from '@/lib/center-aliases'
@@ -200,48 +211,12 @@ function hasActivePimdFilters(center: string, year: string, _month: string) {
   return Boolean(year && center)
 }
 
-/** Packs delivered in one calendar month from monitoring cumulative snapshot columns (not YTD). */
-function monitoringPacksForMonth(
-  r: { del_aug18?: number; del_aug31?: number; del_sep30?: number; del_oct31?: number },
-  month: number,
-): number {
-  const aug18 = Number(r.del_aug18) || 0
-  const aug31 = Number(r.del_aug31) || 0
-  const sep30 = Number(r.del_sep30) || 0
-  const oct31 = Number(r.del_oct31) || 0
-  const cumEndAug = Math.max(aug18, aug31)
-  if (month === 8) return Math.max(0, cumEndAug)
-  if (month === 9) return Math.max(0, sep30 - cumEndAug)
-  if (month === 10) return Math.max(0, oct31 - sep30)
-  return 0
-}
-
 function isFailedSbfp(r: { procurement_status?: string | null }) {
   return String(r.procurement_status || '').toUpperCase() === 'FAILED'
 }
 
 function sbfpCountsInReport(r: { include_in_report?: boolean | null }) {
   return r.include_in_report !== false
-}
-
-/** Live SBFP SDO rows — same source as the center procurement page. */
-function sbfpDeliveredPacks(
-  rows: Array<Record<string, unknown>>,
-  monthNum: number | null,
-  yNum?: number,
-) {
-  return rows.reduce((s, r) => {
-    if (isFailedSbfp(r) || !sbfpCountsInReport(r)) return s
-    if (monthNum == null || !Number.isFinite(monthNum)) return s + totalPacksDelivered(r)
-    return s + packsForMonth(r, monthNum, { year: yNum })
-  }, 0)
-}
-
-function sbfpTargetPacks(rows: Array<Record<string, unknown>>) {
-  return rows.reduce((s, r) => {
-    if (isFailedSbfp(r) || !sbfpCountsInReport(r)) return s
-    return s + (Number(r.packs_to_deliver) || 0)
-  }, 0)
 }
 
 function accomplishmentPct(delivered: number, target: number) {
@@ -417,7 +392,7 @@ export default function PIMDReportPage() {
     if (includeSbfpForFunder(funder)) {
       let sq = supabase
         .from('sbfp_data')
-        .select('sdo,procurement_status,contract_amount,amount,packs_to_deliver,packs_delivered,delivery_start,delivery_end,delivery_snapshots,milk_type,remarks,monthly_packs_delivered,raw_milk_prices,raw_milk_month,include_in_report')
+        .select('id,sdo,procurement_status,contract_amount,amount,packs_to_deliver,packs_delivered,beneficiaries_pm,delivery_start,delivery_end,delivery_snapshots,milk_type,remarks,monthly_packs_delivered,raw_milk_prices,raw_milk_month,include_in_report,supplier_id')
       if (center) {
         const aliases = sbfpCenterAliases(center)
         sq = aliases.length === 1 ? sq.eq('center', aliases[0]) : sq.in('center', aliases)
@@ -425,9 +400,10 @@ export default function PIMDReportPage() {
       if (year) sq = sq.eq('year', parseInt(year))
       const { data: sbfpRows } = await sq
       if (sbfpRows && sbfpRows.length > 0) {
-        sbfpAll = excludeAuxSbfp(sbfpRows)   // save full list before month filter
-        sbfpScoped = sbfpAll
-        for (const r of sbfpAll) {
+        sbfpAll = excludeAuxSbfp(sbfpRows)
+        const sbfpReportable = filterReportableSbfpRows(sbfpAll)
+        sbfpScoped = sbfpReportable
+        for (const r of sbfpReportable) {
           const key = normalizeSdoName(r.sdo || '')
           if (!key) continue
           sdoTargetPacks.set(key, (sdoTargetPacks.get(key) || 0) + (Number(r.packs_to_deliver) || 0))
@@ -438,7 +414,7 @@ export default function PIMDReportPage() {
         }
         if (monthNum != null && Number.isFinite(monthNum)) {
           // Only SDOs with packs actually completed in this month (not delivery-date span alone).
-          sbfpScoped = sbfpAll.filter(r => packsForMonth(r, monthNum, { year: yNum }) > 0)
+          sbfpScoped = sbfpReportable.filter(r => packsForMonth(r, monthNum, { year: yNum }) > 0)
         }
         for (const r of sbfpScoped) {
           const st = String(r.procurement_status || '').toUpperCase()
@@ -448,6 +424,65 @@ export default function PIMDReportPage() {
           }
         }
       }
+    }
+
+    let sbfpDropoffs: Array<{
+      sbfp_data_id?: string | null
+      sdo?: string | null
+      dropoff_name?: string | null
+      province?: string | null
+      municipality?: string | null
+      district?: string | null
+    }> = []
+    if (includeSbfpForFunder(funder) && yNum) {
+      let dq = supabase
+        .from('sbfp_dropoff_points')
+        .select('sbfp_data_id,sdo,dropoff_name,province,municipality,district')
+      if (center) {
+        const aliases = sbfpCenterAliases(center)
+        dq = aliases.length === 1 ? dq.eq('center', aliases[0]) : dq.in('center', aliases)
+      }
+      dq = dq.eq('year', yNum)
+      const { data: dropRaw } = await dq
+      sbfpDropoffs = dropRaw || []
+    }
+
+    const programId = monitoringProgramIdForPimdFunder(funder)
+    let programAll: any[] = []
+    let programScoped: any[] = []
+    let programDropoffs: any[] = []
+    if (programId && yNum) {
+      let pq = supabase
+        .from('mfp_program_procurement')
+        .select(PROGRAM_PROCUREMENT_ENCODER_COLUMNS)
+        .eq('program', programId)
+      if (center) {
+        const aliases = sbfpCenterAliases(center)
+        pq = aliases.length === 1 ? pq.eq('center', aliases[0]) : pq.in('center', aliases)
+      }
+      pq = pq.eq('year', yNum)
+      const { data: procRows } = await pq
+      if (procRows?.length) {
+        programAll = procRows
+        const programReportable = filterReportableSbfpRows(programAll)
+        programScoped = programReportable
+        if (monthNum != null && Number.isFinite(monthNum)) {
+          programScoped = programReportable.filter(
+            r => packsForMonth(r, monthNum, { year: yNum }) > 0,
+          )
+        }
+      }
+      let pdq = supabase
+        .from('mfp_program_dropoffs')
+        .select(PROGRAM_DROPOFF_ENCODER_COLUMNS)
+        .eq('program', programId)
+        .eq('year', yNum)
+      if (center) {
+        const aliases = sbfpCenterAliases(center)
+        pdq = aliases.length === 1 ? pdq.eq('center', aliases[0]) : pdq.in('center', aliases)
+      }
+      const { data: pDropRaw } = await pdq
+      programDropoffs = pDropRaw || []
     }
 
     // Masterlist month scope: schools under SDOs that delivered in that month (DepEd/SBFP),
@@ -463,6 +498,8 @@ export default function PIMDReportPage() {
         } else {
           rows = []
         }
+      } else if (programId && programScoped.length > 0) {
+        // DSWD/LDS/LGU: month scope comes from live program procurement (below), not date_started alone.
       } else {
         rows = rows.filter(r => {
           if (r.date_started && (new Date(r.date_started).getMonth() + 1) === monthNum) return true
@@ -574,11 +611,16 @@ export default function PIMDReportPage() {
     })
     // Live SBFP procurement (same numbers as USM/CSU center pages). Used when
     // masterlist milk_packs are empty or sbfp_monitoring snapshots were never filled.
-    const sbfpDelivered = includeSbfpForFunder(funder)
-      ? sbfpDeliveredPacks(sbfpAll, monthNum, yNum)
-      : 0
-    const sbfpTarget = includeSbfpForFunder(funder) ? sbfpTargetPacks(sbfpAll) : 0
-    const sbfpAccomp = accomplishmentPct(sbfpDelivered, sbfpTarget)
+    const sbfpAcc = includeSbfpForFunder(funder)
+      ? computeSbfpAccomplishment(sbfpAll, { month: monthNum, year: yNum })
+      : { delivered: 0, target: 0, pct: 0 }
+    const programAcc = programId
+      ? computeSbfpAccomplishment(programAll, { month: monthNum, year: yNum })
+      : { delivered: 0, target: 0, pct: 0 }
+    const sbfpDelivered = sbfpAcc.delivered
+    const sbfpTarget = sbfpAcc.target
+    const sbfpAccomp = sbfpAcc.pct
+    const programDelivered = programAcc.delivered
 
     if (includeSbfpForFunder(funder) && sbfpDelivered > 0) {
       const currentDeped = packsByFunder['DEPED'] || 0
@@ -598,63 +640,150 @@ export default function PIMDReportPage() {
       }
     }
 
-    // Accomplishment %: prefer sbfp_monitoring when it has real monthly deliveries.
-    // If that sheet is empty (USM) fall back to live sbfp_data, then masterlist AD/AE.
-    // With a month filter: packs delivered THAT month only / target × 100.
-    const useSbfpMonitoring = includeSbfpForFunder(funder) && (!year || year === '2026')
+    // Accomplishment %: live sbfp_data (same as center Delivery Progress). Month = that month only; no month = YTD.
     let accomplishment = 0
-    if (useSbfpMonitoring) {
-      let mq = supabase
-        .from('sbfp_monitoring')
-        .select('target_packs,latest_delivered,del_aug18,del_aug31,del_sep30,del_oct31,status')
-        .eq('year', 2026)
-      if (center) {
-        const aliases = sbfpCenterAliases(center)
-        mq = aliases.length === 1 ? mq.eq('center', aliases[0]) : mq.in('center', aliases)
-      }
-      const { data: monRows, error: monErr } = await mq
-      if (!monErr && monRows?.length) {
-        const usable = monRows.filter(r => String(r.status || '').toUpperCase() !== 'FAILED')
-        const totalTarget = usable.reduce((s, r) => s + (r.target_packs || 0), 0)
-        const totalDelivered = usable.reduce((s, r) => {
-          if (!monthNum || !Number.isFinite(monthNum)) return s + (r.latest_delivered || 0)
-          return s + monitoringPacksForMonth(r, monthNum)
-        }, 0)
-        accomplishment = accomplishmentPct(totalDelivered, totalTarget)
-        if ((totalDelivered <= 0 || totalTarget <= 0) && sbfpDelivered > 0 && sbfpTarget > 0) {
-          accomplishment = sbfpAccomp
-        }
-      } else if (sbfpAll.length > 0) {
-        accomplishment = sbfpAccomp
-      }
-    } else if (includeSbfpForFunder(funder) && sbfpAll.length > 0) {
+    if (includeSbfpForFunder(funder) && sbfpAll.length > 0) {
       accomplishment = sbfpAccomp
+    } else if (programId && programAll.length > 0) {
+      accomplishment = programAcc.pct
     } else {
       const totalTarget = rows.reduce((s, r) => s + (r.target_milk_packs_to_deliver || 0), 0)
       const totalDelivered = rows.reduce((s, r) => s + (r.total_milk_packs_delivered || 0), 0)
       accomplishment = accomplishmentPct(totalDelivered, totalTarget)
     }
 
+    const programMonthFactsheet =
+      programId &&
+      monthNum != null &&
+      Number.isFinite(monthNum) &&
+      programScoped.length > 0
+
+    // DepEd + month: factsheet quantities from live SBFP rows that delivered that month (not masterlist proration / Completed-only).
+    const depedMonthFactsheet =
+      includeSbfpForFunder(funder) &&
+      monthNum != null &&
+      Number.isFinite(monthNum) &&
+      sbfpScoped.length > 0
+
+    let outTotalBene = totalBene
+    let outTotalPacks = totalPacks
+    let outBeneByFunder = { ...beneByFunder }
+    let outPacksByFunder = { ...packsByFunder }
+    let outVolumeByType = volumeByType
+    let outPacksBySize = packsBySize
+    let outGrossRevenue = grossRevenue
+    let outGrossIncome = grossIncome
+    let outCoopCount = new Set(qtyRows.map(r => r.supplier_id).filter(Boolean)).size
+    let outDistrictCount = new Set(qtyRows.map(r => r.municipality).filter(Boolean)).size
+    let outDivisionCount = new Set(
+      qtyRows.map(r => normalizeSdoName(r.division || '')).filter(Boolean),
+    ).size
+    let outProvinceCount = new Set(qtyRows.map(r => r.province).filter(Boolean)).size
+    let outSchoolCount = new Set(qtyRows.map(r => r.elementary_school).filter(Boolean)).size
+    let outDswdCenters = new Set(rows.filter(r => r.funded_by === 'DSWD').map(r => r.center)).size
+
+    if (programMonthFactsheet) {
+      const fKey =
+        funder === 'DSWD' ? 'DSWD' : funder === 'LDS' ? 'LDS' : funder === 'LGU' ? 'LGU' : 'OTHERS'
+      outTotalBene = programScoped.reduce((s, r) => s + (Number(r.beneficiaries) || 0), 0)
+      outBeneByFunder = { [fKey]: outTotalBene }
+      outTotalPacks = programDelivered
+      outPacksByFunder = { [fKey]: programDelivered }
+      outGrossRevenue = programScoped.reduce((s, r) => {
+        const contract = Number(r.contract_amount) || 0
+        const amount = Number(r.amount) || 0
+        return s + (contract > 0 ? contract : amount)
+      }, 0)
+      outGrossIncome = sumGrossIncomeRawMilk(programScoped, monthNum, { year: yNum })
+      const charts = chartsFromSbfp(programScoped, monthNum, yNum)
+      outVolumeByType = charts.volumeByType
+      outPacksBySize = charts.packsBySize
+      outCoopCount = new Set(programScoped.map(r => r.supplier_id).filter(Boolean)).size
+      outDivisionCount = new Set(
+        programScoped.map(r => normalizeSdoName(r.label || r.province || '')).filter(Boolean),
+      ).size
+      const scopedProgramDropoffs = filterProgramDropoffsForProcurement(
+        programDropoffs,
+        programScoped,
+      )
+      if (scopedProgramDropoffs.length > 0) {
+        const geo = geographyCountsFromDropoffs(
+          scopedProgramDropoffs.map(d => ({
+            dropoff_name: d.dropoff_name || d.municipality,
+            province: d.province,
+            municipality: d.municipality,
+            district: d.district,
+          })),
+        )
+        outSchoolCount = geo.schools
+        outProvinceCount = geo.provinces
+        outDistrictCount = geo.districts
+        const dropBene = scopedProgramDropoffs.reduce(
+          (s, d) => s + (Number(d.beneficiaries) || 0),
+          0,
+        )
+        if (dropBene > 0) {
+          outTotalBene = dropBene
+          outBeneByFunder = { [fKey]: dropBene }
+        }
+        if (programId === 'dswd') {
+          outDswdCenters = geo.schools
+        }
+      }
+    }
+
+    if (depedMonthFactsheet) {
+      outTotalBene = sbfpScoped.reduce((s, r) => s + (Number(r.beneficiaries_pm) || 0), 0)
+      outBeneByFunder = { DEPED: outTotalBene }
+      outTotalPacks = sbfpDelivered
+      outPacksByFunder = { DEPED: sbfpDelivered }
+      outGrossRevenue = sbfpScoped.reduce((s, r) => {
+        const contract = Number(r.contract_amount) || 0
+        const amount = Number(r.amount) || 0
+        return s + (contract > 0 ? contract : amount)
+      }, 0)
+      outGrossIncome = sumGrossIncomeRawMilk(sbfpScoped, monthNum, { year: yNum })
+      const charts = chartsFromSbfp(sbfpScoped, monthNum, yNum)
+      outVolumeByType = charts.volumeByType
+      outPacksBySize = charts.packsBySize
+      outCoopCount = new Set(sbfpScoped.map(r => r.supplier_id).filter(Boolean)).size
+      outDivisionCount = new Set(
+        sbfpScoped.map(r => normalizeSdoName(r.sdo || '')).filter(Boolean),
+      ).size
+      const scopedDropoffs = filterDropoffsForProcurementRows(sbfpDropoffs, sbfpScoped)
+      if (scopedDropoffs.length > 0) {
+        const geo = geographyCountsFromDropoffs(scopedDropoffs)
+        outSchoolCount = geo.schools
+        outProvinceCount = geo.provinces
+        outDistrictCount = geo.districts
+      } else if (rows.length > 0) {
+        outDistrictCount = new Set(rows.map(r => r.municipality).filter(Boolean)).size
+        outProvinceCount = new Set(rows.map(r => r.province).filter(Boolean)).size
+        outSchoolCount = new Set(rows.map(r => r.elementary_school).filter(Boolean)).size
+      }
+    }
+
     setStats({
-      grossIncome, grossRevenue,
-      dswdCenters: new Set(rows.filter(r => r.funded_by === 'DSWD').map(r => r.center)).size,
-      totalBene: Math.round(totalBene),
+      grossIncome: outGrossIncome,
+      grossRevenue: outGrossRevenue,
+      dswdCenters: outDswdCenters,
+      totalBene: Math.round(outTotalBene),
       beneByFunder: Object.fromEntries(
-        Object.entries(beneByFunder).map(([k, v]) => [k, Math.round(v)]),
+        Object.entries(outBeneByFunder).map(([k, v]) => [k, Math.round(v)]),
       ),
-      totalPacks: Math.round(totalPacks),
+      totalPacks: Math.round(outTotalPacks),
       packsByFunder: Object.fromEntries(
-        Object.entries(packsByFunder).map(([k, v]) => [k, Math.round(v)]),
+        Object.entries(outPacksByFunder).map(([k, v]) => [k, Math.round(v)]),
       ),
-      volumeByType,
+      volumeByType: outVolumeByType,
       packsBySize: Object.fromEntries(
-        Object.entries(packsBySize).map(([k, v]) => [k, Math.round(v)]),
+        Object.entries(outPacksBySize).map(([k, v]) => [k, Math.round(v)]),
       ),
-      coopCount: new Set(qtyRows.map(r => r.supplier_id).filter(Boolean)).size,
-      districtCount: new Set(qtyRows.map(r => r.municipality).filter(Boolean)).size,
-      divisionCount: new Set(qtyRows.map(r => normalizeSdoName(r.division || '')).filter(Boolean)).size,
-      provinceCount: new Set(qtyRows.map(r => r.province).filter(Boolean)).size,
-      schoolCount: new Set(qtyRows.map(r => r.elementary_school).filter(Boolean)).size,
+      coopCount: outCoopCount,
+      districtCount: outDistrictCount,
+      divisionCount: outDivisionCount,
+      provinceCount: outProvinceCount,
+      schoolCount: outSchoolCount,
       accomplishment,
     })
     setLoading(false)

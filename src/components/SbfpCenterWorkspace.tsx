@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { SbfpCenterTable } from '@/components/SbfpCenterTable'
 import { SbfpCenterBudgetForm, type BudgetRow } from '@/components/SbfpCenterBudgetForm'
@@ -11,10 +11,7 @@ import { SbfpStaffHiringTable, type HiringRow } from '@/components/SbfpStaffHiri
 import { SbfpDropoffTable, type DropoffRow } from '@/components/SbfpDropoffTable'
 import { SbfpCreateSchoolYearButton } from '@/components/SbfpCreateSchoolYearButton'
 import { parseSchoolYear, schoolYearLabel, schoolYearToDbYear } from '@/lib/sbfp-year'
-import {
-  deliveryAccomplishmentPct,
-  packsForDeliveryProgress,
-} from '@/lib/sbfp-raw-milk'
+import { computeSbfpAccomplishment } from '@/lib/sbfp-accomplishment'
 import { normalizeSdoName } from '@/lib/sbfp-dropoff-sync'
 
 export function SbfpCenterWorkspace({
@@ -61,22 +58,21 @@ export function SbfpCenterWorkspace({
   // Live copy so KPI cards + drop-off SDO filter update when procurement adds/edits/deletes
   // without a full page refresh (server `records` only refresh on navigation).
   const [liveRecords, setLiveRecords] = useState(records)
+  const [pruneDropoffForSbfpId, setPruneDropoffForSbfpId] = useState<string | null>(null)
   useEffect(() => {
     setLiveRecords(records)
   }, [records])
 
+  const handleProcurementDeleted = useCallback((sbfpDataId: string) => {
+    setPruneDropoffForSbfpId(sbfpDataId)
+  }, [])
+  const clearDropoffPrune = useCallback(() => setPruneDropoffForSbfpId(null), [])
+
   // Nueva Ecija (PM)+(SM) count as one geographic SDO
   const total = new Set(liveRecords.map(r => normalizeSdoName(r.sdo || '')).filter(Boolean)).size
   // Same rules as PIMD accomplishment: skip Failed + rows unchecked "In Report?"
-  const reportable = liveRecords.filter(r => {
-    const st = String(r.procurement_status || '').toUpperCase()
-    if (st === 'FAILED') return false
-    if (r.include_in_report === false) return false
-    return true
-  })
-  const totalPacks = reportable.reduce((s, r) => s + (Number(r.packs_to_deliver) || 0), 0)
-  const totalDelivered = reportable.reduce((s, r) => s + packsForDeliveryProgress(r), 0)
-  const deliveryPct = deliveryAccomplishmentPct(totalDelivered, totalPacks)
+  const { target: totalPacks, delivered: totalDelivered, pct: deliveryPct } =
+    computeSbfpAccomplishment(liveRecords, { year })
   const statCounts = liveRecords.reduce((acc, r) => {
     const st = (r.procurement_status || '').toUpperCase()
     if (st === 'FOR PREPARATION') acc.prep++
@@ -176,6 +172,7 @@ export function SbfpCenterWorkspace({
           year={year}
           initialRecords={records}
           onRecordsChange={setLiveRecords}
+          onProcurementDeleted={handleProcurementDeleted}
           userRole={userRole}
           allowAdd
         />
@@ -220,6 +217,8 @@ export function SbfpCenterWorkspace({
               }))}
               initialRows={dropoffRows}
               editable={editable && feedingDaysReady}
+              pruneSbfpDataId={pruneDropoffForSbfpId}
+              onPruneComplete={clearDropoffPrune}
             />
           </>
         )}

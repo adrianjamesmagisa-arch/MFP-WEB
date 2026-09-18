@@ -66,6 +66,14 @@ export function parseMonitoringProgram(value: string | undefined | null): Monito
   return null
 }
 
+/** PIMD funder dropdown → program monitoring id (DepEd uses SBFP, not program tables). */
+export function monitoringProgramIdForPimdFunder(funder: string): MonitoringProgramId | null {
+  if (funder === 'DSWD') return 'dswd'
+  if (funder === 'LDS') return 'lds'
+  if (funder === 'LGU') return 'lgu'
+  return null
+}
+
 /** Row matches this monitoring program’s masterlist scope. */
 export function rowMatchesMonitoringProgram(
   fundedBy: string | null | undefined,

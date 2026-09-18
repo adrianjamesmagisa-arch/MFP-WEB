@@ -1,7 +1,8 @@
 import { PCC_CENTERS } from '@/lib/types'
 import { excludeAuxSbfp } from '@/lib/sbfp-aux'
 import { normalizeSdoName } from '@/lib/sbfp-dropoff-sync'
-import { packsForMonth, totalPacksDelivered, type SbfpRawMilkRow } from '@/lib/sbfp-raw-milk'
+import { computeSbfpAccomplishment, filterReportableSbfpRows } from '@/lib/sbfp-accomplishment'
+import { packsForMonth, type SbfpRawMilkRow } from '@/lib/sbfp-raw-milk'
 import {
   emptyStatus,
   tallyStatus,
@@ -26,11 +27,7 @@ type SbfpDashRow = SbfpRawMilkRow & {
   contract_amount?: number | null
   beneficiaries_pm?: number | null
   delivery_start?: string | null
-}
-
-function deliveredForFilter(row: SbfpDashRow, month?: number, year?: number) {
-  if (month != null) return packsForMonth(row, month, { year })
-  return totalPacksDelivered(row) || Number(row.packs_delivered) || 0
+  include_in_report?: boolean | null
 }
 
 /** Re-export helpers used by loaders that share ProgramDashboardStats shape. */
@@ -47,7 +44,7 @@ export async function loadSbfpDashboardStats(
   let sdoQ = supabase
     .from('sbfp_data')
     .select(
-      'id,year,center,sdo,milk_type,procurement_status,packs_to_deliver,packs_delivered,amount,contract_amount,beneficiaries_pm,delivery_start,delivery_end,monthly_packs_delivered,delivery_snapshots,raw_milk_prices',
+      'id,year,center,sdo,milk_type,procurement_status,include_in_report,packs_to_deliver,packs_delivered,amount,contract_amount,beneficiaries_pm,delivery_start,delivery_end,monthly_packs_delivered,delivery_snapshots,raw_milk_prices',
     )
   let dropQ = supabase
     .from('sbfp_dropoff_points')
@@ -78,6 +75,7 @@ export async function loadSbfpDashboardStats(
   ])
 
   const sdos = excludeAuxSbfp((sdoRaw || []) as SbfpDashRow[])
+  const reportableSdos = filterReportableSbfpRows(sdos)
   const dropoffs = (dropRaw || []) as Array<{
     center?: string | null
     beneficiaries?: number | null
@@ -143,8 +141,6 @@ export async function loadSbfpDashboardStats(
         row.provinces++
       }
     }
-    row.targetPacks += Number(r.packs_to_deliver) || 0
-    row.deliveredPacks += deliveredForFilter(r, filters.month, filters.year || Number(r.year) || undefined)
     row.amount += Number(r.amount || r.contract_amount) || 0
     row.beneficiaries += Number(r.beneficiaries_pm) || 0
     tallyStatus(r.procurement_status, status)
@@ -172,6 +168,16 @@ export async function loadSbfpDashboardStats(
   for (const [key, bene] of dropBeneByCenter) {
     const row = byCenter.get(key)
     if (row && bene > 0) row.beneficiaries = bene
+  }
+
+  for (const [key, row] of byCenter) {
+    const centerRows = reportableSdos.filter(r => String(r.center || '').trim() === key)
+    const acc = computeSbfpAccomplishment(centerRows, {
+      month: filters.month,
+      year: filters.year,
+    })
+    row.targetPacks = acc.target
+    row.deliveredPacks = acc.delivered
   }
 
   // Prefer drop-off beneficiary totals; if still zero, use masterlist.

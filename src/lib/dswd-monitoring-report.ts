@@ -10,7 +10,8 @@ import {
   PROGRAM_PROCUREMENT_ENCODER_COLUMNS,
 } from '@/lib/encoder-selects'
 import type { ProgramDropoffRow, ProgramProcurementRow } from '@/lib/program-dropoff-sync'
-import { sumRowIncome, totalPacksDelivered, type SbfpRawMilkRow } from '@/lib/sbfp-raw-milk'
+import { computeSbfpAccomplishment, filterReportableSbfpRows } from '@/lib/sbfp-accomplishment'
+import { sumRowIncome, type SbfpRawMilkRow } from '@/lib/sbfp-raw-milk'
 
 export type DswdSummaryRow = {
   year: number
@@ -170,30 +171,40 @@ export async function loadDswdDashboardSlice(
   })
 
   let scopedProcs = procs.filter(p => matchesCenterFilter(p.center, filters.center || undefined))
+  const reportableProcs = filterReportableSbfpRows(
+    scopedProcs as unknown as import('@/lib/sbfp-accomplishment').SbfpAccomplishmentRow[],
+  ) as ProgramProcurementRow[]
   if (filters.month != null && Number.isFinite(filters.month)) {
     scopedProcs = scopedProcs.filter(p => Number(p.month) === filters.month)
   }
+
+  const acc = computeSbfpAccomplishment(
+    reportableProcs as import('@/lib/sbfp-accomplishment').SbfpAccomplishmentRow[],
+    {
+      month: filters.month ?? undefined,
+      year: filters.year ?? undefined,
+    },
+  )
 
   const totalFunds = scopedProcs.reduce((s, p) => s + procFunds(p), 0)
   const milkCost = scopedProcs.reduce(
     (s, p) => s + sumRowIncome(p as SbfpRawMilkRow, { year: p.year }),
     0,
   )
-  const targetPacks = scopedProcs.reduce((s, p) => s + (Number(p.packs_to_deliver) || 0), 0)
-  const deliveredPacks = scopedProcs.reduce((s, p) => {
-    const fromTracking = totalPacksDelivered(p as SbfpRawMilkRow)
-    return s + (fromTracking || Number(p.packs_delivered) || 0)
-  }, 0)
+  const targetPacks = acc.target
+  const deliveredPacks = acc.delivered
   const dropoffPacks = rows.reduce((s, r) => s + r.milk_packs, 0)
 
   const yearMap = new Map<number, { target: number; delivered: number }>()
-  for (const p of scopedProcs) {
+  for (const p of reportableProcs) {
     const y = Number(p.year) || 0
     if (!y) continue
     const cur = yearMap.get(y) || { target: 0, delivered: 0 }
-    cur.target += Number(p.packs_to_deliver) || 0
-    cur.delivered += totalPacksDelivered(p as SbfpRawMilkRow) || Number(p.packs_delivered) || 0
-    yearMap.set(y, cur)
+    const yAcc = computeSbfpAccomplishment(
+      reportableProcs.filter(r => (Number(r.year) || 0) === y) as import('@/lib/sbfp-accomplishment').SbfpAccomplishmentRow[],
+      { month: filters.month ?? undefined, year: filters.year || y },
+    )
+    yearMap.set(y, { target: yAcc.target, delivered: yAcc.delivered })
   }
   if (yearMap.size === 0) {
     for (const r of rows) {
@@ -206,12 +217,16 @@ export async function loadDswdDashboardSlice(
   }
 
   const centerMap = new Map<string, { target: number; delivered: number; beneficiaries: number }>()
-  for (const p of scopedProcs) {
+  for (const p of reportableProcs) {
     const label = String(p.center || '').trim()
     if (!label) continue
     const cur = centerMap.get(label) || { target: 0, delivered: 0, beneficiaries: 0 }
-    cur.target += Number(p.packs_to_deliver) || 0
-    cur.delivered += totalPacksDelivered(p as SbfpRawMilkRow) || Number(p.packs_delivered) || 0
+    const cAcc = computeSbfpAccomplishment(
+      reportableProcs.filter(r => String(r.center || '').trim() === label) as import('@/lib/sbfp-accomplishment').SbfpAccomplishmentRow[],
+      { month: filters.month ?? undefined, year: filters.year ?? undefined },
+    )
+    cur.target = cAcc.target
+    cur.delivered = cAcc.delivered
     centerMap.set(label, cur)
   }
   for (const r of rows) {

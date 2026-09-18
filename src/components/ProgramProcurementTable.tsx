@@ -311,6 +311,43 @@ export function ProgramProcurementTable({
     setExtraSnapDates(p => [...p, label])
   }
 
+  const renameSnapDate = async (oldDate: string, newDate: string) => {
+    if (!editable || !newDate || oldDate === newDate) return
+    const taken =
+      extraSnapDates.includes(newDate) ||
+      rows.some(r =>
+        ((r.delivery_snapshots as { date?: string }[]) || []).some(s => s.date === newDate),
+      )
+    if (taken) {
+      alert(`A “Delivered as of ${newDate}” column already exists.`)
+      return
+    }
+    setExtraSnapDates(p => p.map(d => (d === oldDate ? newDate : d)))
+    await runTask(
+      async () => {
+        await Promise.all(
+          rows.map(async r => {
+            const snaps = [...((r.delivery_snapshots as { date?: string }[]) || [])]
+            const idx = snaps.findIndex(s => s.date === oldDate)
+            if (idx < 0) return
+            snaps[idx] = { ...snaps[idx], date: newDate }
+            const { error } = await supabase
+              .from(PROC_TABLE)
+              .update({ delivery_snapshots: snaps })
+              .eq('id', r.id)
+            if (!error) {
+              setRows(p =>
+                p.map(row => (row.id === r.id ? { ...row, delivery_snapshots: snaps } : row)),
+              )
+            }
+          }),
+        )
+      },
+      'Renaming delivery column…',
+      { blocking: true },
+    )
+  }
+
   const deleteSnapDate = async (date: string) => {
     if (!editable || !date) return
     const hasValues = rows.some(r =>
@@ -527,7 +564,7 @@ export function ProgramProcurementTable({
                   letter={String.fromCharCode(80 + i)}
                   date={d as string}
                   editable={editable}
-                  onRename={() => {}}
+                  onRename={renameSnapDate}
                   onDelete={deleteSnapDate}
                 />
               ))}
