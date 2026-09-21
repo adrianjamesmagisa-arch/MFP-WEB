@@ -57,10 +57,12 @@ export function SummaryDepEdClient({
     coops: {} as Record<number, Set<string>>,
     pm_bene: {} as Record<number, number>,
     sm_bene: {} as Record<number, number>,
+    cm_bene: {} as Record<number, number>,
     raw_milk: {} as Record<number, number>,
     milk_packs: {} as Record<number, number>,
     pm_packs: {} as Record<number, number>,
     sm_packs: {} as Record<number, number>,
+    cm_packs: {} as Record<number, number>,
     gross_income: {} as Record<number, number>,
     service_fee_pct: {} as Record<number, number[]>,
     service_fee_amt: {} as Record<number, number>,
@@ -92,10 +94,12 @@ export function SummaryDepEdClient({
     parameters.coops[y] = new Set()
     parameters.pm_bene[y] = 0
     parameters.sm_bene[y] = 0
+    parameters.cm_bene[y] = 0
     parameters.raw_milk[y] = 0
     parameters.milk_packs[y] = 0
     parameters.pm_packs[y] = 0
     parameters.sm_packs[y] = 0
+    parameters.cm_packs[y] = 0
     parameters.gross_income[y] = 0
     parameters.service_fee_pct[y] = []
     parameters.service_fee_amt[y] = 0
@@ -123,6 +127,9 @@ export function SummaryDepEdClient({
     } else if (r.milk_type === 'SM') {
       parameters.sm_bene[y] += (r.beneficiaries || 0)
       parameters.sm_packs[y] += (r.milk_packs || 0)
+    } else if (r.milk_type === 'CM') {
+      parameters.cm_bene[y] += (r.beneficiaries || 0)
+      parameters.cm_packs[y] += (r.milk_packs || 0)
     }
 
     parameters.raw_milk[y] += (r.raw_milk_liters || 0)
@@ -255,10 +262,16 @@ export function SummaryDepEdClient({
             <td>Sterilized Milk</td>
             {years.map(y => <td key={y} className="right-text">{valOrDash(parameters.sm_bene[y])}</td>)}
           </tr>
+          <tr>
+            <td>Commercial Milk</td>
+            {years.map(y => <td key={y} className="right-text">{valOrDash(parameters.cm_bene[y])}</td>)}
+          </tr>
           <tr className="orange-row">
             <td className="bold-text">% Commitment</td>
             {years.map(y => {
-              const val = parameters.beneficiaries[y] ? (parameters.pm_bene[y] + parameters.sm_bene[y])/parameters.beneficiaries[y] : 0
+              const classified =
+                parameters.pm_bene[y] + parameters.sm_bene[y] + parameters.cm_bene[y]
+              const val = parameters.beneficiaries[y] ? classified / parameters.beneficiaries[y] : 0
               return <td key={y} className="bold-text right-text">{val ? (val * 100).toFixed(2) + '%' : '-'}</td>
             })}
           </tr>
@@ -277,6 +290,10 @@ export function SummaryDepEdClient({
           <tr>
             <td>Sterilized Milk</td>
             {years.map(y => <td key={y} className="right-text">{valOrDash(parameters.sm_packs[y])}</td>)}
+          </tr>
+          <tr>
+            <td>Commercial Milk</td>
+            {years.map(y => <td key={y} className="right-text">{valOrDash(parameters.cm_packs[y])}</td>)}
           </tr>
           <tr className="yellow-row">
             <td className="bold-text">Gross Income of Dairy Cooperatives, PhP</td>
