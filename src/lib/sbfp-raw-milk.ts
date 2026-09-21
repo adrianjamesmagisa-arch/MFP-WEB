@@ -366,6 +366,15 @@ export function sumRowIncome(row: SbfpRawMilkRow, opts?: { year?: number }): num
   return income
 }
 
+/** True when the row has packs completed in any calendar month of the given SY year. */
+export function hasDeliveryInAnyMonth(row: SbfpRawMilkRow, year: number): boolean {
+  if (!Number.isFinite(year)) return false
+  for (let m = 1; m <= 12; m++) {
+    if (packsForMonth(row, m, { year }) > 0) return true
+  }
+  return false
+}
+
 /**
  * Gross income across rows.
  * When `month` is set (PIMD filter), only that month’s completed packs × that month’s ₱/L.

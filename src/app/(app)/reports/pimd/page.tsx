@@ -5,7 +5,12 @@ import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { PCC_CENTERS } from '@/lib/types'
 import { computeSbfpAccomplishment, filterReportableSbfpRows } from '@/lib/sbfp-accomplishment'
-import { sumGrossIncomeRawMilk, packsForMonth, totalPacksDelivered } from '@/lib/sbfp-raw-milk'
+import {
+  sumGrossIncomeRawMilk,
+  packsForMonth,
+  totalPacksDelivered,
+  hasDeliveryInAnyMonth,
+} from '@/lib/sbfp-raw-milk'
 import { excludeAuxSbfp } from '@/lib/sbfp-aux'
 import {
   PROGRAM_DROPOFF_ENCODER_COLUMNS,
@@ -415,6 +420,9 @@ export default function PIMDReportPage() {
         if (monthNum != null && Number.isFinite(monthNum)) {
           // Only SDOs with packs actually completed in this month (not delivery-date span alone).
           sbfpScoped = sbfpReportable.filter(r => packsForMonth(r, monthNum, { year: yNum }) > 0)
+        } else if (yNum != null && Number.isFinite(yNum)) {
+          // All Months: same scope as monthly factsheet — rows with delivery in any month only.
+          sbfpScoped = sbfpReportable.filter(r => hasDeliveryInAnyMonth(r, yNum))
         }
         for (const r of sbfpScoped) {
           const st = String(r.procurement_status || '').toUpperCase()
@@ -658,12 +666,8 @@ export default function PIMDReportPage() {
       Number.isFinite(monthNum) &&
       programScoped.length > 0
 
-    // DepEd + month: factsheet quantities from live SBFP rows that delivered that month (not masterlist proration / Completed-only).
-    const depedMonthFactsheet =
-      includeSbfpForFunder(funder) &&
-      monthNum != null &&
-      Number.isFinite(monthNum) &&
-      sbfpScoped.length > 0
+    // DepEd: factsheet from live SBFP rows in scope (month = delivered that month; All Months = any delivery).
+    const depedSbfpFactsheet = includeSbfpForFunder(funder) && sbfpScoped.length > 0
 
     let outTotalBene = totalBene
     let outTotalPacks = totalPacks
@@ -732,7 +736,7 @@ export default function PIMDReportPage() {
       }
     }
 
-    if (depedMonthFactsheet) {
+    if (depedSbfpFactsheet) {
       outTotalBene = sbfpScoped.reduce((s, r) => s + (Number(r.beneficiaries_pm) || 0), 0)
       outBeneByFunder = { DEPED: outTotalBene }
       outTotalPacks = sbfpDelivered
