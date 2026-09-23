@@ -78,3 +78,32 @@ export function milkTypeLabel(milkType: unknown): string {
   if (t === 'CM') return 'CM'
   return milkType ? String(milkType) : '—'
 }
+
+/** SM 180 ml packs needed for 1 L (1 ÷ 0.18). */
+export const SBFP_SM_PACKS_PER_LITER = 5.5555555556
+
+/** Finished milk per pack: PM/CM 200 ml, SM = 1 ÷ 5.5555555556 L. */
+export const SBFP_FINISHED_LITERS_PER_PACK = {
+  PM: 0.2,
+  SM: 1 / SBFP_SM_PACKS_PER_LITER,
+  CM: 0.2,
+} as const
+
+/**
+ * Finished milk volume (L) for Senate / DA contracted-vs-actual figures.
+ * - PM / CM: packs × 0.20 L (200 ml; 5 packs = 1 L)
+ * - SM: packs ÷ 5.5555555556 (180 ml; 5.5555555556 packs = 1 L)
+ */
+export function finishedMilkLiters(opts: {
+  milkType: unknown
+  packs: number
+  packUnitPrice?: number | null
+  peso?: number | null
+}): number {
+  const packs = Number(opts.packs)
+  const safePacks = Number.isFinite(packs) && packs > 0 ? packs : 0
+  const t = normalizeSbfpMilkType(opts.milkType)
+  if (t === 'SM') return safePacks / SBFP_SM_PACKS_PER_LITER
+  if (t === 'CM') return safePacks * SBFP_FINISHED_LITERS_PER_PACK.CM
+  return safePacks * SBFP_FINISHED_LITERS_PER_PACK.PM
+}

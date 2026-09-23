@@ -4,7 +4,7 @@
  */
 
 import { centerDisplayLabel, sbfpCenterAliases } from '@/lib/center-aliases'
-import { packsFromAmount, milkTypeLabel } from '@/lib/sbfp-pack-price'
+import { packsFromAmount, milkTypeLabel, finishedMilkLiters } from '@/lib/sbfp-pack-price'
 import {
   packsForMonth,
   parseSnapshotDate,
@@ -40,6 +40,7 @@ export type SbfpReportSourceRow = SbfpRawMilkRow & {
   status_of_payment?: string | null
   remarks?: string | null
   supplier_id?: string | null
+  payment_entries?: Array<{ date?: string; amount?: number | null }> | null
 }
 
 export function sbfpRowIncludedInReport(r: SbfpReportSourceRow): boolean {
@@ -388,4 +389,159 @@ export function reportCenterFilterOptions(records: SbfpReportSourceRow[]): strin
   const ordered = PCC_CENTERS.filter(c => fromData.has(c))
   const extras = [...fromData].filter(c => !ordered.includes(c)).sort()
   return [...ordered, ...extras]
+}
+
+/** @deprecated Use finishedMilkLiters — PM/CM 0.20 L, SM 0.18 L. */
+export const SBFP_FINISHED_PACK_LITERS = 0.2
+
+export function packsToFinishedLiters(
+  packs: number,
+  milkType?: unknown,
+  packUnitPrice?: number | null,
+  peso?: number | null,
+): number {
+  if (milkType !== undefined || packUnitPrice != null || peso != null) {
+    return finishedMilkLiters({ milkType, packs, packUnitPrice, peso })
+  }
+  const n = Number(packs)
+  if (!Number.isFinite(n) || n <= 0) return 0
+  return n * SBFP_FINISHED_PACK_LITERS
+}
+
+export function sumPaymentEntries(entries: unknown): number {
+  if (!Array.isArray(entries)) return 0
+  return entries.reduce((sum, entry) => {
+    const amt = Number((entry as { amount?: unknown } | null)?.amount)
+    return sum + (Number.isFinite(amt) ? amt : 0)
+  }, 0)
+}
+
+export type SbfpSenateMetrics = {
+  targetPacks: number
+  deliveredPacks: number
+  contractAmt: number
+  paidAmt: number
+  remainingPay: number
+  contractedL: number
+  deliveredL: number
+  undeliveredL: number
+  valueDelivered: number
+  remainingContract: number
+  pctDelivered: number
+  pctDisbursed: number
+}
+
+export function emptySbfpSenateMetrics(): SbfpSenateMetrics {
+  return {
+    targetPacks: 0,
+    deliveredPacks: 0,
+    contractAmt: 0,
+    paidAmt: 0,
+    remainingPay: 0,
+    contractedL: 0,
+    deliveredL: 0,
+    undeliveredL: 0,
+    valueDelivered: 0,
+    remainingContract: 0,
+    pctDelivered: 0,
+    pctDisbursed: 0,
+  }
+}
+
+function withSenateRates(m: Omit<SbfpSenateMetrics, 'pctDelivered' | 'pctDisbursed'>): SbfpSenateMetrics {
+  return {
+    ...m,
+    pctDelivered: m.targetPacks > 0 ? (m.deliveredPacks / m.targetPacks) * 100 : 0,
+    pctDisbursed: m.contractAmt > 0 ? (m.paidAmt / m.contractAmt) * 100 : 0,
+  }
+}
+
+export function senateMetricsForRow(
+  row: SbfpReportSourceRow,
+  overrides: {
+    packs_to_deliver: number
+    delivered_packs: number
+    contract_amount: number
+  },
+): SbfpSenateMetrics {
+  const targetPacks = Math.max(0, Number(overrides.packs_to_deliver) || 0)
+  const deliveredPacks = Math.max(0, Number(overrides.delivered_packs) || 0)
+  const contractAmt = Math.max(0, Number(overrides.contract_amount) || 0)
+  const paidAmt = sumPaymentEntries(row.payment_entries)
+  const undeliveredPacks = Math.max(0, targetPacks - deliveredPacks)
+  const valueDelivered = targetPacks > 0 ? contractAmt * (deliveredPacks / targetPacks) : 0
+  const remainingContract = targetPacks > 0 ? contractAmt * (undeliveredPacks / targetPacks) : contractAmt
+  const pesoFallback = contractAmt > 0 ? contractAmt : Number(row.amount) || 0
+  const volumeOpts = {
+    milkType: row.milk_type,
+    packUnitPrice: row.pack_unit_price,
+  }
+  const contractedL = finishedMilkLiters({
+    ...volumeOpts,
+    packs: targetPacks,
+    peso: pesoFallback,
+  })
+  const deliveredL = finishedMilkLiters({
+    ...volumeOpts,
+    packs: deliveredPacks,
+    peso: valueDelivered > 0 ? valueDelivered : pesoFallback * (targetPacks > 0 ? deliveredPacks / targetPacks : 0),
+  })
+  return withSenateRates({
+    targetPacks,
+    deliveredPacks,
+    contractAmt,
+    paidAmt,
+    remainingPay: contractAmt - paidAmt,
+    contractedL,
+    deliveredL,
+    undeliveredL: Math.max(0, contractedL - deliveredL),
+    valueDelivered,
+    remainingContract,
+  })
+}
+
+export function addSbfpSenateMetrics(a: SbfpSenateMetrics, b: SbfpSenateMetrics): SbfpSenateMetrics {
+  return withSenateRates({
+    targetPacks: a.targetPacks + b.targetPacks,
+    deliveredPacks: a.deliveredPacks + b.deliveredPacks,
+    contractAmt: a.contractAmt + b.contractAmt,
+    paidAmt: a.paidAmt + b.paidAmt,
+    remainingPay: a.contractAmt + b.contractAmt - (a.paidAmt + b.paidAmt),
+    contractedL: a.contractedL + b.contractedL,
+    deliveredL: a.deliveredL + b.deliveredL,
+    undeliveredL: a.undeliveredL + b.undeliveredL,
+    valueDelivered: a.valueDelivered + b.valueDelivered,
+    remainingContract: a.remainingContract + b.remainingContract,
+  })
+}
+
+export type SbfpSenateImplBucket = 'completed' | 'ongoing' | 'delayed' | 'not_awarded' | 'other'
+
+/** Senate implementation bucket — delayed is not mixed with unawarded contracts. */
+export function sbfpSenateImplBucket(
+  row: SbfpReportSourceRow,
+  opts: { deliveredPacks: number; targetPacks: number; asOf?: Date },
+): SbfpSenateImplBucket {
+  const status = sbfpStatusBucket(row.procurement_status)
+  if (status === 'failed') return 'delayed'
+  if (status === 'prep') return 'not_awarded'
+  if (status === 'completed') return 'completed'
+
+  const asOf = opts.asOf ?? new Date()
+  const asOfDay = new Date(asOf.getFullYear(), asOf.getMonth(), asOf.getDate())
+  const end = parseSnapshotDate(row.delivery_end)
+  const start = parseSnapshotDate(row.delivery_start)
+  const short = opts.targetPacks > 0 && opts.deliveredPacks < opts.targetPacks
+  const none = opts.deliveredPacks <= 0
+  const pastEnd = !!end && end.getTime() < asOfDay.getTime()
+  const pastStart = !!start && start.getTime() < asOfDay.getTime()
+
+  if (pastEnd && short) return 'delayed'
+  if ((status === 'awarded_delivery' || status === 'awarded_ongoing') && pastStart && none) {
+    return 'delayed'
+  }
+  if (status === 'ongoing' || status === 'awarded_delivery' || status === 'awarded_ongoing') {
+    return 'ongoing'
+  }
+  return 'other'
 }

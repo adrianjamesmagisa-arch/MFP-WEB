@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, type CSSProperties } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Printer, Download, Filter, Search, RotateCcw, Table, BarChart2, Layers, Building2 } from 'lucide-react'
+import { Printer, Download, Filter, Search, RotateCcw, Table, BarChart2, Layers, Building2, FileSpreadsheet, CircleDollarSign, ClipboardList, MapPinned } from 'lucide-react'
 import { SBFP_DATA_ENCODER_COLUMNS } from '@/lib/encoder-selects'
 import { dbYearToSchoolYear, FALLBACK_SCHOOL_YEARS, schoolYearToDbYear } from '@/lib/sbfp-year'
 import {
@@ -16,8 +16,14 @@ import {
   resolveDeliveredPacksForReport,
   sbfpRowVisibleInReportDefault,
   sbfpStatusBucket,
+  senateMetricsForRow,
+  addSbfpSenateMetrics,
+  emptySbfpSenateMetrics,
+  sbfpSenateImplBucket,
   SBFP_STATUS_FILTER_OPTIONS,
   type SbfpReportSourceRow,
+  type SbfpSenateMetrics,
+  type SbfpSenateImplBucket,
 } from '@/lib/sbfp-report-sync'
 import { normalizeSdoName } from '@/lib/sbfp-dropoff-sync'
 import { excludeAuxSbfp, isSbfpAuxRow } from '@/lib/sbfp-aux'
@@ -39,7 +45,34 @@ function regionSortKey(region: string): number {
 
 /** Philippine peso — use Unicode escape so builds never lose the glyph as "?". */
 const PESO = '\u20B1'
-const fmtPeso = (n: number) => `${PESO}${n.toLocaleString()}`
+const fmtPeso = (n: number) =>
+  `${PESO}${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+const fmtL = (n: number) =>
+  n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 1 })
+const fmtPct = (n: number) => `${n.toFixed(1)}%`
+
+type ReportTab =
+  | 'master'
+  | 'region_summary'
+  | 'center_summary'
+  | 'status_matrix'
+  | 'senate_perf'
+  | 'senate_status'
+  | 'senate_region'
+
+const th: CSSProperties = { border: '1px solid #cbd5e1', padding: '8px 8px', textAlign: 'right', whiteSpace: 'normal', lineHeight: 1.2 }
+const thC: CSSProperties = { ...th, textAlign: 'center' }
+const tdR: CSSProperties = { border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'right' }
+const tdC: CSSProperties = { border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'center' }
+const grpTh: CSSProperties = {
+  border: '1px solid #cbd5e1',
+  padding: '6px 8px',
+  textAlign: 'center',
+  fontSize: '0.7rem',
+  letterSpacing: '0.03em',
+  textTransform: 'uppercase',
+  color: '#fff',
+}
 
 const DELIVERY_MONTHS = [
   { value: '1', label: 'January' },
@@ -84,7 +117,7 @@ export default function SbfpSpreadsheetReport() {
   const [includeExcluded, setIncludeExcluded] = useState(false)
   const [filterMonth, setFilterMonth]       = useState('')
   const [searchQuery, setSearchQuery]       = useState('')
-  const [activeTab, setActiveTab]           = useState<'master' | 'region_summary' | 'center_summary' | 'status_matrix'>('master')
+  const [activeTab, setActiveTab]           = useState<ReportTab>('master')
   /** When set, center filter is locked to the encoder's assigned center. */
   const [lockedCenter, setLockedCenter]     = useState<string | null>(null)
 
@@ -262,26 +295,34 @@ export default function SbfpSpreadsheetReport() {
     [viewRows],
   )
 
+  const rowSenate = useCallback(
+    (r: SbfpReportSourceRow): SbfpSenateMetrics => {
+      const view = getViewForSource(r.id)
+      return senateMetricsForRow(r, {
+        packs_to_deliver: view?.packs_to_deliver ?? 0,
+        delivered_packs: view?.delivered_packs ?? 0,
+        contract_amount: view?.contract_amount ?? (Number(r.contract_amount) || 0),
+      })
+    },
+    [getViewForSource],
+  )
+
   // Summary statistics
   const stats = useMemo(() => {
-    let totalPacks = 0
-    let totalDelivered = 0
-    let totalContractAmt = 0
+    let metrics = emptySbfpSenateMetrics()
     let totalAmount = 0
     let totalBeneficiaries = 0
-
     const statusCounts: Record<string, number> = {}
+    const statusMetrics: Record<string, SbfpSenateMetrics> = {}
 
     filteredRecords.forEach(r => {
-      const view = getViewForSource(r.id)
-      totalPacks += view?.packs_to_deliver ?? 0
-      totalDelivered += view?.delivered_packs ?? 0
-      totalContractAmt += Number(r.contract_amount) || 0
+      const m = rowSenate(r)
+      metrics = addSbfpSenateMetrics(metrics, m)
       totalAmount += Number(r.amount) || 0
       totalBeneficiaries += Number(r.beneficiaries_pm) || 0
-
       const bucket = sbfpStatusBucket(r.procurement_status)
       statusCounts[bucket] = (statusCounts[bucket] || 0) + 1
+      statusMetrics[bucket] = addSbfpSenateMetrics(statusMetrics[bucket] || emptySbfpSenateMetrics(), m)
     })
 
     const coopIds = new Set(
@@ -297,158 +338,160 @@ export default function SbfpSpreadsheetReport() {
         .filter(Boolean),
     )
 
-    const pctDelivered = totalPacks > 0 ? (totalDelivered / totalPacks) * 100 : 0
-
     return {
       count: uniqueSdos.size,
       rowCount: filteredRecords.length,
-      totalPacks,
-      totalDelivered,
-      totalContractAmt,
+      totalPacks: metrics.targetPacks,
+      totalDelivered: metrics.deliveredPacks,
+      totalContractAmt: metrics.contractAmt,
+      totalPaid: metrics.paidAmt,
+      totalRemainingPay: metrics.remainingPay,
+      totalContractedL: metrics.contractedL,
+      totalDeliveredL: metrics.deliveredL,
+      totalUndeliveredL: metrics.undeliveredL,
+      totalValueDelivered: metrics.valueDelivered,
+      totalRemainingContract: metrics.remainingContract,
       totalAmount,
       totalBeneficiaries,
       totalCoops: coopIds.size,
-      pctDelivered,
+      pctDelivered: metrics.pctDelivered,
       statusCounts,
+      statusMetrics,
     }
-  }, [filteredRecords, getViewForSource])
+  }, [filteredRecords, rowSenate])
+
+  type GroupAgg = SbfpSenateMetrics & {
+    sdoCount: number
+    sdoKeys: Set<string>
+    beneficiaries: number
+    coopIds: Set<string>
+    forPrep: number
+    ongoing: number
+    awardedDelivery: number
+    awardedOngoing: number
+    completed: number
+    failed: number
+  }
+
+  const bumpStatus = (entry: GroupAgg, status: string | null | undefined) => {
+    const bucket = sbfpStatusBucket(status)
+    if (bucket === 'prep') entry.forPrep++
+    else if (bucket === 'ongoing') entry.ongoing++
+    else if (bucket === 'awarded_delivery') entry.awardedDelivery++
+    else if (bucket === 'awarded_ongoing') entry.awardedOngoing++
+    else if (bucket === 'completed') entry.completed++
+    else if (bucket === 'failed') entry.failed++
+    else entry.forPrep++
+  }
+
+  const emptyGroup = (): GroupAgg => ({
+    ...emptySbfpSenateMetrics(),
+    sdoCount: 0,
+    sdoKeys: new Set(),
+    beneficiaries: 0,
+    coopIds: new Set(),
+    forPrep: 0,
+    ongoing: 0,
+    awardedDelivery: 0,
+    awardedOngoing: 0,
+    completed: 0,
+    failed: 0,
+  })
+
+  const addRowToGroup = (entry: GroupAgg, r: SbfpReportSourceRow) => {
+    const sdoKey = normalizeSdoName(String(r.sdo || ''))
+    if (sdoKey && !entry.sdoKeys.has(sdoKey)) {
+      entry.sdoKeys.add(sdoKey)
+      entry.sdoCount++
+    }
+    entry.beneficiaries += Number(r.beneficiaries_pm) || 0
+    const coopId = String(r.supplier_id || '').trim()
+    if (coopId) entry.coopIds.add(coopId)
+    const next = addSbfpSenateMetrics(entry, rowSenate(r))
+    Object.assign(entry, next)
+    bumpStatus(entry, r.procurement_status)
+  }
 
   // Regional Aggregations
   const regionalSummary = useMemo(() => {
-    const map = new Map<string, {
-      region: string
-      sdoCount: number
-      sdoKeys: Set<string>
-      beneficiaries: number
-      contractAmt: number
-      targetPacks: number
-      deliveredPacks: number
-      coopIds: Set<string>
-      forPrep: number
-      ongoing: number
-      awardedDelivery: number
-      awardedOngoing: number
-      completed: number
-      failed: number
-    }>()
-
+    const map = new Map<string, GroupAgg & { region: string }>()
     filteredRecords.forEach(r => {
       const reg = r.region || 'UNASSIGNED'
-      if (!map.has(reg)) {
-        map.set(reg, {
-          region: reg,
-          sdoCount: 0,
-          sdoKeys: new Set(),
-          beneficiaries: 0,
-          contractAmt: 0,
-          targetPacks: 0,
-          deliveredPacks: 0,
-          coopIds: new Set(),
-          forPrep: 0,
-          ongoing: 0,
-          awardedDelivery: 0,
-          awardedOngoing: 0,
-          completed: 0,
-          failed: 0,
-        })
-      }
-      const entry = map.get(reg)!
-      const sdoKey = normalizeSdoName(String(r.sdo || ''))
-      if (sdoKey && !entry.sdoKeys.has(sdoKey)) {
-        entry.sdoKeys.add(sdoKey)
-        entry.sdoCount++
-      }
-      entry.beneficiaries += Number(r.beneficiaries_pm) || 0
-      entry.contractAmt += Number(r.contract_amount) || 0
-      const view = getViewForSource(r.id)
-      entry.targetPacks += view?.packs_to_deliver ?? 0
-      entry.deliveredPacks += view?.delivered_packs ?? 0
-      const coopId = String(r.supplier_id || '').trim()
-      if (coopId) entry.coopIds.add(coopId)
-
-      const bucket = sbfpStatusBucket(r.procurement_status)
-      if (bucket === 'prep') entry.forPrep++
-      else if (bucket === 'ongoing') entry.ongoing++
-      else if (bucket === 'awarded_delivery') entry.awardedDelivery++
-      else if (bucket === 'awarded_ongoing') entry.awardedOngoing++
-      else if (bucket === 'completed') entry.completed++
-      else if (bucket === 'failed') entry.failed++
-      else entry.forPrep++
+      if (!map.has(reg)) map.set(reg, { region: reg, ...emptyGroup() })
+      addRowToGroup(map.get(reg)!, r)
     })
-
     return Array.from(map.values())
       .map(r => ({ ...r, coopCount: r.coopIds.size }))
       .sort((a, b) => regionSortKey(a.region) - regionSortKey(b.region))
-  }, [filteredRecords, getViewForSource])
+  }, [filteredRecords, rowSenate])
 
   // Center Aggregations (same columns as regional summary)
   const centerSummary = useMemo(() => {
-    const map = new Map<string, {
-      center: string
-      sdoCount: number
-      sdoKeys: Set<string>
-      beneficiaries: number
-      contractAmt: number
-      targetPacks: number
-      deliveredPacks: number
-      coopIds: Set<string>
-      forPrep: number
-      ongoing: number
-      awardedDelivery: number
-      awardedOngoing: number
-      completed: number
-      failed: number
-    }>()
-
+    const map = new Map<string, GroupAgg & { center: string }>()
     filteredRecords.forEach(r => {
       const centerKey = reportCenterLabel(r.center)
       const label = centerKey === '—' ? 'UNASSIGNED' : centerKey
-      if (!map.has(label)) {
-        map.set(label, {
-          center: label,
-          sdoCount: 0,
-          sdoKeys: new Set(),
-          beneficiaries: 0,
-          contractAmt: 0,
-          targetPacks: 0,
-          deliveredPacks: 0,
-          coopIds: new Set(),
-          forPrep: 0,
-          ongoing: 0,
-          awardedDelivery: 0,
-          awardedOngoing: 0,
-          completed: 0,
-          failed: 0,
-        })
-      }
-      const entry = map.get(label)!
-      const sdoKey = normalizeSdoName(String(r.sdo || ''))
+      if (!map.has(label)) map.set(label, { center: label, ...emptyGroup() })
+      addRowToGroup(map.get(label)!, r)
+    })
+    return Array.from(map.values())
+      .map(r => ({ ...r, coopCount: r.coopIds.size }))
+      .sort((a, b) => a.center.localeCompare(b.center))
+  }, [filteredRecords, rowSenate])
+
+  const implSummary = useMemo(() => {
+    const buckets: Record<SbfpSenateImplBucket, SbfpSenateMetrics & { sdoCount: number; sdoKeys: Set<string> }> = {
+      completed: { ...emptySbfpSenateMetrics(), sdoCount: 0, sdoKeys: new Set() },
+      ongoing: { ...emptySbfpSenateMetrics(), sdoCount: 0, sdoKeys: new Set() },
+      delayed: { ...emptySbfpSenateMetrics(), sdoCount: 0, sdoKeys: new Set() },
+      not_awarded: { ...emptySbfpSenateMetrics(), sdoCount: 0, sdoKeys: new Set() },
+      other: { ...emptySbfpSenateMetrics(), sdoCount: 0, sdoKeys: new Set() },
+    }
+    const reasons: Array<{
+      id: string
+      sdo: string
+      region: string
+      center: string
+      status: string
+      bucket: SbfpSenateImplBucket
+      undeliveredL: number
+      remainingContract: number
+      remarks: string
+    }> = []
+
+    filteredRecords.forEach(r => {
+      const m = rowSenate(r)
+      const bucket = sbfpSenateImplBucket(r, {
+        deliveredPacks: m.deliveredPacks,
+        targetPacks: m.targetPacks,
+      })
+      const entry = buckets[bucket]
+      const next = addSbfpSenateMetrics(entry, m)
+      Object.assign(entry, next)
+      const sdoKey = normalizeSdoName(String(r.sdo || '')) || String(r.id || '')
       if (sdoKey && !entry.sdoKeys.has(sdoKey)) {
         entry.sdoKeys.add(sdoKey)
         entry.sdoCount++
       }
-      entry.beneficiaries += Number(r.beneficiaries_pm) || 0
-      entry.contractAmt += Number(r.contract_amount) || 0
-      const view = getViewForSource(r.id)
-      entry.targetPacks += view?.packs_to_deliver ?? 0
-      entry.deliveredPacks += view?.delivered_packs ?? 0
-      const coopId = String(r.supplier_id || '').trim()
-      if (coopId) entry.coopIds.add(coopId)
-
-      const bucket = sbfpStatusBucket(r.procurement_status)
-      if (bucket === 'prep') entry.forPrep++
-      else if (bucket === 'ongoing') entry.ongoing++
-      else if (bucket === 'awarded_delivery') entry.awardedDelivery++
-      else if (bucket === 'awarded_ongoing') entry.awardedOngoing++
-      else if (bucket === 'completed') entry.completed++
-      else if (bucket === 'failed') entry.failed++
-      else entry.forPrep++
+      const shortfall = m.targetPacks > 0 && m.deliveredPacks / m.targetPacks < 0.9
+      if (bucket === 'delayed' || (shortfall && bucket !== 'not_awarded')) {
+        reasons.push({
+          id: String(r.id || `${r.sdo}-${r.region}`),
+          sdo: String(r.sdo || '—'),
+          region: String(r.region || '—'),
+          center: reportCenterLabel(r.center),
+          status: String(r.procurement_status || '—'),
+          bucket,
+          undeliveredL: m.undeliveredL,
+          remainingContract: m.remainingContract,
+          remarks: String(r.remarks || '').trim(),
+        })
+      }
     })
 
-    return Array.from(map.values())
-      .map(r => ({ ...r, coopCount: r.coopIds.size }))
-      .sort((a, b) => a.center.localeCompare(b.center))
-  }, [filteredRecords, getViewForSource])
+    reasons.sort((a, b) => b.remainingContract - a.remainingContract)
+    return { buckets, reasons }
+  }, [filteredRecords, rowSenate])
 
   /** # column: one number per geographic SDO (PM/SM/CM / lots share a merged cell). */
   const sdoIndexMeta = useMemo(() => {
@@ -473,9 +516,124 @@ export default function SbfpSpreadsheetReport() {
   }, [filteredRecords])
 
   // Export to CSV Function
+  const downloadCsv = (filename: string, headers: string[], rows: Array<Array<string | number>>) => {
+    const csvRows = [
+      headers.map(h => `"${h.replace(/"/g, '""')}"`).join(','),
+      ...rows.map(row =>
+        row
+          .map(val => {
+            if (val === null || val === undefined) return '""'
+            return `"${String(val).replace(/"/g, '""')}"`
+          })
+          .join(','),
+      ),
+    ]
+    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + encodeURIComponent(csvRows.join('\r\n'))
+    const downloadAnchor = document.createElement('a')
+    downloadAnchor.setAttribute('href', csvContent)
+    downloadAnchor.setAttribute('download', filename)
+    document.body.appendChild(downloadAnchor)
+    downloadAnchor.click()
+    document.body.removeChild(downloadAnchor)
+  }
+
   const exportToCSV = () => {
     if (filteredRecords.length === 0) {
       alert('No data to export.')
+      return
+    }
+    const dateStr = new Date().toISOString().split('T')[0]
+
+    if (activeTab === 'senate_perf') {
+      downloadCsv(`sbfp_senate_procurement_delivery_${year}_${dateStr}.csv`, [
+        'Metric',
+        'Value',
+      ], [
+        ['Scope', 'PCC milk component only'],
+        ['Total value of milk contracts (PHP)', stats.totalContractAmt],
+        ['Total contracted volume (L)', stats.totalContractedL],
+        ['Actual amount paid/disbursed (PHP)', stats.totalPaid],
+        ['Remaining to pay (PHP)', stats.totalRemainingPay],
+        ['Actual volume delivered (L)', stats.totalDeliveredL],
+        ['Undelivered volume (L)', stats.totalUndeliveredL],
+        ['Value of delivered milk (PHP)', stats.totalValueDelivered],
+        ['Delivery/accomplishment rate (%)', stats.pctDelivered.toFixed(1)],
+        ['Disbursement rate (%)', stats.totalContractAmt > 0 ? ((stats.totalPaid / stats.totalContractAmt) * 100).toFixed(1) : '0.0'],
+      ])
+      return
+    }
+
+    if (activeTab === 'senate_status') {
+      const labels: Record<SbfpSenateImplBucket, string> = {
+        completed: 'Completed',
+        ongoing: 'Ongoing',
+        delayed: 'Delayed / undelivered',
+        not_awarded: 'Not yet awarded',
+        other: 'Other',
+      }
+      const statusRows = (['completed', 'ongoing', 'delayed', 'not_awarded'] as SbfpSenateImplBucket[]).map(key => {
+        const b = implSummary.buckets[key]
+        return [
+          labels[key],
+          b.sdoCount,
+          b.contractAmt,
+          b.paidAmt,
+          b.remainingPay,
+          b.contractedL,
+          b.deliveredL,
+          b.undeliveredL,
+          b.remainingContract,
+        ]
+      })
+      downloadCsv(`sbfp_senate_implementation_${year}_${dateStr}.csv`, [
+        'Status',
+        'SDOs',
+        'Contracted value (PHP)',
+        'Amount paid (PHP)',
+        'Remaining to pay (PHP)',
+        'Contracted volume (L)',
+        'Delivered volume (L)',
+        'Undelivered volume (L)',
+        'Remaining contract value (PHP)',
+      ], statusRows)
+      return
+    }
+
+    if (activeTab === 'senate_region') {
+      downloadCsv(`sbfp_senate_regional_${year}_${dateStr}.csv`, [
+        'Region',
+        'SDOs',
+        'Contracted value (PHP)',
+        'Contracted volume (L)',
+        'Amount paid (PHP)',
+        'Delivered volume (L)',
+        'Value delivered (PHP)',
+        'Delivery rate (%)',
+        'Disbursement rate (%)',
+      ], [
+        ...regionalSummary.map(reg => [
+          reg.region,
+          reg.sdoCount,
+          reg.contractAmt,
+          reg.contractedL,
+          reg.paidAmt,
+          reg.deliveredL,
+          reg.valueDelivered,
+          reg.pctDelivered.toFixed(1),
+          reg.pctDisbursed.toFixed(1),
+        ]),
+        [
+          'TOTAL',
+          stats.count,
+          stats.totalContractAmt,
+          stats.totalContractedL,
+          stats.totalPaid,
+          stats.totalDeliveredL,
+          stats.totalValueDelivered,
+          stats.pctDelivered.toFixed(1),
+          stats.totalContractAmt > 0 ? ((stats.totalPaid / stats.totalContractAmt) * 100).toFixed(1) : '0.0',
+        ],
+      ])
       return
     }
 
@@ -503,50 +661,37 @@ export default function SbfpSpreadsheetReport() {
       'Remarks'
     ]
 
-    const csvRows = [headers.map(h => `"${h.replace(/"/g, '""')}"`).join(',')]
-
-    filteredRecords.forEach((r, idx) => {
-      const v = getViewForSource(r.id)
-      if (!v) return
-      const row = [
-        sdoIndexMeta[idx]?.number ?? idx + 1,
-        v.region === '—' ? '' : v.region,
-        v.sdo === '—' ? '' : v.sdo,
-        v.center,
-        v.procurement_status,
-        v.amount,
-        v.mode_of_procurement === '—' ? '' : v.mode_of_procurement,
-        v.pr_date_received === '—' ? '' : v.pr_date_received,
-        v.pr_number === '—' ? '' : v.pr_number,
-        v.ors_date === '—' ? '' : v.ors_date,
-        v.po_number === '—' ? '' : v.po_number,
-        v.batch === '—' ? '' : v.batch,
-        v.beneficiaries_pm,
-        v.contract_amount,
-        v.delivery_start === '—' ? '' : v.delivery_start,
-        v.delivery_end === '—' ? '' : v.delivery_end,
-        v.packs_to_deliver,
-        v.milk_type,
-        v.delivered_packs,
-        v.status_of_payment === '—' ? '' : v.status_of_payment,
-        v.remarks === '—' ? '' : v.remarks,
-      ]
-
-      csvRows.push(row.map(val => {
-        if (val === null || val === undefined) return '""'
-        const str = String(val).replace(/"/g, '""')
-        return `"${str}"`
-      }).join(','))
-    })
-
-    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + encodeURIComponent(csvRows.join('\r\n'))
-    const downloadAnchor = document.createElement('a')
-    downloadAnchor.setAttribute('href', csvContent)
-    const dateStr = new Date().toISOString().split('T')[0]
-    downloadAnchor.setAttribute('download', `sbfp_procurement_monitoring_${year}_${dateStr}.csv`)
-    document.body.appendChild(downloadAnchor)
-    downloadAnchor.click()
-    document.body.removeChild(downloadAnchor)
+    downloadCsv(
+      `sbfp_procurement_monitoring_${year}_${dateStr}.csv`,
+      headers,
+      filteredRecords.flatMap((r, idx) => {
+        const v = getViewForSource(r.id)
+        if (!v) return []
+        return [[
+          sdoIndexMeta[idx]?.number ?? idx + 1,
+          v.region === '—' ? '' : v.region,
+          v.sdo === '—' ? '' : v.sdo,
+          v.center,
+          v.procurement_status,
+          v.amount,
+          v.mode_of_procurement === '—' ? '' : v.mode_of_procurement,
+          v.pr_date_received === '—' ? '' : v.pr_date_received,
+          v.pr_number === '—' ? '' : v.pr_number,
+          v.ors_date === '—' ? '' : v.ors_date,
+          v.po_number === '—' ? '' : v.po_number,
+          v.batch === '—' ? '' : v.batch,
+          v.beneficiaries_pm,
+          v.contract_amount,
+          v.delivery_start === '—' ? '' : v.delivery_start,
+          v.delivery_end === '—' ? '' : v.delivery_end,
+          v.packs_to_deliver,
+          v.milk_type,
+          v.delivered_packs,
+          v.status_of_payment === '—' ? '' : v.status_of_payment,
+          v.remarks === '—' ? '' : v.remarks,
+        ]]
+      }),
+    )
   }
 
   const clearFilters = () => {
@@ -791,58 +936,30 @@ export default function SbfpSpreadsheetReport() {
           </div>
 
           {/* View Mode Tabs */}
-          <div style={{ display: 'flex', background: '#f1f5f9', padding: 2, borderRadius: 6, gap: 2 }}>
-            <button
-              onClick={() => setActiveTab('master')}
-              style={{
-                padding: '4px 12px', fontSize: '0.78rem', fontWeight: 600, borderRadius: 4, border: 'none', cursor: 'pointer',
-                background: activeTab === 'master' ? '#ffffff' : 'transparent',
-                color: activeTab === 'master' ? '#1e293b' : '#64748b',
-                boxShadow: activeTab === 'master' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
-                display: 'flex', alignItems: 'center', gap: 5
-              }}
-            >
-              <Table size={13} /> SDO Masterlist
-            </button>
-
-            <button
-              onClick={() => setActiveTab('region_summary')}
-              style={{
-                padding: '4px 12px', fontSize: '0.78rem', fontWeight: 600, borderRadius: 4, border: 'none', cursor: 'pointer',
-                background: activeTab === 'region_summary' ? '#ffffff' : 'transparent',
-                color: activeTab === 'region_summary' ? '#1e293b' : '#64748b',
-                boxShadow: activeTab === 'region_summary' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
-                display: 'flex', alignItems: 'center', gap: 5
-              }}
-            >
-              <BarChart2 size={13} /> Regional Summary
-            </button>
-
-            <button
-              onClick={() => setActiveTab('center_summary')}
-              style={{
-                padding: '4px 12px', fontSize: '0.78rem', fontWeight: 600, borderRadius: 4, border: 'none', cursor: 'pointer',
-                background: activeTab === 'center_summary' ? '#ffffff' : 'transparent',
-                color: activeTab === 'center_summary' ? '#1e293b' : '#64748b',
-                boxShadow: activeTab === 'center_summary' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
-                display: 'flex', alignItems: 'center', gap: 5
-              }}
-            >
-              <Building2 size={13} /> Center Summary
-            </button>
-
-            <button
-              onClick={() => setActiveTab('status_matrix')}
-              style={{
-                padding: '4px 12px', fontSize: '0.78rem', fontWeight: 600, borderRadius: 4, border: 'none', cursor: 'pointer',
-                background: activeTab === 'status_matrix' ? '#ffffff' : 'transparent',
-                color: activeTab === 'status_matrix' ? '#1e293b' : '#64748b',
-                boxShadow: activeTab === 'status_matrix' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
-                display: 'flex', alignItems: 'center', gap: 5
-              }}
-            >
-              <Layers size={13} /> Status Breakdown
-            </button>
+          <div style={{ display: 'flex', flexWrap: 'wrap', background: '#f1f5f9', padding: 2, borderRadius: 6, gap: 2 }}>
+            {([
+              ['master', 'SDO Masterlist', Table],
+              ['region_summary', 'Regional Summary', BarChart2],
+              ['center_summary', 'Center Summary', Building2],
+              ['status_matrix', 'Status Breakdown', Layers],
+              ['senate_perf', '1. Procurement & Delivery', CircleDollarSign],
+              ['senate_status', '2. Implementation Status', ClipboardList],
+              ['senate_region', '3. Regional Distribution', MapPinned],
+            ] as const).map(([id, label, Icon]) => (
+              <button
+                key={id}
+                onClick={() => setActiveTab(id)}
+                style={{
+                  padding: '4px 12px', fontSize: '0.78rem', fontWeight: 600, borderRadius: 4, border: 'none', cursor: 'pointer',
+                  background: activeTab === id ? '#ffffff' : 'transparent',
+                  color: activeTab === id ? '#1e293b' : '#64748b',
+                  boxShadow: activeTab === id ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                  display: 'flex', alignItems: 'center', gap: 5
+                }}
+              >
+                <Icon size={13} /> {label}
+              </button>
+            ))}
           </div>
         </div>
       </div>
@@ -1306,6 +1423,233 @@ export default function SbfpSpreadsheetReport() {
                     </tr>
                   </tfoot>
                 </table>
+              </div>
+            )}
+
+            {(activeTab === 'senate_perf' || activeTab === 'senate_status' || activeTab === 'senate_region') && (
+              <div
+                className="print-only"
+                style={{ display: 'none', padding: '0 0 0.75rem', textAlign: 'center' }}
+              >
+                <h2 style={{ fontSize: '1.1rem', fontWeight: 800, margin: 0, textTransform: 'uppercase' }}>
+                  SBFP Milk Component — PCC figures for the Office of Sen. Kiko Pangilinan
+                </h2>
+                <p style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 4 }}>
+                  PCC milk component only. Volume: PM/CM 5 packs = 1 L; SM 5.5555555556 packs = 1 L. Paid amounts come from supplier payment entries.
+                </p>
+              </div>
+            )}
+
+            {activeTab === 'senate_perf' && (
+              <div style={{ background: '#ffffff', borderRadius: 8, border: '1px solid #cbd5e1', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', maxWidth: 920 }}>
+                <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
+                  <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#1e293b' }}>
+                    1. Procurement and Delivery Performance
+                  </h3>
+                  <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 2 }}>
+                    PCC milk component only — contracted vs actual. PM/CM = packs ÷ 5; SM = packs ÷ 5.5555555556. Paid = sum of payment entries.
+                  </div>
+                </div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem', fontFamily: 'Arial, sans-serif' }}>
+                  <thead>
+                    <tr style={{ background: '#e2e8f0', color: '#1e293b' }}>
+                      <th style={{ ...th, textAlign: 'left', width: '62%' }}>Metric</th>
+                      <th style={th}>Value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      ['Total value of milk contracts', fmtPeso(stats.totalContractAmt)],
+                      ['Total contracted volume', fmtL(stats.totalContractedL) + ' L'],
+                      ['Actual amount paid / disbursed', fmtPeso(stats.totalPaid)],
+                      ['Remaining to pay', fmtPeso(stats.totalRemainingPay)],
+                      ['Actual volume delivered', fmtL(stats.totalDeliveredL) + ' L'],
+                      ['Undelivered volume', fmtL(stats.totalUndeliveredL) + ' L'],
+                      ['Value of delivered milk (pro-rated contract)', fmtPeso(stats.totalValueDelivered)],
+                      ['Delivery / accomplishment rate', fmtPct(stats.pctDelivered)],
+                      ['Disbursement rate (paid ÷ contract)', fmtPct(stats.totalContractAmt > 0 ? (stats.totalPaid / stats.totalContractAmt) * 100 : 0)],
+                    ].map(([label, value], i) => (
+                      <tr key={label} style={{ background: i % 2 === 0 ? '#fff' : '#f8fafc' }}>
+                        <td style={{ ...tdR, textAlign: 'left', fontWeight: 600 }}>{label}</td>
+                        <td style={{ ...tdR, fontWeight: 800 }}>{value}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {activeTab === 'senate_status' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div style={{ background: '#ffffff', borderRadius: 8, border: '1px solid #cbd5e1', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                  <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
+                    <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#1e293b' }}>
+                      2. Status of Implementation
+                    </h3>
+                    <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 2 }}>
+                      Completed, ongoing, and delayed/undelivered. Unawarded contracts are listed separately so they do not inflate delays.
+                    </div>
+                  </div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', fontFamily: 'Arial, sans-serif' }}>
+                    <thead>
+                      <tr style={{ background: '#e2e8f0', color: '#1e293b' }}>
+                        <th style={{ ...th, textAlign: 'left' }}>Status</th>
+                        <th style={th}>SDOs</th>
+                        <th style={th}>Contracted value</th>
+                        <th style={th}>Amount paid</th>
+                        <th style={th}>Remaining to pay</th>
+                        <th style={th}>Contracted volume</th>
+                        <th style={th}>Delivered volume</th>
+                        <th style={th}>Undelivered volume</th>
+                        <th style={th}>Remaining contract value</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {([
+                        ['completed', 'Completed', '#047857'],
+                        ['ongoing', 'Ongoing', '#1d4ed8'],
+                        ['delayed', 'Delayed / undelivered', '#b91c1c'],
+                        ['not_awarded', 'Not yet awarded', '#92400e'],
+                      ] as const).map(([key, label, color], i) => {
+                        const b = implSummary.buckets[key]
+                        return (
+                          <tr key={key} style={{ background: i % 2 === 0 ? '#fff' : '#f8fafc' }}>
+                            <td style={{ ...tdR, textAlign: 'left', fontWeight: 800, color }}>{label}</td>
+                            <td style={{ ...tdR, fontWeight: 700 }}>{b.sdoCount}</td>
+                            <td style={tdR}>{fmtPeso(b.contractAmt)}</td>
+                            <td style={{ ...tdR, fontWeight: 700, color: '#15803d' }}>{fmtPeso(b.paidAmt)}</td>
+                            <td style={tdR}>{fmtPeso(b.remainingPay)}</td>
+                            <td style={tdR}>{fmtL(b.contractedL)} L</td>
+                            <td style={tdR}>{fmtL(b.deliveredL)} L</td>
+                            <td style={tdR}>{fmtL(b.undeliveredL)} L</td>
+                            <td style={tdR}>{fmtPeso(b.remainingContract)}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr style={{ background: '#dbeafe', color: '#1e3a8a', fontWeight: 800 }}>
+                        <td style={{ ...tdR, textAlign: 'left' }}>TOTAL</td>
+                        <td style={tdR}>{stats.count}</td>
+                        <td style={tdR}>{fmtPeso(stats.totalContractAmt)}</td>
+                        <td style={tdR}>{fmtPeso(stats.totalPaid)}</td>
+                        <td style={tdR}>{fmtPeso(stats.totalRemainingPay)}</td>
+                        <td style={tdR}>{fmtL(stats.totalContractedL)} L</td>
+                        <td style={tdR}>{fmtL(stats.totalDeliveredL)} L</td>
+                        <td style={tdR}>{fmtL(stats.totalUndeliveredL)} L</td>
+                        <td style={tdR}>{fmtPeso(stats.totalRemainingContract)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+
+                <div style={{ background: '#ffffff', borderRadius: 8, border: '1px solid #cbd5e1', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                  <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
+                    <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#1e293b' }}>
+                      Reasons for delays or shortfalls
+                    </h3>
+                    <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 2 }}>
+                      Delayed, failed, or below 90% of target. Remarks come from the SDO procurement table.
+                    </div>
+                  </div>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', fontFamily: 'Arial, sans-serif' }}>
+                      <thead>
+                        <tr style={{ background: '#e2e8f0', color: '#1e293b' }}>
+                          <th style={{ ...th, textAlign: 'left' }}>SDO</th>
+                          <th style={thC}>Region</th>
+                          <th style={{ ...th, textAlign: 'left' }}>Center</th>
+                          <th style={{ ...th, textAlign: 'left' }}>Status</th>
+                          <th style={th}>Undelivered</th>
+                          <th style={th}>Remaining contract</th>
+                          <th style={{ ...th, textAlign: 'left' }}>Remarks</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {implSummary.reasons.length === 0 && (
+                          <tr>
+                            <td colSpan={7} style={{ ...tdC, color: '#64748b', padding: '1.5rem' }}>
+                              No delayed or shortfall rows in the current filter.
+                            </td>
+                          </tr>
+                        )}
+                        {implSummary.reasons.map((row, i) => (
+                          <tr key={row.id} style={{ background: i % 2 === 0 ? '#fff' : '#f8fafc' }}>
+                            <td style={{ ...tdR, textAlign: 'left', fontWeight: 700 }}>{row.sdo}</td>
+                            <td style={tdC}>{row.region}</td>
+                            <td style={{ ...tdR, textAlign: 'left' }}>{row.center}</td>
+                            <td style={{ ...tdR, textAlign: 'left' }}>{row.status}</td>
+                            <td style={tdR}>{fmtL(row.undeliveredL)} L</td>
+                            <td style={tdR}>{fmtPeso(row.remainingContract)}</td>
+                            <td style={{ ...tdR, textAlign: 'left', color: row.remarks ? '#334155' : '#94a3b8' }}>
+                              {row.remarks || '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'senate_region' && (
+              <div style={{ background: '#ffffff', borderRadius: 8, border: '1px solid #cbd5e1', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
+                  <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#1e293b' }}>
+                    3. Regional Distribution
+                  </h3>
+                  <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 2 }}>
+                    Contracted vs actual per region. Volume: PM/CM packs ÷ 5; SM packs ÷ 5.5555555556. Delivery % uses packs; disbursement % uses payments ÷ contract.
+                  </div>
+                </div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', fontFamily: 'Arial, sans-serif' }}>
+                    <thead>
+                      <tr style={{ background: '#e2e8f0', color: '#1e293b' }}>
+                        <th style={thC}>Region</th>
+                        <th style={th}>SDOs</th>
+                        <th style={th}>Contracted value</th>
+                        <th style={th}>Contracted volume</th>
+                        <th style={th}>Amount paid</th>
+                        <th style={th}>Delivered volume</th>
+                        <th style={th}>Value delivered</th>
+                        <th style={th}>Delivery %</th>
+                        <th style={th}>Disbursement %</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {regionalSummary.map((reg, i) => (
+                        <tr key={reg.region} style={{ background: i % 2 === 0 ? '#fff' : '#f8fafc' }}>
+                          <td style={{ ...tdC, fontWeight: 800 }}>{reg.region}</td>
+                          <td style={tdR}>{reg.sdoCount}</td>
+                          <td style={tdR}>{fmtPeso(reg.contractAmt)}</td>
+                          <td style={tdR}>{fmtL(reg.contractedL)} L</td>
+                          <td style={tdR}>{fmtPeso(reg.paidAmt)}</td>
+                          <td style={tdR}>{fmtL(reg.deliveredL)} L</td>
+                          <td style={tdR}>{fmtPeso(reg.valueDelivered)}</td>
+                          <td style={{ ...tdR, fontWeight: 700 }}>{fmtPct(reg.pctDelivered)}</td>
+                          <td style={{ ...tdR, fontWeight: 700 }}>{fmtPct(reg.pctDisbursed)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr style={{ background: '#dbeafe', color: '#1e3a8a', fontWeight: 800 }}>
+                        <td style={tdC}>TOTAL</td>
+                        <td style={tdR}>{stats.count}</td>
+                        <td style={tdR}>{fmtPeso(stats.totalContractAmt)}</td>
+                        <td style={tdR}>{fmtL(stats.totalContractedL)} L</td>
+                        <td style={tdR}>{fmtPeso(stats.totalPaid)}</td>
+                        <td style={tdR}>{fmtL(stats.totalDeliveredL)} L</td>
+                        <td style={tdR}>{fmtPeso(stats.totalValueDelivered)}</td>
+                        <td style={tdR}>{fmtPct(stats.pctDelivered)}</td>
+                        <td style={tdR}>
+                          {fmtPct(stats.totalContractAmt > 0 ? (stats.totalPaid / stats.totalContractAmt) * 100 : 0)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
               </div>
             )}
 
