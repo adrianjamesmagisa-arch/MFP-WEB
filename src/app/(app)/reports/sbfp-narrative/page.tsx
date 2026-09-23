@@ -472,6 +472,8 @@ export default function SbfpSpreadsheetReport() {
           beneficiaries: Number(r.beneficiaries_pm) || 0,
           remarks: String(r.remarks || '').trim(),
           ...m,
+          number: 0,
+          sdoSpan: 0,
         }
       })
       .sort((a, b) => {
@@ -521,6 +523,8 @@ export default function SbfpSpreadsheetReport() {
           deliveryRate,
           status: isCompleted ? 'Completed' : 'Ongoing',
           procurementStatus: officialSbfpStatusLabel(r.procurement_status),
+          number: 0,
+          sdoSpan: 0,
         }
       })
       .sort((a, b) => {
