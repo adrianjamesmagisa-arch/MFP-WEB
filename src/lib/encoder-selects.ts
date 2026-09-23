@@ -33,6 +33,7 @@ export const SBFP_DATA_ENCODER_COLUMNS = [
   'status_of_payment',
   'remarks',
   'feeding_days',
+  'payment_entries',
   'created_at',
 ].join(',')
 
@@ -86,6 +87,7 @@ export const PROGRAM_PROCUREMENT_ENCODER_COLUMNS = [
   'delivery_snapshots',
   'monthly_packs_delivered',
   'raw_milk_prices',
+  'payment_entries',
   'created_at',
 ].join(',')
 

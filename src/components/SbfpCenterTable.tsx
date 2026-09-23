@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, Fragment, type CSSProperties } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Trash2, Plus, CalendarPlus } from 'lucide-react'
+import { Trash2, Plus, CalendarPlus, Banknote } from 'lucide-react'
 import type { Cooperative } from '@/lib/types'
 import { recomputeCenterSummary } from '@/lib/sbfp-compute'
 import {
@@ -401,9 +401,8 @@ function MonthlyMapCell({
 }
 
 function SnapshotDateHeader({
-  letter, date, editable, onRename, onDelete,
+  date, editable, onRename, onDelete,
 }: {
-  letter: string
   date: string
   editable: boolean
   onRename: (oldDate: string, newDate: string) => void
@@ -434,7 +433,7 @@ function SnapshotDateHeader({
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end', gap: 6 }}>
         <div style={{ flex: 1, textAlign: 'right' }}>
-          {letter} — Delivered as of
+          Delivered as of
           <div>
             {editable && editing ? (
               <input
@@ -566,6 +565,129 @@ function SnapshotCell({
   )
 }
 
+function PaymentDateHeader({
+  date, editable, onDelete,
+}: {
+  date: string
+  editable: boolean
+  onDelete: (date: string) => void
+}) {
+  return (
+    <th
+      rowSpan={2}
+      style={{ minWidth: 150, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', verticalAlign: 'middle', background: '#166534', color: '#fff' }}
+      title="Amount paid to supplier on this date — add more columns for partial payments"
+    >
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end', gap: 6 }}>
+        <div style={{ flex: 1, textAlign: 'right' }}>
+          Paid
+          <div style={{ fontWeight: 700 }}>{date}</div>
+        </div>
+        {editable && (
+          <button
+            type="button"
+            onClick={() => onDelete(date)}
+            title={`Delete “Paid — ${date}” column`}
+            aria-label={`Delete Paid ${date} column`}
+            style={{
+              flexShrink: 0, marginTop: 1, width: 22, height: 22, borderRadius: 4,
+              border: '1px solid rgba(255,255,255,0.35)', background: 'rgba(239,68,68,0.25)',
+              color: '#fecaca', cursor: 'pointer', display: 'inline-flex',
+              alignItems: 'center', justifyContent: 'center', padding: 0,
+            }}
+          >
+            <Trash2 size={12} />
+          </button>
+        )}
+      </div>
+    </th>
+  )
+}
+
+function PaymentCell({
+  id, date, entries, editable, onSave,
+}: {
+  id: string
+  date: string
+  entries: Array<{ date?: string; amount?: number | null }>
+  editable: boolean
+  onSave: (id: string, field: string, oldV: any, newV: any) => void
+}) {
+  const current = entries.find(e => e.date === date)
+  const amount = current?.amount ?? null
+  const display = amount == null || amount === 0 ? '' : amount
+  const [editing, setEditing] = useState(false)
+  const [val, setVal] = useState<string | number>(display)
+  const [saving, setSaving] = useState(false)
+  const ref = useRef<HTMLInputElement>(null)
+  const supabase = createClient()
+
+  useEffect(() => { setVal(display) }, [display])
+  useEffect(() => { if (editing) ref.current?.focus() }, [editing])
+
+  const save = async () => {
+    const nextNum = val === '' || val == null ? null : Number(val)
+    const oldEntries = [...(entries || [])]
+    const newEntries = oldEntries.filter(e => e.date !== date)
+    if (nextNum != null && Number.isFinite(nextNum) && nextNum !== 0) {
+      newEntries.push({ date, amount: nextNum })
+    }
+    const same = JSON.stringify(oldEntries) === JSON.stringify(newEntries)
+    if (same) { setEditing(false); return }
+    setSaving(true)
+    const { error } = await supabase.from('sbfp_data').update({ payment_entries: newEntries }).eq('id', id)
+    if (!error) onSave(id, 'payment_entries', oldEntries, newEntries)
+    else setVal(display)
+    setSaving(false)
+    setEditing(false)
+  }
+
+  if (!editable) {
+    return (
+      <td style={{ textAlign: 'right', fontWeight: 600, color: amount ? '#15803d' : undefined, background: 'rgba(21,128,61,0.05)' }}>
+        {amount ? `₱${Number(amount).toLocaleString()}` : '—'}
+      </td>
+    )
+  }
+
+  if (editing) {
+    return (
+      <td style={{ padding: 2, background: '#fff', textAlign: 'right' }}>
+        <input
+          ref={ref}
+          type="number"
+          value={val}
+          onChange={e => setVal(e.target.value)}
+          onBlur={save}
+          onKeyDown={e => {
+            if (e.key === 'Enter') save()
+            if (e.key === 'Escape') { setVal(display); setEditing(false) }
+          }}
+          style={{
+            width: '100%', border: '1px solid #3b82f6', outline: 'none',
+            padding: '2px 4px', fontSize: 'inherit', textAlign: 'right', boxSizing: 'border-box',
+          }}
+        />
+      </td>
+    )
+  }
+
+  return (
+    <td
+      onClick={() => setEditing(true)}
+      title="Amount paid to supplier on this date (partial payments get their own column) — click to edit"
+      style={{
+        textAlign: 'right', fontWeight: 600, cursor: 'pointer',
+        color: amount ? '#15803d' : undefined,
+        background: 'rgba(21,128,61,0.05)',
+        opacity: saving ? 0.5 : 1,
+      }}
+    >
+      {amount ? `₱${Number(amount).toLocaleString()}` : '—'}
+    </td>
+  )
+}
+
 // ─────────────────────────────────────────────
 // Main table
 // ─────────────────────────────────────────────
@@ -589,8 +711,10 @@ export function SbfpCenterTable({
   const [redoStack, setRedoStack] = useState<any[]>([])
   const [adding, setAdding]       = useState(false)
   const [extraSnapDates, setExtraSnapDates] = useState<string[]>([])
+  const [extraPayDates, setExtraPayDates] = useState<string[]>([])
   const [cooperatives, setCooperatives] = useState<Cooperative[]>([])
   const addSnapRef                = useRef<HTMLInputElement>(null)
+  const addPayRef                 = useRef<HTMLInputElement>(null)
   const editable                  = userRole !== 'viewer'
   const dbYear                    = year ?? (initialRecords[0]?.year as number | undefined)
   const runTask                   = useAsyncTask('Saving…')
@@ -921,6 +1045,56 @@ export function SbfpCenterTable({
     return da - db
   })
 
+  const payDates = Array.from(new Set([
+    ...rows.flatMap(r => (r.payment_entries || []).map((e: any) => e.date).filter(Boolean)),
+    ...extraPayDates,
+  ])).sort((a, b) => {
+    const da = parseSnapshotDate(a)?.getTime() ?? 0
+    const db = parseSnapshotDate(b)?.getTime() ?? 0
+    return da - db
+  })
+
+  const addPayDate = (iso: string) => {
+    const parsed = parseSnapshotDate(iso)
+    if (!parsed) return
+    const label = formatDeliveredAsOf(parsed)
+    const exists = extraPayDates.includes(label) || rows.some(r =>
+      (r.payment_entries || []).some((e: any) => e.date === label)
+    )
+    if (exists) {
+      alert(`A "Paid — ${label}" column already exists.`)
+      return
+    }
+    setExtraPayDates(p => [...p, label])
+  }
+
+  const deletePayDate = async (date: string) => {
+    if (!editable || !date) return
+    const hasValues = rows.some(r =>
+      (r.payment_entries || []).some((e: any) => e.date === date && (Number(e.amount) || 0) !== 0)
+    )
+    const ok = confirm(
+      hasValues
+        ? `Delete the "Paid — ${date}" column and clear its amounts for all SDOs?`
+        : `Delete the "Paid — ${date}" column?`,
+    )
+    if (!ok) return
+    setExtraPayDates(p => p.filter(d => d !== date))
+    await runTask(async () => {
+      await Promise.all(rows.map(async r => {
+        const oldEntries = [...(r.payment_entries || [])]
+        if (!oldEntries.some((e: any) => e.date === date)) return
+        const newEntries = oldEntries.filter((e: any) => e.date !== date)
+        const { error } = await supabase.from('sbfp_data').update({ payment_entries: newEntries }).eq('id', r.id)
+        if (!error) {
+          setRows(p => p.map(row =>
+            row.id === r.id ? { ...row, payment_entries: newEntries } : row
+          ))
+        }
+      }))
+    }, 'Updating payment columns…', { blocking: true })
+  }
+
   // Packs / Raw ₱/L / Income month groups only appear when a Delivered-as-of date exists for that month
   const visibleRawMonths = SBFP_RAW_MILK_MONTHS.filter(m =>
     snapDates.some(d => monthKeyFromDateValue(d) === m.key)
@@ -987,6 +1161,33 @@ export function SbfpCenterTable({
           />
           <button
             type="button"
+            onClick={() => {
+              const el = addPayRef.current
+              if (el && typeof el.showPicker === 'function') el.showPicker()
+              else el?.click()
+            }}
+            className="btn btn-outline"
+            style={{ height: 36, padding: '0 0.85rem', lineHeight: 1, borderColor: '#166534', color: '#166534' }}
+            title="Add a payment date column — use multiple columns for partial payments"
+          >
+            <Banknote size={15} style={{ flexShrink: 0 }} />
+            <span>Add payment</span>
+          </button>
+          <input
+            ref={addPayRef}
+            type="date"
+            onChange={e => {
+              if (e.target.value) {
+                addPayDate(e.target.value)
+                e.target.value = ''
+              }
+            }}
+            style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
+            tabIndex={-1}
+            aria-hidden
+          />
+          <button
+            type="button"
             onClick={handleAdd}
             disabled={adding}
             className="btn btn-gold"
@@ -1008,64 +1209,63 @@ export function SbfpCenterTable({
                     onChange={toggleAll} style={{ cursor: 'pointer' }} />
                 </th>
                 <th rowSpan={2} style={{ textAlign: 'center', ...stickyTh(SL.report, SW.report, false, 23) }}>In Report?</th>
-                <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, ...stickyTh(SL.status, SW.status, false, 22) }}>A — Status</th>
-                <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, ...stickyTh(SL.sdo, SW.sdo, true, 21) }}>B — SDO</th>
-                <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 80 }}>C — Region</th>
-                <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', minWidth: 110 }}>D — Amount (₱)</th>
+                <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, ...stickyTh(SL.status, SW.status, false, 22) }}>Status</th>
+                <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, ...stickyTh(SL.sdo, SW.sdo, true, 21) }}>SDO</th>
+                <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 80 }}>Region</th>
+                <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', minWidth: 110 }}>Amount (₱)</th>
                 <th
                   rowSpan={2}
                   style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 90 }}
                   title="PM → packs = Amount÷25 · SM → Amount÷30 · CM → Amount÷Pack ₱ you type"
                 >
-                  — Milk type
+                  Milk type
                 </th>
                 <th
                   rowSpan={2}
                   style={{ whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', minWidth: 90 }}
                   title="₱ per pack. Fixed for PM (25) / SM (30). For CM, type the commercial pack cost — Packs to Deliver updates automatically."
                 >
-                  — Pack ₱
+                  Pack ₱
                 </th>
-                <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 145 }}>E — Mode of Procurement</th>
+                <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 145 }}>Mode of Procurement</th>
                 <th
                   rowSpan={2}
                   style={{ minWidth: 180, whiteSpace: 'normal', lineHeight: 1.2 }}
                   title="Cooperative for this SDO. Saved to every drop-off school under this SDO on the masterlist (PIMD coop count)."
                 >
-                  — Coop
+                  Coop
                 </th>
-                <th rowSpan={2} style={{ minWidth: 110, whiteSpace: 'normal', lineHeight: 1.2 }}>F — Date Recd (Proc)</th>
-                <th rowSpan={2} style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2 }}>G — PR Number</th>
-                <th rowSpan={2} style={{ minWidth: 110, whiteSpace: 'normal', lineHeight: 1.2 }}>H — ORS Date</th>
-                <th rowSpan={2} style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2 }}>I — PO Number</th>
-                <th rowSpan={2} style={{ minWidth: 80,  whiteSpace: 'normal', lineHeight: 1.2 }}>J — Batch</th>
-                <th rowSpan={2} style={{ minWidth: 100, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right' }}>K — Beneficiaries</th>
-                <th rowSpan={2} style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right' }}>L — Contract Amt (₱)</th>
+                <th rowSpan={2} style={{ minWidth: 110, whiteSpace: 'normal', lineHeight: 1.2 }}>Date Recd (Proc)</th>
+                <th rowSpan={2} style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2 }}>PR Number</th>
+                <th rowSpan={2} style={{ minWidth: 110, whiteSpace: 'normal', lineHeight: 1.2 }}>ORS Date</th>
+                <th rowSpan={2} style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2 }}>PO Number</th>
+                <th rowSpan={2} style={{ minWidth: 80,  whiteSpace: 'normal', lineHeight: 1.2 }}>Batch</th>
+                <th rowSpan={2} style={{ minWidth: 100, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right' }}>Beneficiaries</th>
+                <th rowSpan={2} style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right' }}>Contract Amt (₱)</th>
                 <th
                   rowSpan={2}
                   style={{ minWidth: 110, whiteSpace: 'normal', lineHeight: 1.2 }}
                   title="Also sets Date Started on all linked drop-off schools in the masterlist"
                 >
-                  M — Delivery Start
+                  Delivery Start
                 </th>
                 <th
                   rowSpan={2}
                   style={{ minWidth: 110, whiteSpace: 'normal', lineHeight: 1.2 }}
                   title="Also sets Date Completed on all linked drop-off schools in the masterlist"
                 >
-                  N — Delivery End
+                  Delivery End
                 </th>
                 <th
                   rowSpan={2}
                   style={{ minWidth: 120, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right' }}
                   title="Auto: Amount ÷ Pack ₱ (PM=25, SM=30, CM=typed). You can still override."
                 >
-                  O — Packs to Deliver
+                  Packs to Deliver
                 </th>
-                {snapDates.map((d, i) => (
+                {snapDates.map(d => (
                   <SnapshotDateHeader
                     key={d}
-                    letter={String.fromCharCode(80 + i)}
                     date={d}
                     editable={editable}
                     onRename={renameSnapDate}
@@ -1093,8 +1293,22 @@ export function SbfpCenterTable({
                 >
                   Total Income
                 </th>
-                <th rowSpan={2} style={{ minWidth: 140, whiteSpace: 'normal', lineHeight: 1.2 }}>— Payment Status</th>
-                <th rowSpan={2} style={{ minWidth: 185, whiteSpace: 'normal', lineHeight: 1.2 }}>— Remarks</th>
+                {payDates.map(d => (
+                  <PaymentDateHeader
+                    key={d}
+                    date={d}
+                    editable={editable}
+                    onDelete={deletePayDate}
+                  />
+                ))}
+                <th
+                  rowSpan={2}
+                  style={{ minWidth: 140, whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', background: '#1e3a5f', color: '#fff' }}
+                  title="Contract Amount − Sum of all payments"
+                >
+                  Remaining Balance
+                </th>
+                <th rowSpan={2} style={{ minWidth: 185, whiteSpace: 'normal', lineHeight: 1.2 }}>Remarks</th>
                 {editable && <th rowSpan={2} style={{ minWidth: 70 }}>Actions</th>}
               </tr>
               <tr>
@@ -1119,7 +1333,7 @@ export function SbfpCenterTable({
             <tbody>
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={20 + snapDates.length + visibleRawMonths.length * 3 + 3 + (editable ? 1 : 0)} style={{ textAlign: 'center', padding: '3rem', color: 'var(--gray-400)' }}>
+                  <td colSpan={20 + snapDates.length + visibleRawMonths.length * 3 + 3 + payDates.length + (editable ? 1 : 0)} style={{ textAlign: 'center', padding: '3rem', color: 'var(--gray-400)' }}>
                     No records for {center}.
                   </td>
                 </tr>
@@ -1332,11 +1546,39 @@ export function SbfpCenterTable({
                         </td>
                       )
                     })()}
-                    {/* Payment Status */}
-                    {editable
-                      ? <EditableCell id={r.id} field="status_of_payment" value={r.status_of_payment} onSave={handleSave} />
-                      : <td>{r.status_of_payment || 'N/A'}</td>
-                    }
+                    {/* Payment entries (one column per payment date) + Remaining Balance */}
+                    {payDates.map(d => (
+                      <PaymentCell
+                        key={`${r.id}-pay-${d}`}
+                        id={r.id}
+                        date={d}
+                        entries={r.payment_entries || []}
+                        editable={editable}
+                        onSave={handleSave}
+                      />
+                    ))}
+                    {(() => {
+                      const totalPaid = (r.payment_entries || []).reduce(
+                        (sum: number, e: any) => sum + (Number(e.amount) || 0), 0,
+                      )
+                      const contract = Number(r.contract_amount) || 0
+                      const balance = contract - totalPaid
+                      const color = !contract
+                        ? undefined
+                        : balance < 0
+                          ? '#dc2626'
+                          : balance === 0
+                            ? '#15803d'
+                            : '#1e3a5f'
+                      return (
+                        <td
+                          style={{ textAlign: 'right', fontWeight: 700, color, background: 'rgba(30,58,95,0.06)' }}
+                          title="Contract Amount − Sum of all payments"
+                        >
+                          {contract ? `₱${balance.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : '—'}
+                        </td>
+                      )
+                    })()}
                     {/* Remarks */}
                     {editable
                       ? <EditableCell id={r.id} field="remarks" value={r.remarks} onSave={handleSave} />

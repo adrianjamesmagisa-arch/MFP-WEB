@@ -330,13 +330,11 @@ export function ProcSnapshotCell({
 }
 
 export function ProcSnapshotDateHeader({
-  letter,
   date,
   editable,
   onRename,
   onDelete,
 }: {
-  letter: string
   date: string
   editable: boolean
   onRename: (oldDate: string, newDate: string) => void
@@ -346,7 +344,7 @@ export function ProcSnapshotDateHeader({
     <th rowSpan={2} style={{ minWidth: 150, textAlign: 'right', verticalAlign: 'middle' }}>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, alignItems: 'flex-start' }}>
         <div>
-          {letter} — Delivered as of
+          Delivered as of
           <div style={{ fontWeight: 700 }}>{date}</div>
         </div>
         {editable && (
@@ -354,6 +352,134 @@ export function ProcSnapshotDateHeader({
             type="button"
             onClick={() => onDelete(date)}
             title="Remove column"
+            style={{
+              border: '1px solid rgba(255,255,255,0.35)',
+              background: 'rgba(239,68,68,0.25)',
+              borderRadius: 4,
+              cursor: 'pointer',
+              padding: 2,
+            }}
+          >
+            <Trash2 size={12} color="#fecaca" />
+          </button>
+        )}
+      </div>
+    </th>
+  )
+}
+
+export function ProcPaymentCell({
+  table,
+  id,
+  date,
+  entries,
+  editable,
+  onSave,
+}: {
+  table: string
+  id: string
+  date: string
+  entries: Array<{ date: string; amount: number | null }>
+  editable: boolean
+  onSave: (id: string, field: string, oldV: any, newV: any) => void
+}) {
+  const current = entries.find(e => e.date === date)
+  const amount = current?.amount ?? null
+  const display = amount == null || amount === 0 ? '' : amount
+  const [editing, setEditing] = useState(false)
+  const [val, setVal] = useState<string | number>(display)
+  const [saving, setSaving] = useState(false)
+  const ref = useRef<HTMLInputElement>(null)
+  const supabase = createClient()
+
+  useEffect(() => {
+    setVal(display)
+  }, [display])
+  useEffect(() => {
+    if (editing) ref.current?.focus()
+  }, [editing])
+
+  const save = async () => {
+    const nextNum = val === '' || val == null ? null : Number(val)
+    const oldEntries = [...(entries || [])]
+    const newEntries = oldEntries.filter(e => e.date !== date)
+    if (nextNum != null && Number.isFinite(nextNum) && nextNum !== 0) {
+      newEntries.push({ date, amount: nextNum })
+    }
+    if (JSON.stringify(oldEntries) === JSON.stringify(newEntries)) {
+      setEditing(false)
+      return
+    }
+    setSaving(true)
+    const { error } = await supabase.from(table).update({ payment_entries: newEntries }).eq('id', id)
+    if (!error) onSave(id, 'payment_entries', oldEntries, newEntries)
+    else setVal(display)
+    setSaving(false)
+    setEditing(false)
+  }
+
+  if (!editable) {
+    return (
+      <td style={{ textAlign: 'right', fontWeight: 600, color: amount ? '#15803d' : undefined }}>
+        {amount ? `₱${Number(amount).toLocaleString()}` : '—'}
+      </td>
+    )
+  }
+
+  if (editing) {
+    return (
+      <td style={{ padding: 2, background: '#fff', textAlign: 'right' }}>
+        <input
+          ref={ref}
+          type="number"
+          value={val}
+          onChange={e => setVal(e.target.value)}
+          onBlur={save}
+          onKeyDown={e => { if (e.key === 'Enter') save() }}
+          style={{ width: '100%', border: '1px solid #3b82f6', textAlign: 'right' }}
+        />
+      </td>
+    )
+  }
+
+  return (
+    <td
+      onClick={() => setEditing(true)}
+      style={{
+        textAlign: 'right',
+        fontWeight: 600,
+        cursor: 'pointer',
+        color: amount ? '#15803d' : undefined,
+        background: 'rgba(21,128,61,0.05)',
+      }}
+    >
+      {amount ? `₱${Number(amount).toLocaleString()}` : '—'}
+      <CellSavingOverlay show={saving} />
+    </td>
+  )
+}
+
+export function ProcPaymentDateHeader({
+  date,
+  editable,
+  onDelete,
+}: {
+  date: string
+  editable: boolean
+  onDelete: (date: string) => void
+}) {
+  return (
+    <th rowSpan={2} style={{ minWidth: 150, textAlign: 'right', verticalAlign: 'middle', background: '#166534', color: '#fff' }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, alignItems: 'flex-start' }}>
+        <div>
+          Paid
+          <div style={{ fontWeight: 700 }}>{date}</div>
+        </div>
+        {editable && (
+          <button
+            type="button"
+            onClick={() => onDelete(date)}
+            title="Remove payment column"
             style={{
               border: '1px solid rgba(255,255,255,0.35)',
               background: 'rgba(239,68,68,0.25)',

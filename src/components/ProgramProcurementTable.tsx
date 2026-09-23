@@ -2,13 +2,15 @@
 
 import { Fragment, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { CalendarPlus, Plus, Trash2 } from 'lucide-react'
+import { CalendarPlus, Plus, Trash2, Banknote } from 'lucide-react'
 import type { MonitoringProgramId } from '@/lib/monitoring-programs'
 import type { ProgramProcurementRow } from '@/lib/program-dropoff-sync'
 import type { Cooperative } from '@/lib/types'
 import {
   ProcEditableCell,
   ProcMonthlyPriceCell,
+  ProcPaymentCell,
+  ProcPaymentDateHeader,
   ProcSnapshotCell,
   ProcSnapshotDateHeader,
 } from '@/components/procurement-grid-utils'
@@ -148,9 +150,11 @@ export function ProgramProcurementTable({
   const runTask = useAsyncTask('Saving…')
   const [rows, setRows] = useState(initialRows)
   const [extraSnapDates, setExtraSnapDates] = useState<string[]>([])
+  const [extraPayDates, setExtraPayDates] = useState<string[]>([])
   const [adding, setAdding] = useState(false)
   const [cooperatives, setCooperatives] = useState<Cooperative[]>([])
   const addSnapRef = useRef<HTMLInputElement>(null)
+  const addPayRef = useRef<HTMLInputElement>(null)
   const reservedLabelsRef = useRef<Set<string>>(new Set())
   const dbYear = year
 
@@ -291,6 +295,19 @@ export function ProgramProcurementTable({
     return da - db
   })
 
+  const payDates = Array.from(
+    new Set([
+      ...rows.flatMap(r =>
+        ((r.payment_entries as { date?: string }[]) || []).map(e => e.date).filter(Boolean),
+      ),
+      ...extraPayDates,
+    ]),
+  ).sort((a, b) => {
+    const da = parseSnapshotDate(a)?.getTime() ?? 0
+    const db = parseSnapshotDate(b)?.getTime() ?? 0
+    return da - db
+  })
+
   const visibleRawMonths = SBFP_RAW_MILK_MONTHS.filter(m =>
     snapDates.some(d => monthKeyFromDateValue(d) === m.key),
   )
@@ -393,6 +410,62 @@ export function ProgramProcurementTable({
     )
   }
 
+  const addPayDate = (iso: string) => {
+    const parsed = parseSnapshotDate(iso)
+    if (!parsed) return
+    const label = formatDeliveredAsOf(parsed)
+    const exists =
+      extraPayDates.includes(label) ||
+      rows.some(r =>
+        ((r.payment_entries as { date?: string }[]) || []).some(e => e.date === label),
+      )
+    if (exists) {
+      alert(`A "Paid — ${label}" column already exists.`)
+      return
+    }
+    setExtraPayDates(p => [...p, label])
+  }
+
+  const deletePayDate = async (date: string) => {
+    if (!editable || !date) return
+    const hasValues = rows.some(r =>
+      ((r.payment_entries as { date?: string; amount?: number | null }[]) || []).some(
+        e => e.date === date && (e.amount ?? 0) !== 0,
+      ),
+    )
+    const ok = confirm(
+      hasValues
+        ? `Delete the "Paid — ${date}" column and clear its amounts for all rows?`
+        : `Delete the "Paid — ${date}" column?`,
+    )
+    if (!ok) return
+    setExtraPayDates(p => p.filter(d => d !== date))
+    await runTask(
+      async () => {
+        await Promise.all(
+          rows.map(async r => {
+            const oldEntries = [...((r.payment_entries as Array<{ date: string; amount: number | null }>) || [])]
+            if (!oldEntries.some(e => e.date === date)) return
+            const newEntries: Array<{ date: string; amount: number | null }> = oldEntries.filter(e => e.date !== date)
+            const { error } = await supabase
+              .from(PROC_TABLE)
+              .update({ payment_entries: newEntries })
+              .eq('id', r.id)
+            if (!error) {
+              setRows(p =>
+                p.map(row =>
+                  row.id === r.id ? { ...row, payment_entries: newEntries } : row,
+                ),
+              )
+            }
+          }),
+        )
+      },
+      'Updating payment columns…',
+      { blocking: true },
+    )
+  }
+
   const addRow = async () => {
     if (adding) return
     setAdding(true)
@@ -450,7 +523,7 @@ export function ProgramProcurementTable({
   }
 
   const colSpan =
-    19 + snapDates.length + visibleRawMonths.length * 3 + 3 + (editable ? 1 : 0)
+    19 + snapDates.length + visibleRawMonths.length * 3 + 3 + payDates.length + (editable ? 1 : 0)
 
   // Sticky: first 4 columns (In Report? + Status + Province/Area + Region).
   const stickyTh = (left: number, width: number, edge = false, z = 20): CSSProperties => ({
@@ -508,6 +581,32 @@ export function ProgramProcurementTable({
           />
           <button
             type="button"
+            className="btn btn-outline"
+            style={{ height: 36, padding: '0 0.85rem', lineHeight: 1, borderColor: '#166534', color: '#166534' }}
+            onClick={() => {
+              const el = addPayRef.current
+              if (el && typeof el.showPicker === 'function') el.showPicker()
+              else el?.click()
+            }}
+          >
+            <Banknote size={15} style={{ flexShrink: 0 }} />
+            <span>Add payment</span>
+          </button>
+          <input
+            ref={addPayRef}
+            type="date"
+            onChange={e => {
+              if (e.target.value) {
+                addPayDate(e.target.value)
+                e.target.value = ''
+              }
+            }}
+            style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
+            tabIndex={-1}
+            aria-hidden
+          />
+          <button
+            type="button"
             className="btn btn-gold"
             onClick={addRow}
             disabled={adding}
@@ -526,42 +625,41 @@ export function ProgramProcurementTable({
           <thead>
             <tr>
               <th rowSpan={2} style={{ textAlign: 'center', ...stickyTh(SL.report, SW.report, false, 24) }}>In Report?</th>
-              <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, ...stickyTh(SL.status, SW.status, false, 23) }}>A — Status</th>
-              <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, ...stickyTh(SL.area, SW.area, false, 22) }}>B — {areaColumnLabel}</th>
-              <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, ...stickyTh(SL.region, SW.region, true, 21) }}>C — Region</th>
-              <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', minWidth: 110 }}>D — Amount (₱)</th>
+              <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, ...stickyTh(SL.status, SW.status, false, 23) }}>Status</th>
+              <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, ...stickyTh(SL.area, SW.area, false, 22) }}>{areaColumnLabel}</th>
+              <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, ...stickyTh(SL.region, SW.region, true, 21) }}>Region</th>
+              <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', minWidth: 110 }}>Amount (₱)</th>
               <th
                 rowSpan={2}
                 style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 90 }}
                 title="PM → packs = Amount÷25 · SM → Amount÷30 · CM → Amount÷Pack ₱"
               >
-                — Milk type
+                Milk type
               </th>
               <th
                 rowSpan={2}
                 style={{ whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', minWidth: 90 }}
                 title="₱ per pack"
               >
-                — Pack ₱
+                Pack ₱
               </th>
-              <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 145 }}>E — Mode of Procurement</th>
+              <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 145 }}>Mode of Procurement</th>
               <th rowSpan={2} title="Applies to every municipality under this row in the masterlist">
-                — Coop
+                Coop
               </th>
-              <th rowSpan={2}>F — Date Recd (Proc)</th>
-              <th rowSpan={2}>G — PR Number</th>
-              <th rowSpan={2}>H — ORS Date</th>
-              <th rowSpan={2}>I — PO Number</th>
-              <th rowSpan={2}>J — Batch</th>
-              <th rowSpan={2} style={{ textAlign: 'right' }}>K — Beneficiaries</th>
-              <th rowSpan={2} style={{ textAlign: 'right' }}>L — Contract Amt (₱)</th>
-              <th rowSpan={2}>M — Delivery Start</th>
-              <th rowSpan={2}>N — Delivery End</th>
-              <th rowSpan={2} style={{ textAlign: 'right' }}>O — Packs to Deliver</th>
-              {snapDates.filter(Boolean).map((d, i) => (
+              <th rowSpan={2}>Date Recd (Proc)</th>
+              <th rowSpan={2}>PR Number</th>
+              <th rowSpan={2}>ORS Date</th>
+              <th rowSpan={2}>PO Number</th>
+              <th rowSpan={2}>Batch</th>
+              <th rowSpan={2} style={{ textAlign: 'right' }}>Beneficiaries</th>
+              <th rowSpan={2} style={{ textAlign: 'right' }}>Contract Amt (₱)</th>
+              <th rowSpan={2}>Delivery Start</th>
+              <th rowSpan={2}>Delivery End</th>
+              <th rowSpan={2} style={{ textAlign: 'right' }}>Packs to Deliver</th>
+              {snapDates.filter(Boolean).map(d => (
                 <ProcSnapshotDateHeader
                   key={d}
-                  letter={String.fromCharCode(80 + i)}
                   date={d as string}
                   editable={editable}
                   onRename={renameSnapDate}
@@ -588,8 +686,16 @@ export function ProgramProcurementTable({
               >
                 Total Income
               </th>
-              <th rowSpan={2}>— Payment Status</th>
-              <th rowSpan={2}>— Remarks</th>
+              {payDates.filter((d): d is string => Boolean(d)).map(d => (
+                <ProcPaymentDateHeader
+                  key={d}
+                  date={d}
+                  editable={editable}
+                  onDelete={deletePayDate}
+                />
+              ))}
+              <th rowSpan={2} style={{ textAlign: 'right', minWidth: 130, background: '#1e3a5f', color: '#fff', whiteSpace: 'normal', lineHeight: 1.2 }}>Remaining Balance</th>
+              <th rowSpan={2}>Remarks</th>
               {editable && <th rowSpan={2}>Actions</th>}
             </tr>
             <tr>
@@ -943,17 +1049,29 @@ export function ProgramProcurementTable({
                       </td>
                     )
                   })()}
-                  {editable ? (
-                    <ProcEditableCell
+                  {payDates.filter((d): d is string => Boolean(d)).map(d => (
+                    <ProcPaymentCell
+                      key={`${r.id}-pay-${d}`}
                       table={PROC_TABLE}
                       id={r.id}
-                      field="status_of_payment"
-                      value={r.status_of_payment}
+                      date={d}
+                      entries={(r.payment_entries as Array<{ date: string; amount: number | null }>) || []}
+                      editable={editable}
                       onSave={handleSave}
                     />
-                  ) : (
-                    <td>{r.status_of_payment || 'N/A'}</td>
-                  )}
+                  ))}
+                  {(() => {
+                    const totalPaid = ((r.payment_entries as Array<{ date?: string; amount?: number | null }>) || [])
+                      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
+                    const contract = Number(r.contract_amount) || 0
+                    const balance = contract - totalPaid
+                    const color = !contract ? undefined : balance < 0 ? '#dc2626' : balance === 0 ? '#15803d' : '#1e3a5f'
+                    return (
+                      <td style={{ textAlign: 'right', fontWeight: 700, color }}>
+                        {contract ? `₱${balance.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : '—'}
+                      </td>
+                    )
+                  })()}
                   {editable ? (
                     <ProcEditableCell
                       table={PROC_TABLE}

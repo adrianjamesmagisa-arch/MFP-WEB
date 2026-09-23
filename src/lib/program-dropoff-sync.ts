@@ -50,6 +50,7 @@ export type ProgramProcurementRow = {
   delivery_snapshots?: unknown
   monthly_packs_delivered?: unknown
   raw_milk_prices?: unknown
+  payment_entries?: Array<{ date: string; amount: number | null }> | null
 }
 
 export type ProgramDropoffRow = {
