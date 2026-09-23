@@ -61,6 +61,31 @@ export type SbfpStatusBucket =
   | 'failed'
   | 'other'
 
+/** Exact labels from the SDO procurement Status dropdown. */
+export const SBFP_PROCUREMENT_STATUSES = [
+  'For Preparation',
+  'Ongoing Procurement',
+  'Ongoing (For Award)',
+  'Awarded (For Delivery)',
+  'Awarded (Ongoing Delivery)',
+  'Completed',
+  'Failed',
+] as const
+
+export type SbfpProcurementStatus = (typeof SBFP_PROCUREMENT_STATUSES)[number]
+
+/** Map stored status text to the dropdown label (no invented names). */
+export function officialSbfpStatusLabel(procurement_status?: string | null): SbfpProcurementStatus {
+  const low = String(procurement_status || '').trim().toLowerCase()
+  if (!low || low === 'for preparation') return 'For Preparation'
+  if (low === 'failed') return 'Failed'
+  if (low === 'completed' || low === 'done') return 'Completed'
+  if (low.includes('awarded') && low.includes('ongoing')) return 'Awarded (Ongoing Delivery)'
+  if (low.includes('awarded')) return 'Awarded (For Delivery)'
+  if (low.includes('for award')) return 'Ongoing (For Award)'
+  return 'Ongoing Procurement'
+}
+
 export const SBFP_STATUS_FILTER_OPTIONS: { value: SbfpStatusBucket | 'ALL'; label: string }[] = [
   { value: 'ALL', label: 'All Statuses' },
   { value: 'prep', label: 'For Preparation' },
@@ -517,29 +542,18 @@ export function addSbfpSenateMetrics(a: SbfpSenateMetrics, b: SbfpSenateMetrics)
 
 export type SbfpSenateImplBucket = 'completed' | 'ongoing' | 'delayed' | 'not_awarded' | 'other'
 
-/** Senate implementation bucket — delayed is not mixed with unawarded contracts. */
+/**
+ * Senate implementation bucket follows the encoded procurement status.
+ * Delayed = Failed only. Awarded / Ongoing stay ongoing even if packs remain.
+ */
 export function sbfpSenateImplBucket(
   row: SbfpReportSourceRow,
-  opts: { deliveredPacks: number; targetPacks: number; asOf?: Date },
+  _opts?: { deliveredPacks: number; targetPacks: number; asOf?: Date },
 ): SbfpSenateImplBucket {
   const status = sbfpStatusBucket(row.procurement_status)
   if (status === 'failed') return 'delayed'
   if (status === 'prep') return 'not_awarded'
   if (status === 'completed') return 'completed'
-
-  const asOf = opts.asOf ?? new Date()
-  const asOfDay = new Date(asOf.getFullYear(), asOf.getMonth(), asOf.getDate())
-  const end = parseSnapshotDate(row.delivery_end)
-  const start = parseSnapshotDate(row.delivery_start)
-  const short = opts.targetPacks > 0 && opts.deliveredPacks < opts.targetPacks
-  const none = opts.deliveredPacks <= 0
-  const pastEnd = !!end && end.getTime() < asOfDay.getTime()
-  const pastStart = !!start && start.getTime() < asOfDay.getTime()
-
-  if (pastEnd && short) return 'delayed'
-  if ((status === 'awarded_delivery' || status === 'awarded_ongoing') && pastStart && none) {
-    return 'delayed'
-  }
   if (status === 'ongoing' || status === 'awarded_delivery' || status === 'awarded_ongoing') {
     return 'ongoing'
   }

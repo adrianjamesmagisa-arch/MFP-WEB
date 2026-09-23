@@ -1,6 +1,6 @@
 import { PCC_CENTERS } from '@/lib/types'
 import { excludeAuxSbfp } from '@/lib/sbfp-aux'
-import { normalizeSdoName } from '@/lib/sbfp-dropoff-sync'
+import { uniqueSdoCountKey } from '@/lib/sbfp-dropoff-sync'
 import { computeSbfpAccomplishment, filterReportableSbfpRows } from '@/lib/sbfp-accomplishment'
 import { packsForMonth, type SbfpRawMilkRow } from '@/lib/sbfp-raw-milk'
 import {
@@ -129,7 +129,7 @@ export async function loadSbfpDashboardStats(
       })
     }
     const row = byCenter.get(key)!
-    const sdoKey = normalizeSdoName(String(r.sdo || ''))
+    const sdoKey = uniqueSdoCountKey(r.sdo, r.center)
     if (sdoKey) {
       let seen = sdoSeenByCenter.get(key)
       if (!seen) {
@@ -198,7 +198,7 @@ export async function loadSbfpDashboardStats(
     filters.center ? r.center === filters.center : true,
   )
 
-  // Top KPI: unique geographic SDOs across included centers (PM/SM = one).
+  // Top KPI: unique program SDOs across centers (PM/SM/lots = one; same name at two centers = two).
   const uniqueSdos = new Set<string>()
   for (const r of rows) {
     const seen = sdoSeenByCenter.get(r.center)

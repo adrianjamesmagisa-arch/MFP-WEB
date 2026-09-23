@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, Fragment, type CSSProperties } from 'react'
+import { useState, useEffect, useMemo, useRef, Fragment, type CSSProperties } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Trash2, Plus, CalendarPlus, Banknote } from 'lucide-react'
 import type { Cooperative } from '@/lib/types'
@@ -26,7 +26,7 @@ import {
   fixedPackPriceForMilkType,
   inferSbfpMilkType,
 } from '@/lib/sbfp-pack-price'
-import { composeSdoWithMilkType } from '@/lib/sbfp-dropoff-sync'
+import { composeSdoWithMilkType, sortSbfpEncoderRows } from '@/lib/sbfp-dropoff-sync'
 import { useAsyncTask } from '@/components/loading/AsyncFeedback'
 import { logCenterActivity } from '@/lib/center-activity'
 
@@ -126,8 +126,13 @@ function EditableCell({
     let v: any = nextVal
     if (type === 'number') v = nextVal === '' || nextVal == null ? null : Number(nextVal)
     if (type === 'checkbox') v = nextVal
+    if (field === 'sdo') {
+      const milk =
+        inferSbfpMilkType(String(nextVal || '')) || inferSbfpMilkType(String(value || ''))
+      v = composeSdoWithMilkType(String(nextVal || ''), milk) || nextVal
+    }
     // Optimistic: update parent row immediately, sync DB in background.
-    setVal(nextVal)
+    setVal(v)
     setEditing(false)
     setSaving(true)
     onSave(id, field, value, v)
@@ -705,7 +710,7 @@ export function SbfpCenterTable({
   allowAdd?: boolean
 }) {
   const supabase                  = createClient()
-  const [rows, setRows]           = useState(initialRecords)
+  const [rows, setRows]           = useState(() => sortSbfpEncoderRows(initialRecords))
   const [selected, setSelected]   = useState<Set<string>>(new Set())
   const [undoStack, setUndoStack] = useState<any[]>([])
   const [redoStack, setRedoStack] = useState<any[]>([])
@@ -724,7 +729,9 @@ export function SbfpCenterTable({
     void cascadeMasterlistFromSdo(row).catch(err => console.warn('Masterlist sync:', err))
   }
 
-  useEffect(() => { setRows(initialRecords) }, [initialRecords])
+  useEffect(() => { setRows(sortSbfpEncoderRows(initialRecords)) }, [initialRecords])
+
+  const displayRows = useMemo(() => sortSbfpEncoderRows(rows), [rows])
   useEffect(() => {
     onRecordsChange?.(rows)
   }, [rows, onRecordsChange])
@@ -1331,14 +1338,14 @@ export function SbfpCenterTable({
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 && (
+              {displayRows.length === 0 && (
                 <tr>
                   <td colSpan={20 + snapDates.length + visibleRawMonths.length * 3 + 3 + payDates.length + (editable ? 1 : 0)} style={{ textAlign: 'center', padding: '3rem', color: 'var(--gray-400)' }}>
                     No records for {center}.
                   </td>
                 </tr>
               )}
-              {rows.map(r => {
+              {displayRows.map(r => {
                 const isSelected = selected.has(r.id)
                 const rowBg = isSelected ? '#e0e7ff' : !r.include_in_report ? '#fef2f2' : '#fff'
                 return (
@@ -1362,8 +1369,16 @@ export function SbfpCenterTable({
                     }
                     {/* B — SDO */}
                     {editable
-                      ? <EditableCell id={r.id} field="sdo" value={r.sdo} onSave={handleSave} cellStyle={stickyTd(SL.sdo, SW.sdo, rowBg, true, 5)} />
-                      : <td style={stickyTd(SL.sdo, SW.sdo, rowBg, true, 5)}>{r.sdo || 'N/A'}</td>
+                      ? <EditableCell
+                          id={r.id}
+                          field="sdo"
+                          value={composeSdoWithMilkType(r.sdo, r.milk_type) || r.sdo}
+                          onSave={handleSave}
+                          cellStyle={stickyTd(SL.sdo, SW.sdo, rowBg, true, 5)}
+                        />
+                      : <td style={stickyTd(SL.sdo, SW.sdo, rowBg, true, 5)}>
+                          {composeSdoWithMilkType(r.sdo, r.milk_type) || r.sdo || 'N/A'}
+                        </td>
                     }
                     {/* C — Region */}
                     {editable

@@ -8,6 +8,7 @@ import {
   resolveDropoffFeedingDays,
   parseFeedingDaysFromText,
   composeSdoWithMilkType,
+  compareSbfpEncoderRows,
 } from '@/lib/sbfp-dropoff-sync'
 import { calcMilkFormulations, litersPerPackForMilkType } from '@/lib/mfp-formulas'
 import { inferSbfpMilkType, normalizeSbfpMilkType } from '@/lib/sbfp-pack-price'
@@ -234,13 +235,15 @@ export function SbfpDropoffTable({
           composeSdoWithMilkType(o.sdo, o.milk_type) || o.sdo || '',
       }))
       .filter(o => o.displayLabel)
-      .sort((a, b) => a.displayLabel.localeCompare(b.displayLabel))
+      .sort(compareSbfpEncoderRows)
   }, [sdoOptions])
 
   const visible = useMemo(() => {
-    if (filterSdo === 'ALL') return rows
-    // Strict match on procurement row id so PM and SM of the same SDO stay separate.
-    return rows.filter(r => r.sbfp_data_id === filterSdo)
+    const filtered =
+      filterSdo === 'ALL'
+        ? rows
+        : rows.filter(r => r.sbfp_data_id === filterSdo)
+    return [...filtered].sort((a, b) => compareSbfpEncoderRows(a, b) || (a.dropoff_name || '').localeCompare(b.dropoff_name || ''))
   }, [rows, filterSdo])
 
   const syncRow = (row: DropoffRow) => {

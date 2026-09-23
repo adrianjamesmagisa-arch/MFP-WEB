@@ -120,6 +120,66 @@ export function composeSdoWithMilkType(
   return `${base} - ${milk}`
 }
 
+/** Encoder-visible SDO label — geographic / lot name only, same as the source list. */
+export function sdoEncoderDisplayName(value: string | null | undefined): string {
+  return stripMilkTypeFromSdoName(String(value || ''))
+}
+
+function sdoLotNumber(value: string): number {
+  const m = String(value || '').match(/\blot\s*(\d+)\b/i)
+  return m ? Number(m[1]) : 0
+}
+
+const MILK_SORT: Record<string, number> = { PM: 1, SM: 2, CM: 3 }
+
+/**
+ * Keep the same geographic SDO together (Lanao next to Lanao), then lot, then milk type.
+ * Two PM lots of one SDO stay adjacent, larger beneficiary count first.
+ */
+export function compareSbfpEncoderRows(
+  a: {
+    sdo?: string | null
+    milk_type?: unknown
+    beneficiaries_pm?: number | null
+    amount?: number | null
+  },
+  b: {
+    sdo?: string | null
+    milk_type?: unknown
+    beneficiaries_pm?: number | null
+    amount?: number | null
+  },
+): number {
+  const byGeo = normalizeSdoName(a.sdo || '').localeCompare(
+    normalizeSdoName(b.sdo || ''),
+    'en',
+    { sensitivity: 'base' },
+  )
+  if (byGeo) return byGeo
+  const byLot = sdoLotNumber(a.sdo || '') - sdoLotNumber(b.sdo || '')
+  if (byLot) return byLot
+  const ma = normalizeSbfpMilkType(a.milk_type) || inferSbfpMilkType(a.sdo) || ''
+  const mb = normalizeSbfpMilkType(b.milk_type) || inferSbfpMilkType(b.sdo) || ''
+  const byMilk = (MILK_SORT[ma] || 9) - (MILK_SORT[mb] || 9)
+  if (byMilk) return byMilk
+  const byBen = (Number(b.beneficiaries_pm) || 0) - (Number(a.beneficiaries_pm) || 0)
+  if (byBen) return byBen
+  const byAmt = (Number(b.amount) || 0) - (Number(a.amount) || 0)
+  if (byAmt) return byAmt
+  return sdoEncoderDisplayName(a.sdo).localeCompare(sdoEncoderDisplayName(b.sdo), 'en', {
+    sensitivity: 'base',
+  })
+}
+
+export function sortSbfpEncoderRows<T extends {
+  sdo?: string | null
+  milk_type?: unknown
+  beneficiaries_pm?: number | null
+  amount?: number | null
+}>(rows: T[]): T[] {
+  return [...rows].sort(compareSbfpEncoderRows)
+}
+
 /**
  * Display / count name for an SDO — strips milk-type and lot tags.
  * "Nueva Ecija (PM)" and "Nueva Ecija (SM)" → "Nueva Ecija"
@@ -146,12 +206,26 @@ export function normalizeSdoName(value: string): string {
     .replace(/\bozamis\b/g, 'ozamiz')
     .replace(/\bciity\b/g, 'city')
 
-  // Pangasinan I: District 1 = its own SDO; Districts 2 and 3 count as one.
-  if (/\bpangasinan\s+i\s+district\s+[23]\b/.test(key)) {
-    key = 'pangasinan i district 2-3'
+  // Pangasinan I: Districts 1, 2, and 3 are all one SDO.
+  if (/\bpangasinan\s+i\s+district\s+[123]\b/.test(key)) {
+    key = 'pangasinan i district 1-2-3'
   }
 
   return key
+}
+
+/**
+ * Unique-SDO key for national KPIs.
+ * PM/SM/lots of the same name count as one; the same name at two centers counts as two.
+ */
+export function uniqueSdoCountKey(
+  sdo: string | null | undefined,
+  center?: string | null,
+): string {
+  const name = normalizeSdoName(String(sdo || ''))
+  if (!name) return ''
+  const c = String(center || '').trim().toLowerCase()
+  return c ? `${c}|${name}` : name
 }
 
 /** Drop-offs linked to procurement SDO rows (by sbfp_data_id or normalized sdo label). */
