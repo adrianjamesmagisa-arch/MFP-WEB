@@ -32,6 +32,8 @@ export type SbfpReportSourceRow = SbfpRawMilkRow & {
   po_number?: string | null
   batch?: string | null
   beneficiaries_pm?: number | null
+  beneficiaries_sm?: number | null
+  beneficiaries_cm?: number | null
   contract_amount?: number | null
   delivery_start?: string | null
   delivery_end?: string | null
