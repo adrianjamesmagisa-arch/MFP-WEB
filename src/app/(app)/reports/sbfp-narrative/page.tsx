@@ -58,7 +58,6 @@ type ReportTab =
   | 'master'
   | 'region_summary'
   | 'center_summary'
-  | 'status_matrix'
   | 'senate_perf'
   | 'senate_status'
   | 'senate_region'
@@ -1295,17 +1294,6 @@ export default function SbfpSpreadsheetReport() {
       ])
       colTypes = ['text','num','num','num','cur','num','num','pct','num','num','num','num','num','num']
 
-    } else if (targetTab === 'status_matrix') {
-      sheetName = 'Status Breakdown'
-      filename = `sbfp_status_breakdown_${year}_${dateStr}.xlsx`
-      headers = ['Status', 'SDO Count', '% Share']
-      rows = distinctStatuses.map(({ value, label }) => {
-        const count = stats.statusCounts[value] || 0
-        const pct = stats.rowCount > 0 ? (count / stats.rowCount) * 100 : 0
-        return [label, count, Number(pct.toFixed(1))]
-      })
-      rows.push(['TOTAL', stats.rowCount, 100.0])
-      colTypes = ['text','num','pct']
 
     } else if (targetTab === 'senate_perf') {
       sheetName = 'Procurement & Delivery'
@@ -1475,7 +1463,7 @@ export default function SbfpSpreadsheetReport() {
       return
     }
     const allTabIds: ReportTab[] = [
-      'master', 'region_summary', 'center_summary', 'status_matrix',
+      'master', 'region_summary', 'center_summary',
       'senate_perf', 'senate_status', 'senate_region', 'senate_center',
       'senate_sdo', 'senate_delivery',
     ]
@@ -1652,7 +1640,7 @@ export default function SbfpSpreadsheetReport() {
 
             <button
               onClick={exportAllTabsToExcel}
-              title="Export all 10 tabs into a single styled multi-sheet Excel workbook (.xlsx)"
+              title="Export all 9 tabs into a single styled multi-sheet Excel workbook (.xlsx)"
               style={{
                 height: 34, padding: '0 0.75rem', borderRadius: 6, border: '1px solid #cbd5e1',
                 background: '#ffffff', color: '#217346', fontSize: '0.82rem', fontWeight: 600,
@@ -1762,7 +1750,6 @@ export default function SbfpSpreadsheetReport() {
               ['master', 'SDO Masterlist', Table],
               ['region_summary', 'Regional Summary', BarChart2],
               ['center_summary', 'Center Summary', Building2],
-              ['status_matrix', 'Status Breakdown', Layers],
               ['senate_perf', '1. Procurement & Delivery', CircleDollarSign],
               ['senate_status', '2. Implementation Status', ClipboardList],
               ['senate_region', '3. Regional Distribution', MapPinned],
@@ -2197,58 +2184,6 @@ export default function SbfpSpreadsheetReport() {
               </div>
             )}
 
-            {/* VIEW 3: Status Breakdown Matrix */}
-            {activeTab === 'status_matrix' && (
-              <div style={{ background: '#ffffff', borderRadius: 8, border: '1px solid #cbd5e1', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', maxWidth: 800 }}>
-                <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
-                  <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#1e293b' }}>
-                    Procurement Status Distribution
-                  </h3>
-                  <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 2 }}>
-                    SDO counts and breakdown according to current procurement stage
-                  </div>
-                </div>
-
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem', fontFamily: 'Arial, sans-serif' }}>
-                  <thead>
-                    <tr style={{ background: '#e2e8f0', color: '#1e293b' }}>
-                      <th style={{ border: '1px solid #cbd5e1', padding: '8px 12px', textAlign: 'left' }}>Status</th>
-                      <th style={{ border: '1px solid #cbd5e1', padding: '8px 12px', textAlign: 'right', width: 120 }}>SDO Count</th>
-                      <th style={{ border: '1px solid #cbd5e1', padding: '8px 12px', textAlign: 'right', width: 120 }}>% Share</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {distinctStatuses.map(({ value, label }) => {
-                      const count = stats.statusCounts[value] || 0
-                      const pct = stats.rowCount > 0 ? (count / stats.rowCount) * 100 : 0
-                      const cfg = STATUS_BADGE[label] || { bg: '#f1f5f9', color: '#475569' }
-                      return (
-                        <tr key={value}>
-                          <td style={{ border: '1px solid #cbd5e1', padding: '8px 12px' }}>
-                            <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: '0.75rem', fontWeight: 700, background: cfg.bg, color: cfg.color }}>
-                              {label}
-                            </span>
-                          </td>
-                          <td style={{ border: '1px solid #cbd5e1', padding: '8px 12px', textAlign: 'right', fontWeight: 700 }}>
-                            {count}
-                          </td>
-                          <td style={{ border: '1px solid #cbd5e1', padding: '8px 12px', textAlign: 'right', color: '#64748b' }}>
-                            {pct.toFixed(1)}%
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                  <tfoot>
-                    <tr style={{ background: '#dbeafe', fontWeight: 800, color: '#1e3a8a' }}>
-                      <td style={{ border: '1px solid #93c5fd', padding: '8px 12px' }}>TOTAL rows (unique SDOs: {stats.count})</td>
-                      <td style={{ border: '1px solid #93c5fd', padding: '8px 12px', textAlign: 'right' }}>{stats.rowCount}</td>
-                      <td style={{ border: '1px solid #93c5fd', padding: '8px 12px', textAlign: 'right' }}>100.0%</td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            )}
 
             {(activeTab === 'senate_perf' || activeTab === 'senate_status' || activeTab === 'senate_region' || activeTab === 'senate_center' || activeTab === 'senate_sdo' || activeTab === 'senate_delivery') && (
               <div
