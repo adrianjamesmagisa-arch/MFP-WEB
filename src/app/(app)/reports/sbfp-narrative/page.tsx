@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useMemo, useCallback, type CSSProperties } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Printer, Download, Filter, Search, RotateCcw, Table, BarChart2, Layers, Building2, FileSpreadsheet, CircleDollarSign, ClipboardList, MapPinned } from 'lucide-react'
+import { Printer, Download, Filter, Search, RotateCcw, Table, BarChart2, Layers, Building2, FileSpreadsheet, CircleDollarSign, ClipboardList, MapPinned, FileDown } from 'lucide-react'
 import { SBFP_DATA_ENCODER_COLUMNS } from '@/lib/encoder-selects'
+import * as XLSX from 'xlsx-js-style'
 import { dbYearToSchoolYear, FALLBACK_SCHOOL_YEARS, schoolYearToDbYear } from '@/lib/sbfp-year'
 import {
   defaultDeliveredPackRange,
@@ -350,11 +351,31 @@ export default function SbfpSpreadsheetReport() {
     )
 
     // Unique SDOs: PM/SM/lots = one; Pangasinan I Dist 2+3 = one; same name at two centers = two.
-    const uniqueSdos = new Set(
-      filteredRecords
-        .map(r => uniqueSdoCountKey(r.sdo, r.center))
-        .filter(Boolean),
-    )
+    const uniqueSdoKeys = filteredRecords
+      .map(r => uniqueSdoCountKey(r.sdo, r.center))
+      .filter(Boolean)
+    
+    const uniqueSdos = new Set(uniqueSdoKeys)
+
+    // DEBUG: Log all unique SDO keys to find the extra 7
+    if (typeof window !== 'undefined' && uniqueSdos.size !== 93) {
+      console.log('🔍 DEBUG: Expected 93 SDOs but got', uniqueSdos.size)
+      console.log('All unique SDO keys:', Array.from(uniqueSdos).sort())
+      
+      // Group by SDO to see duplicates
+      const bySdo = new Map<string, string[]>()
+      filteredRecords.forEach(r => {
+        const key = uniqueSdoCountKey(r.sdo, r.center)
+        const sdo = String(r.sdo || '').trim()
+        if (!bySdo.has(key)) bySdo.set(key, [])
+        if (!bySdo.get(key)!.includes(sdo)) bySdo.get(key)!.push(sdo)
+      })
+      console.log('SDOs with multiple name variations:', 
+        Array.from(bySdo.entries())
+          .filter(([_, names]) => names.length > 1)
+          .map(([key, names]) => ({ key, names }))
+      )
+    }
 
     return {
       count: uniqueSdos.size,
@@ -951,6 +972,498 @@ export default function SbfpSpreadsheetReport() {
     )
   }
 
+  // ── Excel styling helpers ──
+  type ColType = 'text' | 'num' | 'cur' | 'pct' | 'dec'
+
+  interface TabExportData {
+    sheetName: string
+    filename: string
+    headers: string[]
+    rows: Array<Array<string | number>>
+    colTypes: ColType[]
+  }
+
+  function buildStyledSheet(
+    hdrs: string[],
+    dataRows: Array<Array<string | number>>,
+    colTypes: ColType[],
+  ) {
+    const ws = XLSX.utils.aoa_to_sheet([hdrs, ...dataRows])
+    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1')
+    const lastR = range.e.r
+    const hasTotal = dataRows.length > 0 &&
+      String(dataRows[dataRows.length - 1][0] ?? '').toUpperCase().startsWith('TOTAL')
+
+    // Helper: determine default alignment for a column
+    const getColAlign = (C: number): 'left' | 'center' | 'right' => {
+      const ct = colTypes[C] || 'text'
+      if (ct === 'num' || ct === 'cur' || ct === 'pct' || ct === 'dec') return 'right'
+      const hdr = (hdrs[C] || '').trim().toLowerCase()
+      if (
+        hdr === '#' || hdr === 'no.' || hdr === 'region' || hdr === 'center' ||
+        hdr === 'batch' || hdr === 'milk type' || hdr === 'prep' || hdr === 'ongoing' ||
+        hdr === 'awarded (del)' || hdr === 'awarded (ong)' || hdr === 'done' ||
+        hdr === 'failed' || hdr === 'status' || hdr === 'procurement status' ||
+        hdr === 'payment status' || hdr.includes('date')
+      ) {
+        return 'center'
+      }
+      return 'left'
+    }
+
+    // Number format strings
+    const XL_FMT: Record<ColType, string | undefined> = {
+      text: undefined,
+      num: '#,##0',
+      cur: '\u20B1#,##0',
+      pct: '0.0"%"',
+      dec: '#,##0.0',
+    }
+
+    const rowHeights: Array<{ hpt: number }> = []
+
+    for (let R = range.s.r; R <= range.e.r; R++) {
+      const isHeader = R === 0
+      const isTotal = hasTotal && R === lastR
+      const isEvenData = !isHeader && !isTotal && (R - 1) % 2 === 0
+
+      // Assign row height for breathable enterprise look
+      if (isHeader) rowHeights.push({ hpt: 28 })
+      else if (isTotal) rowHeights.push({ hpt: 25 })
+      else rowHeights.push({ hpt: 20 })
+
+      for (let C = range.s.c; C <= range.e.c; C++) {
+        const addr = XLSX.utils.encode_cell({ r: R, c: C })
+        if (!ws[addr]) ws[addr] = { v: '', t: 's' }
+        const cell = ws[addr] as any
+        const ct = colTypes[C] || 'text'
+        const hdr = (hdrs[C] || '').toLowerCase()
+
+        if (isHeader) {
+          // ── HEADER ROW (Light slate #E2E8F0, dark bold text #1E293B, border #CBD5E1) ──
+          cell.s = {
+            font: { bold: true, color: { rgb: '1E293B' }, sz: 10.5, name: 'Calibri' },
+            fill: { patternType: 'solid', fgColor: { rgb: 'E2E8F0' } },
+            border: {
+              top:    { style: 'thin',   color: { rgb: 'CBD5E1' } },
+              bottom: { style: 'medium', color: { rgb: '94A3B8' } },
+              left:   { style: 'thin',   color: { rgb: 'CBD5E1' } },
+              right:  { style: 'thin',   color: { rgb: 'CBD5E1' } },
+            },
+            alignment: {
+              horizontal: getColAlign(C),
+              vertical: 'center',
+              wrapText: true,
+            },
+          }
+        } else if (isTotal) {
+          // ── TOTAL ROW (Soft blue #DBEAFE, bold navy #1E3A8A, double bottom underline) ──
+          const totalAlign = C === 0 ? 'center' : getColAlign(C)
+          let totalFontColor = '1E3A8A'
+          if (hdr.includes('delivered pack') || hdr.includes('delivered volume')) {
+            totalFontColor = '047857' // emerald green
+          } else if (hdr.includes('packs to deliver') || hdr.includes('contracted volume')) {
+            totalFontColor = '1E40AF' // blue
+          } else if (hdr === 'coops') {
+            totalFontColor = '0F766E' // teal
+          }
+
+          cell.s = {
+            font: { bold: true, color: { rgb: totalFontColor }, sz: 10.5, name: 'Calibri' },
+            fill: { patternType: 'solid', fgColor: { rgb: 'DBEAFE' } },
+            border: {
+              top:    { style: 'medium', color: { rgb: '3B82F6' } },
+              bottom: { style: 'double', color: { rgb: '1E3A8A' } },
+              left:   { style: 'thin',   color: { rgb: '93C5FD' } },
+              right:  { style: 'thin',   color: { rgb: '93C5FD' } },
+            },
+            alignment: {
+              horizontal: totalAlign,
+              vertical: 'center',
+            },
+          }
+          if (XL_FMT[ct] && typeof cell.v === 'number') {
+            cell.z = XL_FMT[ct]
+          }
+        } else {
+          // ── DATA ROW (Alternating white / soft slate #F8FAFC) ──
+          const align = getColAlign(C)
+          let cellFontColor = '1E293B'
+          let isBold = C === 0 && (ct === 'text' || ct === 'num')
+
+          const numVal = typeof cell.v === 'number' ? cell.v : Number(cell.v)
+          if (!isNaN(numVal) && numVal > 0) {
+            if (hdr.includes('delivered pack') || hdr.includes('delivered volume') || hdr.includes('volume delivered')) {
+              cellFontColor = '047857' // emerald green
+              isBold = true
+            } else if (hdr.includes('packs to deliver') || hdr.includes('contracted volume')) {
+              cellFontColor = '1E40AF' // blue
+              isBold = true
+            } else if (hdr === 'coops') {
+              cellFontColor = '0F766E' // teal
+              isBold = true
+            } else if (hdr === 'done' || hdr === 'completed') {
+              cellFontColor = '047857' // green
+              isBold = true
+            } else if (hdr === 'failed') {
+              cellFontColor = 'B91C1C' // red
+              isBold = true
+            }
+          }
+
+          cell.s = {
+            font: {
+              sz: 10,
+              name: 'Calibri',
+              bold: isBold,
+              color: { rgb: cellFontColor },
+            },
+            fill: {
+              patternType: 'solid',
+              fgColor: { rgb: isEvenData ? 'FFFFFF' : 'F8FAFC' },
+            },
+            border: {
+              top:    { style: 'thin', color: { rgb: 'CBD5E1' } },
+              bottom: { style: 'thin', color: { rgb: 'CBD5E1' } },
+              left:   { style: 'thin', color: { rgb: 'CBD5E1' } },
+              right:  { style: 'thin', color: { rgb: 'CBD5E1' } },
+            },
+            alignment: {
+              horizontal: align,
+              vertical: 'center',
+            },
+          }
+          if (XL_FMT[ct] && typeof cell.v === 'number') {
+            cell.z = XL_FMT[ct]
+          }
+        }
+      }
+    }
+
+    // Auto-fit column widths
+    const colWidths: number[] = []
+    for (let C = range.s.c; C <= range.e.c; C++) {
+      const ct = colTypes[C] || 'text'
+      let minW = 10
+      if (ct === 'cur') minW = 15
+      else if (ct === 'num') minW = 11
+      else if (ct === 'pct') minW = 11
+      else if (ct === 'dec') minW = 14
+
+      let max = (hdrs[C] || '').length
+      for (let R = range.s.r; R <= range.e.r; R++) {
+        const c2 = ws[XLSX.utils.encode_cell({ r: R, c: C })]
+        if (c2 && c2.v != null) {
+          const len = String(c2.v).length
+          if (len > max) max = len
+        }
+      }
+      colWidths.push(Math.max(minW, Math.min(max + 3, 45)))
+    }
+
+    ws['!cols'] = colWidths.map(w => ({ wch: w }))
+    ws['!rows'] = rowHeights
+    // Freeze header row and ensure grid lines are visible
+    ws['!freeze'] = { xSplit: 0, ySplit: 1 }
+    ws['!views'] = [{ state: 'frozen', ySplit: 1, showGridLines: true }]
+    return ws
+  }
+
+  /** Build dataset metadata and rows for any tab */
+  const getTabExportData = (targetTab: ReportTab): TabExportData => {
+    const dateStr = new Date().toISOString().split('T')[0]
+    let sheetName = 'Sheet1'
+    let filename = `sbfp_${year}_${dateStr}.xlsx`
+    let headers: string[] = []
+    let rows: Array<Array<string | number>> = []
+    let colTypes: ColType[] = []
+
+    if (targetTab === 'master') {
+      sheetName = 'SDO Masterlist'
+      filename = `sbfp_sdo_masterlist_${year}_${dateStr}.xlsx`
+      headers = [
+        'No.', 'Region', 'Schools Division Office (SDO)', 'Center', 'Procurement Status',
+        'Milk Type', 'Amount (PHP)', 'Mode of Procurement', 'PR Date Received', 'PR Number',
+        'ORS Date', 'PO Number', 'Batch', 'Beneficiaries', 'Contract Amount (PHP)',
+        'Delivery Start', 'Delivery End', 'Packs to Deliver', 'Delivered Packs',
+        'Payment Status', 'Remarks',
+      ]
+      rows = filteredRecords.flatMap((r, idx) => {
+        const v = getViewForSource(r.id)
+        if (!v) return []
+        return [[
+          sdoIndexMeta[idx]?.number ?? idx + 1,
+          v.region === '—' ? '' : v.region,
+          v.sdo === '—' ? '' : v.sdo,
+          v.center,
+          v.procurement_status,
+          v.milk_type,
+          v.amount,
+          v.mode_of_procurement === '—' ? '' : v.mode_of_procurement,
+          v.pr_date_received === '—' ? '' : v.pr_date_received,
+          v.pr_number === '—' ? '' : v.pr_number,
+          v.ors_date === '—' ? '' : v.ors_date,
+          v.po_number === '—' ? '' : v.po_number,
+          v.batch === '—' ? '' : v.batch,
+          v.beneficiaries_pm,
+          v.contract_amount,
+          v.delivery_start === '—' ? '' : v.delivery_start,
+          v.delivery_end === '—' ? '' : v.delivery_end,
+          v.packs_to_deliver,
+          v.delivered_packs,
+          v.status_of_payment === '—' ? '' : v.status_of_payment,
+          v.remarks === '—' ? '' : v.remarks,
+        ]]
+      })
+      rows.push([
+        'TOTAL', '', `${stats.count} SDOs`, '', `${stats.rowCount} rows`,
+        '', stats.totalAmount, '', '', '', '', '', '', stats.totalBeneficiaries,
+        stats.totalContractAmt, '', '', stats.totalPacks, stats.totalDelivered, '', '',
+      ])
+      colTypes = ['num','text','text','text','text','text','cur','text','text','text','text','text','text','num','cur','text','text','num','num','text','text']
+
+    } else if (targetTab === 'region_summary') {
+      sheetName = 'Regional Summary'
+      filename = `sbfp_regional_summary_${year}_${dateStr}.xlsx`
+      headers = [
+        'Region', 'No. of SDOs', 'Coops', 'Beneficiaries', 'Contract Amt (PHP)',
+        'Packs to Deliver', 'Delivered Packs', '% Delivered',
+        'Prep', 'Ongoing', 'Awarded (Del)', 'Awarded (Ong)', 'Done', 'Failed',
+      ]
+      rows = regionalSummary.map(reg => {
+        const pct = reg.targetPacks > 0 ? (reg.deliveredPacks / reg.targetPacks) * 100 : 0
+        return [
+          reg.region, reg.sdoCount, reg.coopCount, reg.beneficiaries, reg.contractAmt,
+          reg.targetPacks, reg.deliveredPacks, Number(pct.toFixed(1)),
+          reg.forPrep, reg.ongoing, reg.awardedDelivery, reg.awardedOngoing, reg.completed, reg.failed,
+        ]
+      })
+      rows.push([
+        'TOTAL', stats.count, stats.totalCoops, stats.totalBeneficiaries, stats.totalContractAmt,
+        stats.totalPacks, stats.totalDelivered, Number(stats.pctDelivered.toFixed(1)),
+        '', '', '', '', '', '',
+      ])
+      colTypes = ['text','num','num','num','cur','num','num','pct','num','num','num','num','num','num']
+
+    } else if (targetTab === 'center_summary') {
+      sheetName = 'Center Summary'
+      filename = `sbfp_center_summary_${year}_${dateStr}.xlsx`
+      headers = [
+        'Center', 'No. of SDOs', 'Coops', 'Beneficiaries', 'Contract Amt (PHP)',
+        'Packs to Deliver', 'Delivered Packs', '% Delivered',
+        'Prep', 'Ongoing', 'Awarded (Del)', 'Awarded (Ong)', 'Done', 'Failed',
+      ]
+      rows = centerSummary.map(c => {
+        const pct = c.targetPacks > 0 ? (c.deliveredPacks / c.targetPacks) * 100 : 0
+        return [
+          c.center, c.sdoCount, c.coopCount, c.beneficiaries, c.contractAmt,
+          c.targetPacks, c.deliveredPacks, Number(pct.toFixed(1)),
+          c.forPrep, c.ongoing, c.awardedDelivery, c.awardedOngoing, c.completed, c.failed,
+        ]
+      })
+      rows.push([
+        'TOTAL', stats.count, stats.totalCoops, stats.totalBeneficiaries, stats.totalContractAmt,
+        stats.totalPacks, stats.totalDelivered, Number(stats.pctDelivered.toFixed(1)),
+        '', '', '', '', '', '',
+      ])
+      colTypes = ['text','num','num','num','cur','num','num','pct','num','num','num','num','num','num']
+
+    } else if (targetTab === 'status_matrix') {
+      sheetName = 'Status Breakdown'
+      filename = `sbfp_status_breakdown_${year}_${dateStr}.xlsx`
+      headers = ['Status', 'SDO Count', '% Share']
+      rows = distinctStatuses.map(({ value, label }) => {
+        const count = stats.statusCounts[value] || 0
+        const pct = stats.rowCount > 0 ? (count / stats.rowCount) * 100 : 0
+        return [label, count, Number(pct.toFixed(1))]
+      })
+      rows.push(['TOTAL', stats.rowCount, 100.0])
+      colTypes = ['text','num','pct']
+
+    } else if (targetTab === 'senate_perf') {
+      sheetName = 'Procurement & Delivery'
+      filename = `sbfp_procurement_delivery_${year}_${dateStr}.xlsx`
+      headers = ['Metric', 'Value']
+      rows = [
+        ['Scope', 'PCC milk component only'],
+        ['Total value of milk contracts (PHP)', stats.totalContractAmt],
+        ['Total contracted volume (L)', stats.totalContractedL],
+        ['Actual amount paid/disbursed (PHP)', stats.totalPaid],
+        ['Remaining to pay (PHP)', stats.totalRemainingPay],
+        ['Actual volume delivered (L)', stats.totalDeliveredL],
+        ['Undelivered volume (L)', stats.totalUndeliveredL],
+        ['Value of delivered milk (PHP)', stats.totalValueDelivered],
+        ['Delivery/accomplishment rate (%)', Number(stats.pctDelivered.toFixed(1))],
+        ['Disbursement rate (%)', stats.totalContractAmt > 0 ? Number(((stats.totalPaid / stats.totalContractAmt) * 100).toFixed(1)) : 0],
+      ]
+      colTypes = ['text','dec']
+
+    } else if (targetTab === 'senate_status') {
+      sheetName = 'Implementation Status'
+      filename = `sbfp_implementation_status_${year}_${dateStr}.xlsx`
+      headers = [
+        'Status', 'SDOs', 'Contracted value (PHP)', 'Amount paid (PHP)',
+        'Remaining to pay (PHP)', 'Contracted volume (L)', 'Delivered volume (L)',
+        'Undelivered volume (L)', 'Remaining contract value (PHP)',
+      ]
+      rows = SBFP_PROCUREMENT_STATUSES.map(status => {
+        const b = implSummary.buckets[status]
+        return [
+          status, b.sdoCount, b.contractAmt, b.paidAmt, b.remainingPay,
+          b.contractedL, b.deliveredL, b.undeliveredL, b.remainingContract,
+        ] as Array<string | number>
+      })
+      rows.push([
+        'TOTAL', stats.count, stats.totalContractAmt, stats.totalPaid, stats.totalRemainingPay,
+        stats.totalContractedL, stats.totalDeliveredL, stats.totalUndeliveredL, stats.totalRemainingContract,
+      ])
+      colTypes = ['text','num','cur','cur','cur','dec','dec','dec','cur']
+
+    } else if (targetTab === 'senate_region') {
+      sheetName = 'Regional Distribution'
+      filename = `sbfp_regional_distribution_${year}_${dateStr}.xlsx`
+      headers = [
+        'Region', 'SDOs', 'Contracted value (PHP)', 'Contracted volume (L)',
+        'Amount paid (PHP)', 'Delivered volume (L)', 'Value delivered (PHP)',
+        'Delivery rate (%)', 'Disbursement rate (%)',
+      ]
+      rows = regionalSummary.map(reg => [
+        reg.region, reg.sdoCount, reg.contractAmt, reg.contractedL,
+        reg.paidAmt, reg.deliveredL, reg.valueDelivered,
+        Number(reg.pctDelivered.toFixed(1)), Number(reg.pctDisbursed.toFixed(1)),
+      ])
+      rows.push([
+        'TOTAL', stats.count, stats.totalContractAmt, stats.totalContractedL,
+        stats.totalPaid, stats.totalDeliveredL, stats.totalValueDelivered,
+        Number(stats.pctDelivered.toFixed(1)),
+        stats.totalContractAmt > 0 ? Number(((stats.totalPaid / stats.totalContractAmt) * 100).toFixed(1)) : 0,
+      ])
+      colTypes = ['text','num','cur','dec','cur','dec','cur','pct','pct']
+
+    } else if (targetTab === 'senate_center') {
+      sheetName = 'Center Distribution'
+      filename = `sbfp_center_distribution_${year}_${dateStr}.xlsx`
+      headers = [
+        'Center', 'SDOs', 'Contracted value (PHP)', 'Contracted volume (L)',
+        'Amount paid (PHP)', 'Delivered volume (L)', 'Value delivered (PHP)',
+        'Delivery rate (%)', 'Disbursement rate (%)',
+      ]
+      rows = centerSummary.map(c => [
+        c.center, c.sdoCount, c.contractAmt, c.contractedL,
+        c.paidAmt, c.deliveredL, c.valueDelivered,
+        Number(c.pctDelivered.toFixed(1)), Number(c.pctDisbursed.toFixed(1)),
+      ])
+      rows.push([
+        'TOTAL', stats.count, stats.totalContractAmt, stats.totalContractedL,
+        stats.totalPaid, stats.totalDeliveredL, stats.totalValueDelivered,
+        Number(stats.pctDelivered.toFixed(1)),
+        stats.totalContractAmt > 0 ? Number(((stats.totalPaid / stats.totalContractAmt) * 100).toFixed(1)) : 0,
+      ])
+      colTypes = ['text','num','cur','dec','cur','dec','cur','pct','pct']
+
+    } else if (targetTab === 'senate_sdo') {
+      sheetName = 'SDO Worksheet'
+      filename = `sbfp_sdo_worksheet_${year}_${dateStr}.xlsx`
+      headers = [
+        'No.', 'Region', 'Center', 'SDO', 'Milk type', 'Status', 'Beneficiaries',
+        'Packs to deliver', 'Delivered packs', 'Contracted value (PHP)', 'Amount paid (PHP)',
+        'Remaining to pay (PHP)', 'Contracted volume (L)', 'Delivered volume (L)',
+        'Undelivered volume (L)', 'Value delivered (PHP)', 'Remaining contract (PHP)',
+        'Delivery rate (%)', 'Disbursement rate (%)', 'Remarks',
+      ]
+      rows = sdoSenateRows.map(row => [
+        row.sdoSpan > 0 ? row.number : '',
+        row.region, row.center, row.sdo, row.milkType, row.status, row.beneficiaries,
+        row.targetPacks, row.deliveredPacks, row.contractAmt, row.paidAmt,
+        row.remainingPay, row.contractedL, row.deliveredL,
+        row.undeliveredL, row.valueDelivered, row.remainingContract,
+        Number(row.pctDelivered.toFixed(1)), Number(row.pctDisbursed.toFixed(1)), row.remarks,
+      ])
+      rows.push([
+        'TOTAL', '', '', `${stats.count} SDOs`, '', `${stats.rowCount} rows`,
+        stats.totalBeneficiaries, stats.totalPacks, stats.totalDelivered,
+        stats.totalContractAmt, stats.totalPaid, stats.totalRemainingPay,
+        stats.totalContractedL, stats.totalDeliveredL, stats.totalUndeliveredL,
+        stats.totalValueDelivered, stats.totalRemainingContract,
+        Number(stats.pctDelivered.toFixed(1)),
+        stats.totalContractAmt > 0 ? Number(((stats.totalPaid / stats.totalContractAmt) * 100).toFixed(1)) : 0,
+        '',
+      ])
+      colTypes = ['num','text','text','text','text','text','num','num','num','cur','cur','cur','dec','dec','dec','cur','cur','pct','pct','text']
+
+    } else if (targetTab === 'senate_delivery') {
+      sheetName = 'Contract & Delivery'
+      filename = `sbfp_contract_delivery_${year}_${dateStr}.xlsx`
+      headers = [
+        'No.', 'SDO', 'Region', 'Center', 'Contract Value (PHP)', 'Contracted Volume (L)',
+        'Volume Delivered (L)', 'Amount Paid (PHP)', 'Delivery Rate (%)', 'Status',
+        'Procurement Status',
+      ]
+      rows = deliveryDetailsRows.map(row => [
+        row.sdoSpan > 0 ? row.number : '',
+        row.sdo, row.region, row.center, row.contractValue, row.contractedVolumeLiters,
+        row.volumeDelivered, row.amountPaid, Number(row.deliveryRate.toFixed(1)),
+        row.status, row.procurementStatus,
+      ])
+      rows.push([
+        'TOTAL', '', '',
+        `${deliveryDetailsRows.filter(r => r.sdoSpan > 0).length} SDOs / ${deliveryDetailsRows.length} rows`,
+        deliveryDetailsRows.reduce((s, r) => s + r.contractValue, 0),
+        deliveryDetailsRows.reduce((s, r) => s + r.contractedVolumeLiters, 0),
+        deliveryDetailsRows.reduce((s, r) => s + r.volumeDelivered, 0),
+        deliveryDetailsRows.reduce((s, r) => s + r.amountPaid, 0),
+        deliveryDetailsRows.reduce((s, r) => s + r.contractedVolumeLiters, 0) > 0
+          ? Number(((deliveryDetailsRows.reduce((s, r) => s + r.volumeDelivered, 0) /
+              deliveryDetailsRows.reduce((s, r) => s + r.contractedVolumeLiters, 0)) * 100).toFixed(1))
+          : 0,
+        `${deliveryDetailsRows.filter(r => r.status === 'Completed').length} Completed / ${deliveryDetailsRows.filter(r => r.status === 'Ongoing').length} Ongoing`,
+        '',
+      ])
+      colTypes = ['num','text','text','text','cur','dec','dec','cur','pct','text','text']
+    }
+
+    return { sheetName, filename, headers, rows, colTypes }
+  }
+
+  /** Export the currently active tab to a single-sheet styled Excel (.xlsx) file. */
+  const exportToExcel = (targetTab?: ReportTab) => {
+    if (filteredRecords.length === 0) {
+      alert('No data to export.')
+      return
+    }
+    const tabToExport = targetTab || activeTab
+    const data = getTabExportData(tabToExport)
+
+    // Build styled workbook and download
+    const wb = XLSX.utils.book_new()
+    const ws = buildStyledSheet(data.headers, data.rows, data.colTypes)
+    XLSX.utils.book_append_sheet(wb, ws, data.sheetName)
+    XLSX.writeFile(wb, data.filename)
+  }
+
+  /** Export all report tabs into one multi-sheet styled Excel (.xlsx) workbook. */
+  const exportAllTabsToExcel = () => {
+    if (filteredRecords.length === 0) {
+      alert('No data to export.')
+      return
+    }
+    const allTabIds: ReportTab[] = [
+      'master', 'region_summary', 'center_summary', 'status_matrix',
+      'senate_perf', 'senate_status', 'senate_region', 'senate_center',
+      'senate_sdo', 'senate_delivery',
+    ]
+    const dateStr = new Date().toISOString().split('T')[0]
+    const wb = XLSX.utils.book_new()
+
+    for (const tabId of allTabIds) {
+      const data = getTabExportData(tabId)
+      const ws = buildStyledSheet(data.headers, data.rows, data.colTypes)
+      XLSX.utils.book_append_sheet(wb, ws, data.sheetName)
+    }
+
+    XLSX.writeFile(wb, `sbfp_all_tabs_complete_${year}_${dateStr}.xlsx`)
+  }
+
   const clearFilters = () => {
     setFilterRegion('ALL')
     setFilterCenter('ALL')
@@ -1096,6 +1609,30 @@ export default function SbfpSpreadsheetReport() {
               }}
             >
               <Download size={15} /> Export as .CSV
+            </button>
+
+            <button
+              onClick={() => exportToExcel()}
+              title="Export the currently active tab as a styled Excel file (.xlsx)"
+              style={{
+                height: 34, padding: '0 0.85rem', borderRadius: 6, border: '1px solid #1d6b3f',
+                background: '#217346', color: '#ffffff', fontSize: '0.85rem', fontWeight: 600,
+                display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+              }}
+            >
+              <FileDown size={15} /> Export as .xlsx
+            </button>
+
+            <button
+              onClick={exportAllTabsToExcel}
+              title="Export all 10 tabs into a single styled multi-sheet Excel workbook (.xlsx)"
+              style={{
+                height: 34, padding: '0 0.75rem', borderRadius: 6, border: '1px solid #cbd5e1',
+                background: '#ffffff', color: '#217346', fontSize: '0.82rem', fontWeight: 600,
+                display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+              }}
+            >
+              <Layers size={14} /> All Tabs (.xlsx)
             </button>
 
             <button
