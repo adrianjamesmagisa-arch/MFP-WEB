@@ -596,16 +596,38 @@ export default function SbfpSpreadsheetReport() {
       remarks: string
     }> = []
 
+    // Track which status each unique SDO belongs to (use the highest priority status)
+    const sdoToStatus = new Map<string, SbfpProcurementStatus>()
+    filteredRecords.forEach(r => {
+      const sdoKey = uniqueSdoCountKey(r.sdo, r.center) || String(r.id || '')
+      if (!sdoKey) return
+      const status = officialSbfpStatusLabel(r.procurement_status)
+      const existingStatus = sdoToStatus.get(sdoKey)
+      if (!existingStatus) {
+        sdoToStatus.set(sdoKey, status)
+      } else {
+        // If SDO has multiple statuses, use the one with highest priority
+        const existingIdx = SBFP_PROCUREMENT_STATUSES.indexOf(existingStatus)
+        const newIdx = SBFP_PROCUREMENT_STATUSES.indexOf(status)
+        if (newIdx < existingIdx) {
+          sdoToStatus.set(sdoKey, status)
+        }
+      }
+    })
+
     filteredRecords.forEach(r => {
       const m = rowSenate(r)
       const status = officialSbfpStatusLabel(r.procurement_status)
       const entry = buckets[status]
       Object.assign(entry, addSbfpSenateMetrics(entry, m))
+      
+      // Only count SDO in this status bucket if this is its assigned status
       const sdoKey = uniqueSdoCountKey(r.sdo, r.center) || String(r.id || '')
-      if (sdoKey && !entry.sdoKeys.has(sdoKey)) {
+      if (sdoKey && sdoToStatus.get(sdoKey) === status && !entry.sdoKeys.has(sdoKey)) {
         entry.sdoKeys.add(sdoKey)
         entry.sdoCount++
       }
+      
       reasons.push({
         id: String(r.id || `${r.sdo}-${r.region}`),
         sdo: String(r.sdo || '—'),
