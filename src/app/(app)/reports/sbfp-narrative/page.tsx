@@ -357,9 +357,9 @@ export default function SbfpSpreadsheetReport() {
     
     const uniqueSdos = new Set(uniqueSdoKeys)
 
-    // DEBUG: Log all unique SDO keys to find the extra 7
-    if (typeof window !== 'undefined' && uniqueSdos.size !== 93) {
-      console.log('🔍 DEBUG: Expected 93 SDOs but got', uniqueSdos.size)
+    // DEBUG: Always log to see what's being counted
+    if (typeof window !== 'undefined' && uniqueSdos.size > 0) {
+      console.log('🔍 SDO COUNT DEBUG:', uniqueSdos.size, '(expected 93)')
       console.log('All unique SDO keys:', Array.from(uniqueSdos).sort())
       
       // Group by SDO to see duplicates
@@ -370,11 +370,16 @@ export default function SbfpSpreadsheetReport() {
         if (!bySdo.has(key)) bySdo.set(key, [])
         if (!bySdo.get(key)!.includes(sdo)) bySdo.get(key)!.push(sdo)
       })
-      console.log('SDOs with multiple name variations:', 
-        Array.from(bySdo.entries())
-          .filter(([_, names]) => names.length > 1)
-          .map(([key, names]) => ({ key, names }))
-      )
+      const multipleNames = Array.from(bySdo.entries())
+        .filter(([_, names]) => names.length > 1)
+        .map(([key, names]) => ({ key, names }))
+      if (multipleNames.length > 0) {
+        console.log('SDOs with multiple name variations:', multipleNames)
+      }
+      
+      if (uniqueSdos.size !== 93) {
+        console.warn(`⚠️ MISMATCH: Got ${uniqueSdos.size} SDOs instead of 93 (difference: ${uniqueSdos.size - 93})`)
+      }
     }
 
     return {
