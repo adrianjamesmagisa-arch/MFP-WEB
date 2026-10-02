@@ -1,0 +1,54 @@
+# Auto-deploy to PCC physical server (Vercel-style: push to main → build → restart).
+# Requires a GitHub Actions self-hosted runner installed ON the PCC server
+# with label: pcc-mfp
+#
+# IT setup once: https://docs.github.com/en/actions/hosting-your-own-runners
+# Then: Settings → Actions → Runners → New self-hosted runner (Linux)
+
+name: Deploy to PCC Server
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: pcc-mfp-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Build and restart mfp-web
+    runs-on: [self-hosted, linux, pcc-mfp]
+    timeout-minutes: 30
+
+    defaults:
+      run:
+        working-directory: /var/www/mfp-web
+
+    steps:
+      - name: Pull latest code
+        run: |
+          git fetch origin main
+          git reset --hard origin/main
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Next.js
+        run: npm run build
+        env:
+          # NEXT_PUBLIC_* must exist at build time; prefer server .env.local
+          # (Next loads .env.local automatically during build on the machine)
+          NODE_ENV: production
+
+      - name: Restart with PM2
+        run: |
+          if pm2 describe mfp-web >/dev/null 2>&1; then
+            pm2 restart mfp-web --update-env
+          else
+            pm2 start npm --name mfp-web -- start
+            pm2 save
+          fi
+          pm2 status mfp-web

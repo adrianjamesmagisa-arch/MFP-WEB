@@ -223,7 +223,7 @@ export function uniqueSdoCountKey(
   center?: string | null,
 ): string {
   const name = normalizeSdoName(String(sdo || ''))
-  if (!name) return ''
+  if (!name) return ''                                  
   const c = String(center || '').trim().toLowerCase()
   return c ? `${c}|${name}` : name
 }
