@@ -35,6 +35,7 @@ export const SBFP_DATA_ENCODER_COLUMNS = [
   'feeding_days',
   'payment_entries',
   'created_at',
+  'cooperatives!supplier_id(name)',
 ].join(',')
 
 export const SBFP_DROPOFF_ENCODER_COLUMNS = [

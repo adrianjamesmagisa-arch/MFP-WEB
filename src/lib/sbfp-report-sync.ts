@@ -43,6 +43,7 @@ export type SbfpReportSourceRow = SbfpRawMilkRow & {
   remarks?: string | null
   supplier_id?: string | null
   payment_entries?: Array<{ date?: string; amount?: number | null }> | null
+  cooperatives?: { name?: string | null } | null
 }
 
 export function sbfpRowIncludedInReport(r: SbfpReportSourceRow): boolean {
@@ -351,6 +352,7 @@ export type SbfpReportViewRow = {
   region: string
   sdo: string
   center: string
+  coop_name: string
   procurement_status: string
   milk_type: string
   amount: number
@@ -383,6 +385,7 @@ export function mapSbfpRowToReportView(
     region: row.region?.trim() || '—',
     sdo: row.sdo?.trim() || '—',
     center: reportCenterLabel(row.center),
+    coop_name: row.cooperatives?.name?.trim() || '—',
     procurement_status: row.procurement_status?.trim() || 'For Preparation',
     milk_type: formatReportMilkType(row.milk_type),
     amount: Number(row.amount) || 0,

@@ -31,6 +31,7 @@ import { uniqueSdoCountKey } from '@/lib/sbfp-dropoff-sync'
 import { excludeAuxSbfp, isSbfpAuxRow } from '@/lib/sbfp-aux'
 import { sbfpCenterAliases, sbfpNavCenter } from '@/lib/center-aliases'
 import { milkTypeLabel } from '@/lib/sbfp-pack-price'
+import { readMonthlyMap } from '@/lib/sbfp-raw-milk'
 
 // Philippine regional display order
 const REGION_ORDER: Record<string, number> = {
@@ -61,6 +62,7 @@ type ReportTab =
   | 'senate_region'
   | 'senate_center'
   | 'senate_delivery'
+  | 'milk_procurement'
 
 const th: CSSProperties = { border: '1px solid #cbd5e1', padding: '8px 8px', textAlign: 'right', whiteSpace: 'normal', lineHeight: 1.2 }
 const thC: CSSProperties = { ...th, textAlign: 'center' }
@@ -130,6 +132,10 @@ export default function SbfpSpreadsheetReport() {
   const [filterMonth, setFilterMonth]       = useState('')
   const [searchQuery, setSearchQuery]       = useState('')
   const [activeTab, setActiveTab]           = useState<ReportTab>('master')
+
+  // Milk Procurement Status 'As Of' dropdown states
+  const [milkAsOfMonth, setMilkAsOfMonth]   = useState<string>('ALL')
+  const [milkAsOfYear, setMilkAsOfYear]     = useState<string>(String(new Date().getFullYear()))
   /** When set, center filter is locked to the encoder's assigned center. */
   const [lockedCenter, setLockedCenter]     = useState<string | null>(null)
 
@@ -1099,7 +1105,7 @@ export default function SbfpSpreadsheetReport() {
       sheetName = 'SDO Masterlist'
       filename = `sbfp_sdo_masterlist_${year}_${dateStr}.xlsx`
       headers = [
-        'No.', 'Region', 'Schools Division Office (SDO)', 'Center', 'Procurement Status',
+        'No.', 'Region', 'Schools Division Office (SDO)', 'Center', 'Cooperative', 'Procurement Status',
         'Milk Type', 'Amount (PHP)', 'Mode of Procurement', 'PR Date Received', 'PR Number',
         'ORS Date', 'PO Number', 'Batch', 'Beneficiaries', 'Contract Amount (PHP)',
         'Delivery Start', 'Delivery End', 'Packs to Deliver', 'Delivered Packs',
@@ -1113,6 +1119,7 @@ export default function SbfpSpreadsheetReport() {
           v.region === '—' ? '' : v.region,
           v.sdo === '—' ? '' : v.sdo,
           v.center,
+          v.coop_name === '—' ? '' : v.coop_name,
           v.procurement_status,
           v.milk_type,
           v.amount,
@@ -1133,11 +1140,11 @@ export default function SbfpSpreadsheetReport() {
         ]]
       })
       rows.push([
-        'TOTAL', '', `${stats.count} SDOs`, '', `${stats.rowCount} rows`,
+        'TOTAL', '', `${stats.count} SDOs`, '', '', `${stats.rowCount} rows`,
         '', stats.totalAmount, '', '', '', '', '', '', stats.totalBeneficiaries,
         stats.totalContractAmt, '', '', stats.totalPacks, stats.totalDelivered, '', '',
       ])
-      colTypes = ['num','text','text','text','text','text','cur','text','text','text','text','text','text','num','cur','text','text','num','num','text','text']
+      colTypes = ['num','text','text','text','text','text','text','cur','text','text','text','text','text','text','num','cur','text','text','num','num','text','text']
 
     } else if (targetTab === 'senate_region') {
       sheetName = 'Regional Distribution'
@@ -1531,6 +1538,7 @@ export default function SbfpSpreadsheetReport() {
               ['senate_region', '3. Regional Distribution', MapPinned],
               ['senate_center', '4. Center Distribution', Building2],
               ['senate_delivery', '5. Contract & Delivery Details', CircleDollarSign],
+              ['milk_procurement', '6. Milk Procurement Status', FileSpreadsheet],
             ] as const).map(([id, label, Icon]) => (
               <button
                 key={id}
@@ -1686,6 +1694,7 @@ export default function SbfpSpreadsheetReport() {
                         <th style={{ border: '1px solid #cbd5e1', padding: '6px 8px', width: 75, textAlign: 'center', fontWeight: 700, position: 'sticky', top: 0, background: '#e2e8f0', zIndex: 5 }}>Region</th>
                         <th style={{ border: '1px solid #cbd5e1', padding: '6px 10px', minWidth: 170, textAlign: 'left', fontWeight: 700, position: 'sticky', top: 0, background: '#e2e8f0', zIndex: 5 }}>SDO Division</th>
                         <th style={{ border: '1px solid #cbd5e1', padding: '6px 8px', width: 85, textAlign: 'center', fontWeight: 700, position: 'sticky', top: 0, background: '#e2e8f0', zIndex: 5 }}>Center</th>
+                        <th style={{ border: '1px solid #cbd5e1', padding: '6px 10px', minWidth: 150, textAlign: 'left', fontWeight: 700, position: 'sticky', top: 0, background: '#e2e8f0', zIndex: 5 }}>Cooperative</th>
                         <th style={{ border: '1px solid #cbd5e1', padding: '6px 10px', minWidth: 165, textAlign: 'center', fontWeight: 700, position: 'sticky', top: 0, background: '#e2e8f0', zIndex: 5 }}>Procurement Status</th>
                         <th style={{ border: '1px solid #cbd5e1', padding: '6px 8px', width: 95, textAlign: 'center', fontWeight: 700, position: 'sticky', top: 0, background: '#e2e8f0', zIndex: 5 }}>Milk Type</th>
                         <th style={{ border: '1px solid #cbd5e1', padding: '6px 10px', minWidth: 110, textAlign: 'right', fontWeight: 700, position: 'sticky', top: 0, background: '#e2e8f0', zIndex: 5 }}>Amount ({PESO})</th>
@@ -1742,6 +1751,7 @@ export default function SbfpSpreadsheetReport() {
                             <td style={{ border: '1px solid #cbd5e1', padding: '4px 6px', textAlign: 'center', fontWeight: 700 }}>{v.region}</td>
                             <td style={{ border: '1px solid #cbd5e1', padding: '4px 8px', fontWeight: 600, color: '#0f172a' }}>{v.sdo}</td>
                             <td style={{ border: '1px solid #cbd5e1', padding: '4px 6px', textAlign: 'center', color: '#475569' }}>{v.center}</td>
+                            <td style={{ border: '1px solid #cbd5e1', padding: '4px 8px', color: '#0f172a' }}>{v.coop_name}</td>
                             <td style={{ border: '1px solid #cbd5e1', padding: '4px 8px', textAlign: 'center' }}>
                               <span style={{
                                 display: 'inline-block', padding: '2px 8px', borderRadius: 4,
@@ -1785,7 +1795,7 @@ export default function SbfpSpreadsheetReport() {
                     {filteredRecords.length > 0 && (
                       <tfoot>
                         <tr style={{ background: '#dbeafe', color: '#1e3a8a', fontWeight: 800, borderTop: '2px solid #3b82f6' }}>
-                          <td colSpan={6} style={{ border: '1px solid #93c5fd', padding: '8px 10px', textAlign: 'left' }}>
+                          <td colSpan={7} style={{ border: '1px solid #93c5fd', padding: '8px 10px', textAlign: 'left' }}>
                             GRAND TOTAL ({stats.count} SDOs · {stats.rowCount} rows)
                           </td>
                           <td style={{ border: '1px solid #93c5fd', padding: '8px', textAlign: 'right' }}>
@@ -2185,6 +2195,194 @@ export default function SbfpSpreadsheetReport() {
                 </div>
               </div>
             )}
+
+            {activeTab === 'milk_procurement' && (() => {
+              // Build per-SDO rows for Table 1
+              const milkRows = filteredRecords.map((r, idx) => {
+                const view = getViewForSource(r.id)
+                const packsToDeliver = view?.packs_to_deliver ?? Number(r.packs_to_deliver) ?? 0
+
+                let deliveredPacks = 0
+                if (milkAsOfMonth === 'ALL') {
+                  deliveredPacks = view?.delivered_packs ?? Number(r.packs_delivered) ?? 0
+                } else {
+                  // Cumulative sum using readMonthlyMap
+                  // Month sequence for School Year: Aug(8) -> Jul(7)
+                  const asOfMonthSequence = ['8', '9', '10', '11', '12', '1', '2', '3', '4', '5', '6', '7']
+                  const monthlyMap = readMonthlyMap(r.monthly_packs_delivered)
+                  const targetIdx = asOfMonthSequence.indexOf(milkAsOfMonth)
+                  if (targetIdx !== -1) {
+                    for (let i = 0; i <= targetIdx; i++) {
+                      deliveredPacks += (monthlyMap[asOfMonthSequence[i]] || 0)
+                    }
+                  } else {
+                    deliveredPacks = view?.delivered_packs ?? Number(r.packs_delivered) ?? 0
+                  }
+                }
+
+                const balance = Math.max(0, packsToDeliver - deliveredPacks)
+                const milkTypeStr = view?.milk_type ?? milkTypeLabel(r.milk_type ?? '')
+                const packLabel = milkTypeStr
+                  ? `${packsToDeliver.toLocaleString()} (${milkTypeStr})`
+                  : packsToDeliver.toLocaleString()
+
+                // Build delivery schedule string from delivery_start / delivery_end
+                const fmt = (d: string | null | undefined) => {
+                  if (!d) return ''
+                  const dt = new Date(d)
+                  if (isNaN(dt.getTime())) return d
+                  return dt.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+                }
+                const startFmt = fmt(r.delivery_start)
+                const endFmt = fmt(r.delivery_end)
+                let schedule = ''
+                if (startFmt && endFmt && startFmt !== endFmt) schedule = `${startFmt} to ${endFmt}`
+                else if (startFmt) schedule = startFmt
+                else if (endFmt) schedule = endFmt
+
+                const status = officialSbfpStatusLabel(r.procurement_status)
+                // sdoIndexMeta[idx]: { number, rowSpan } — rowSpan>0 = first row of SDO group
+                const meta = sdoIndexMeta[idx]
+                return { meta, r, status, packsToDeliver, packLabel, schedule, deliveredPacks, balance }
+              })
+
+              const totalPacksToDeliver = milkRows.reduce((s, x) => s + x.packsToDeliver, 0)
+              const totalDelivered = milkRows.reduce((s, x) => s + x.deliveredPacks, 0)
+              const totalBalance = milkRows.reduce((s, x) => s + x.balance, 0)
+
+              // Compute the "as of" label for the table header default (when ALL is selected)
+              const now = new Date()
+              const defaultAsOfLabel = now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+              const cellBorder = '1px solid #cbd5e1'
+              const hdrBorder = '1px solid #334155'
+              
+              const monthOpts = [
+                { val: 'ALL', label: 'All Months' },
+                { val: '1', label: 'January' },
+                { val: '2', label: 'February' },
+                { val: '3', label: 'March' },
+                { val: '4', label: 'April' },
+                { val: '5', label: 'May' },
+                { val: '6', label: 'June' },
+                { val: '7', label: 'July' },
+                { val: '8', label: 'August' },
+                { val: '9', label: 'September' },
+                { val: '10', label: 'October' },
+                { val: '11', label: 'November' },
+                { val: '12', label: 'December' },
+              ]
+              const yearOpts = Array.from({ length: 5 }, (_, i) => String(Number(year) - 1 + i))
+
+              return (
+                <div style={{ background: '#ffffff', borderRadius: 8, border: '1px solid #cbd5e1', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                  <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
+                    <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#1e293b' }}>
+                      Table 1. Milk Procurement Status
+                    </h3>
+                    <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 2 }}>
+                      Per-SDO delivery schedule, packs contracted, packs delivered, and remaining balance.
+                    </div>
+                  </div>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', fontFamily: 'Arial, sans-serif' }}>
+                      <thead>
+                        <tr style={{ background: '#1e293b', color: '#fff' }}>
+                          <th style={{ border: hdrBorder, padding: '8px 8px', textAlign: 'center', fontWeight: 700, width: 45 }}>#</th>
+                          <th style={{ border: hdrBorder, padding: '8px 10px', textAlign: 'center', fontWeight: 700, width: 70, whiteSpace: 'nowrap' }}>Region</th>
+                          <th style={{ border: hdrBorder, padding: '8px 10px', textAlign: 'left', fontWeight: 700, minWidth: 160 }}>SDO</th>
+                          <th style={{ border: hdrBorder, padding: '8px 10px', textAlign: 'center', fontWeight: 700, minWidth: 160 }}>Procurement Status</th>
+                          <th style={{ border: hdrBorder, padding: '8px 10px', textAlign: 'right', fontWeight: 700, minWidth: 145 }}>No. of Milk Packs to be Delivered</th>
+                          <th style={{ border: hdrBorder, padding: '8px 10px', textAlign: 'center', fontWeight: 700, minWidth: 185 }}>Expected Schedule of Delivery</th>
+                          <th style={{ border: hdrBorder, padding: '8px 10px', textAlign: 'right', fontWeight: 700, minWidth: 165 }}>
+                            <div style={{ marginBottom: 4 }}>No. of Milk Packs Delivered</div>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, fontWeight: 400 }}>
+                              <span>as of</span>
+                              <select 
+                                value={milkAsOfMonth} 
+                                onChange={e => setMilkAsOfMonth(e.target.value)}
+                                style={{ background: 'transparent', color: '#fff', border: '1px solid #475569', borderRadius: 4, padding: '2px 4px', fontSize: '0.75rem', outline: 'none', cursor: 'pointer' }}
+                              >
+                                {monthOpts.map(o => <option key={o.val} value={o.val} style={{ color: '#000' }}>{o.label}</option>)}
+                              </select>
+                              {milkAsOfMonth !== 'ALL' && (
+                                <select 
+                                  value={milkAsOfYear} 
+                                  onChange={e => setMilkAsOfYear(e.target.value)}
+                                  style={{ background: 'transparent', color: '#fff', border: '1px solid #475569', borderRadius: 4, padding: '2px 4px', fontSize: '0.75rem', outline: 'none', cursor: 'pointer' }}
+                                >
+                                  {yearOpts.map(y => <option key={y} value={y} style={{ color: '#000' }}>{y}</option>)}
+                                </select>
+                              )}
+                            </div>
+                          </th>
+                          <th style={{ border: hdrBorder, padding: '8px 10px', textAlign: 'right', fontWeight: 700, minWidth: 110 }}>Balance</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {milkRows.map(({ meta, r, status, packLabel, schedule, deliveredPacks, balance }, i) => {
+                          const statusBadge = STATUS_BADGE[status] ?? STATUS_BADGE['For Preparation']
+                          const rowBg = i % 2 === 0 ? '#fff' : '#f8fafc'
+                          const isFirst = meta.rowSpan > 0
+                          const span = isFirst ? meta.rowSpan : 0
+                          return (
+                            <tr key={String(r.id ?? i)} style={{ background: rowBg }}>
+                              {/* # — only this cell is merged across all rows of the same SDO group */}
+                              {isFirst && (
+                                <td
+                                  rowSpan={span}
+                                  style={{ border: cellBorder, padding: '6px 8px', textAlign: 'center', fontWeight: 800, verticalAlign: 'middle', background: '#f8fafc', color: '#1e293b' }}
+                                >
+                                  {meta.number}
+                                </td>
+                              )}
+                              {/* Region — one cell per row (not merged), matching SDO Masterlist */}
+                              <td style={{ border: cellBorder, padding: '6px 8px', textAlign: 'center', fontWeight: 700, color: '#1e293b' }}>
+                                {r.region || '—'}
+                              </td>
+                              {/* SDO name — one cell per row (not merged), matching SDO Masterlist */}
+                              <td style={{ border: cellBorder, padding: '6px 10px', textAlign: 'left', fontWeight: 600, color: '#1e293b' }}>
+                                {r.sdo || '—'}
+                              </td>
+                              {/* Per-row columns */}
+                              <td style={{ border: cellBorder, padding: '6px 8px', textAlign: 'center' }}>
+                                <span style={{
+                                  display: 'inline-block', padding: '2px 8px', borderRadius: 12,
+                                  fontSize: '0.75rem', fontWeight: 700, whiteSpace: 'nowrap',
+                                  background: statusBadge.bg, color: statusBadge.color,
+                                }}>
+                                  {status}
+                                </span>
+                              </td>
+                              <td style={{ border: cellBorder, padding: '6px 10px', textAlign: 'right', color: '#1e40af', fontWeight: 600 }}>
+                                {packLabel}
+                              </td>
+                              <td style={{ border: cellBorder, padding: '6px 10px', textAlign: 'center', color: '#475569' }}>
+                                {schedule || '—'}
+                              </td>
+                              <td style={{ border: cellBorder, padding: '6px 10px', textAlign: 'right', color: '#047857', fontWeight: 600 }}>
+                                {deliveredPacks > 0 ? deliveredPacks.toLocaleString() : ''}
+                              </td>
+                              <td style={{ border: cellBorder, padding: '6px 10px', textAlign: 'right', fontWeight: 700, color: balance > 0 ? '#b45309' : '#15803d' }}>
+                                {balance > 0 ? balance.toLocaleString() : '0'}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                      <tfoot>
+                        <tr style={{ background: '#dbeafe', color: '#1e3a8a', fontWeight: 800 }}>
+                          <td colSpan={4} style={{ border: '1px solid #93c5fd', padding: '7px 10px', textAlign: 'center' }}>TOTAL</td>
+                          <td style={{ border: '1px solid #93c5fd', padding: '7px 10px', textAlign: 'right' }}>{totalPacksToDeliver.toLocaleString()}</td>
+                          <td style={{ border: '1px solid #93c5fd', padding: '7px 10px' }}></td>
+                          <td style={{ border: '1px solid #93c5fd', padding: '7px 10px', textAlign: 'right' }}>{totalDelivered.toLocaleString()}</td>
+                          <td style={{ border: '1px solid #93c5fd', padding: '7px 10px', textAlign: 'right' }}>{totalBalance.toLocaleString()}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+              )
+            })()}
 
           </>
         )}
