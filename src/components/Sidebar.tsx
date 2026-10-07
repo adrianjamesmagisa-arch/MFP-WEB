@@ -89,7 +89,10 @@ export default function Sidebar({ userRole, userCenter, userName }: {
   }))
 
   // Encoders see the same Reports menu; each report page locks data to their center.
-  const visibleReportItems = reportItems
+  const visibleReportItems = reportItems.filter(item => {
+    if (userRole === 'viewer' && item.href.startsWith('/reports/summary-')) return false
+    return true
+  })
 
   return (
     <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`} style={{ height: '100vh', overflowY: 'auto', flexShrink: 0, transition: 'width 0.2s ease' }}>
