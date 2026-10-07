@@ -11,7 +11,7 @@ const CENTERS = ['NHQ', 'UPLB', 'DMMMSU', 'CSU', 'MMSU', 'CLSU', 'LCSF', 'WVSU',
 
 export function SbfpViewerModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const router = useRouter()
-  const [sy, setSy] = useState(FALLBACK_SCHOOL_YEARS[0])
+  const [sy, setSy] = useState<string>(FALLBACK_SCHOOL_YEARS[0])
   const [years, setYears] = useState<string[]>([...FALLBACK_SCHOOL_YEARS])
   const [mounted, setMounted] = useState(false)
 
