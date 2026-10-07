@@ -269,14 +269,14 @@ export function SbfpCenterWorkspace({
         />
       </section>
 
-      {!isEncoder && (
+      {!isEncoder && editable && (
         <section className="flex flex-col gap-2">
           <h2 className="text-base font-semibold">2. Center Budget (A–F)</h2>
           <SbfpCenterBudgetForm center={center} year={year} initial={budget} editable={editable} />
         </section>
       )}
 
-      {!isEncoder && (
+      {!isEncoder && editable && (
         <section className="flex flex-col gap-2">
           <h2 className="text-base font-semibold">3. Milk Capacity (for Summary)</h2>
           <SbfpCenterCapacityForm
