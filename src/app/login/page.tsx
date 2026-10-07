@@ -16,7 +16,14 @@ export default function LoginPage() {
     e.preventDefault()
     setLoading(true)
     setError('')
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    
+    // Auto-append domain if user only types a username
+    let loginEmail = email.trim()
+    if (!loginEmail.includes('@')) {
+      loginEmail = `${loginEmail}@pcc.da.gov.ph`
+    }
+
+    const { error } = await supabase.auth.signInWithPassword({ email: loginEmail, password })
     if (error) {
       setError(error.message)
       setLoading(false)
@@ -68,11 +75,11 @@ export default function LoginPage() {
 
           <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
             <div className="form-group">
-              <label className="form-label">Email Address</label>
+              <label className="form-label">Username or Email</label>
               <input
-                type="email"
+                type="text"
                 className="form-input"
-                placeholder="you@pcc.da.gov.ph"
+                placeholder="depedcentral or you@pcc.da.gov.ph"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 required
