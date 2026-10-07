@@ -101,21 +101,6 @@ export function SbfpViewerModal({ isOpen, onClose }: { isOpen: boolean; onClose:
               </button>
             ))}
           </div>
-
-          <button
-            onClick={() => {
-              router.push(`/reports/sbfp-narrative?sy=${sy}`)
-              onClose()
-            }}
-            style={{
-              width: '100%', padding: '0.75rem', background: 'var(--navy)', color: 'white', border: 'none', borderRadius: 8,
-              fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer', textAlign: 'center', transition: 'all 0.15s ease'
-            }}
-            onMouseOver={e => e.currentTarget.style.background = '#0f172a'}
-            onMouseOut={e => e.currentTarget.style.background = 'var(--navy)'}
-          >
-            All Centers (National SBFP Report)
-          </button>
         </div>
       </div>
     </div>,

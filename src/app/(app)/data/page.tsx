@@ -191,6 +191,7 @@ export default async function DataPage({
 
       <DataTable
         records={records ?? []}
+        readOnly={profile?.role === 'viewer'}
         resyncDelivery={
           syncCenter
             ? {

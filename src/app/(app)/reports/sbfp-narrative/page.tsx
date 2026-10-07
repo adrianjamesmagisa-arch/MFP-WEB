@@ -1684,6 +1684,11 @@ export default function SbfpSpreadsheetReport() {
         </div>
 
         <div style={{ background: '#ffffff', padding: '0.625rem 1rem', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+          <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Total Funds</div>
+          <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#ea580c', marginTop: 2 }}>{fmtPeso(1121141000)}</div>
+        </div>
+
+        <div style={{ background: '#ffffff', padding: '0.625rem 1rem', borderRadius: 8, border: '1px solid #e2e8f0' }}>
           <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Beneficiaries</div>
           <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#7c3aed', marginTop: 2 }}>{stats.totalBeneficiaries.toLocaleString()}</div>
         </div>

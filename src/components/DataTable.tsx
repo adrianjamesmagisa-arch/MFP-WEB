@@ -10,7 +10,7 @@ import { Spinner } from '@/components/loading/Spinner'
 import { useAsyncTask } from '@/components/loading/AsyncFeedback'
 import { logCenterActivity } from '@/lib/center-activity'
 
-function EditableCell({ id, field, value, type = 'text', className, style, format, render, onSave }: { id: string, field: string, value: any, type?: string, className?: string, style?: any, format?: (v: any) => any, render?: (v: any) => any, onSave?: (id: string, field: string, oldVal: any, newVal: any) => void }) {
+function EditableCell({ id, field, value, type = 'text', className, style, format, render, onSave, readOnly = false }: { id: string, field: string, value: any, type?: string, className?: string, style?: any, format?: (v: any) => any, render?: (v: any) => any, onSave?: (id: string, field: string, oldVal: any, newVal: any) => void, readOnly?: boolean }) {
   const [isEditing, setIsEditing] = useState(false);
   const [val, setVal] = useState(value);
   const [isSaving, setIsSaving] = useState(false);
@@ -102,12 +102,12 @@ function EditableCell({ id, field, value, type = 'text', className, style, forma
       className={className} 
       style={{
         ...style,
-        cursor: 'text',
+        cursor: readOnly ? 'default' : 'text',
         opacity: isSaving ? 0.85 : 1,
         // Do not set position:relative on sticky cols — it breaks position:sticky from .col-*.
         ...(stickyCol ? { position: 'sticky' as const } : { position: 'relative' as const }),
       }} 
-      onClick={() => !isSaving && setIsEditing(true)}
+      onClick={() => !readOnly && !isSaving && setIsEditing(true)}
     >
       {(val === null || val === undefined || val === '') ? 'N/A' : render ? render(val) : format ? format(val) : val}
       {isSaving && (
@@ -123,11 +123,13 @@ export function DataTable({
   records,
   resyncDelivery,
   resyncProgram,
+  readOnly = false,
 }: {
   records: any[]
   resyncDelivery?: { center: string; year: number } | null
   /** Push DSWD/LDS/etc. monitoring drop-offs into masterlist for this center/year. */
   resyncProgram?: { center: string; year: number; program?: string } | null
+  readOnly?: boolean
 }) {
   const router = useRouter()
   const supabase = createClient()
@@ -369,9 +371,11 @@ export function DataTable({
             <thead>
               <tr>
                 {/* CHECKBOX */}
-                <th className="col-check" style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 40, width: 40 }}>
-                  <input type="checkbox" checked={records.length > 0 && selectedIds.size === records.length} onChange={toggleSelectAll} style={{ cursor: 'pointer' }} />
-                </th>
+                {!readOnly && (
+                  <th className="col-check" style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 40, width: 40 }}>
+                    <input type="checkbox" checked={records.length > 0 && selectedIds.size === records.length} onChange={toggleSelectAll} style={{ cursor: 'pointer' }} />
+                  </th>
+                )}
                 {/* A-G */}
                 <th className="col-year" style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 60 }}>A — Year</th>
                 <th className="col-funded" style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 80 }}>B — Funded By</th>
@@ -409,7 +413,7 @@ export function DataTable({
                 {/* AD-AE Delivery tracking */}
                 <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 110 }}>AD — Target Milk Packs to Deliver</th>
                 <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 110 }}>AE — Total Milk Packs Delivered</th>
-                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 80 }}>Actions</th>
+                {!readOnly && <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 80 }}>Actions</th>}
               </tr>
             </thead>
                         <tbody>
@@ -419,43 +423,45 @@ export function DataTable({
                   className={selectedIds.has(r.id) ? 'mfp-data-row-selected' : undefined}
                   style={{ background: selectedIds.has(r.id) ? '#e0e7ff' : undefined }}
                 >
-                  <td className="col-check" style={{ textAlign: 'center' }}>
-                    <input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => toggleRow(r.id)} style={{ cursor: 'pointer' }} />
-                  </td>
-                  <EditableCell onSave={handleCellSave} id={r.id} field="year" value={r.year} type="number" className="col-year" style={{ fontWeight: 700 }} />
-                  <EditableCell onSave={handleCellSave} id={r.id} field="funded_by" value={r.funded_by} className="col-funded" render={v => <span className={'badge badge-' + (v?.toLowerCase() || '')}>{v}</span>} />
-                  <EditableCell onSave={handleCellSave} id={r.id} field="region" value={r.region} className="col-region" />
-                  <EditableCell onSave={handleCellSave} id={r.id} field="center" value={r.center} className="col-center" style={{ fontWeight: 600, color: 'var(--navy)' }} />
-                  <EditableCell onSave={handleCellSave} id={r.id} field="province" value={r.province} className="col-prov" />
-                  <EditableCell onSave={handleCellSave} id={r.id} field="division" value={r.division} className="col-div" />
-                  <EditableCell onSave={handleCellSave} id={r.id} field="municipality" value={r.municipality} className="col-muni" />
-                  <EditableCell onSave={handleCellSave} id={r.id} field="elementary_school" value={r.elementary_school} className="col-school" />
+                  {!readOnly && (
+                    <td className="col-check" style={{ textAlign: 'center' }}>
+                      <input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => toggleRow(r.id)} style={{ cursor: 'pointer' }} />
+                    </td>
+                  )}
+                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="year" value={r.year} type="number" className="col-year" style={{ fontWeight: 700 }} />
+                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="funded_by" value={r.funded_by} className="col-funded" render={v => <span className={'badge badge-' + (v?.toLowerCase() || '')}>{v}</span>} />
+                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="region" value={r.region} className="col-region" />
+                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="center" value={r.center} className="col-center" style={{ fontWeight: 600, color: 'var(--navy)' }} />
+                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="province" value={r.province} className="col-prov" />
+                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="division" value={r.division} className="col-div" />
+                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="municipality" value={r.municipality} className="col-muni" />
+                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="elementary_school" value={r.elementary_school} className="col-school" />
                   
-                  <EditableCell onSave={handleCellSave} id={r.id} field="milk_packs" value={r.milk_packs} type="number" format={formatNumber} />
-                  <EditableCell onSave={handleCellSave} id={r.id} field="total_volume_requirements" value={r.total_volume_requirements} type="number" format={formatNumber} />
-                  <EditableCell onSave={handleCellSave} id={r.id} field="raw_milk_liters" value={r.raw_milk_liters} type="number" format={formatNumber} />
-                  <EditableCell onSave={handleCellSave} id={r.id} field="whole_milk_kg" value={r.whole_milk_kg} type="number" format={v => v?.toFixed(2) ?? 'N/A'} />
-                  <EditableCell onSave={handleCellSave} id={r.id} field="skimmed_milk_kg" value={r.skimmed_milk_kg} type="number" format={v => v?.toFixed(2) ?? 'N/A'} />
-                  <EditableCell onSave={handleCellSave} id={r.id} field="sugar" value={r.sugar} type="number" format={v => v?.toFixed(2) ?? 'N/A'} />
+                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="milk_packs" value={r.milk_packs} type="number" format={formatNumber} />
+                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="total_volume_requirements" value={r.total_volume_requirements} type="number" format={formatNumber} />
+                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="raw_milk_liters" value={r.raw_milk_liters} type="number" format={formatNumber} />
+                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="whole_milk_kg" value={r.whole_milk_kg} type="number" format={v => v?.toFixed(2) ?? 'N/A'} />
+                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="skimmed_milk_kg" value={r.skimmed_milk_kg} type="number" format={v => v?.toFixed(2) ?? 'N/A'} />
+                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="sugar" value={r.sugar} type="number" format={v => v?.toFixed(2) ?? 'N/A'} />
                   
-                  <EditableCell onSave={handleCellSave} id={r.id} field="feeding_days" value={r.feeding_days} type="number" />
-                  <EditableCell onSave={handleCellSave} id={r.id} field="batch" value={r.batch} />
-                  <EditableCell onSave={handleCellSave} id={r.id} field="beneficiaries" value={r.beneficiaries} type="number" format={formatNumber} style={{ fontWeight: 600 }} />
-                  <EditableCell onSave={handleCellSave} id={r.id} field="milk_type" value={r.milk_type} render={v => <span className={'badge badge-' + (v?.toLowerCase() || '')}>{v || 'N/A'}</span>} />
-                  <EditableCell onSave={handleCellSave} id={r.id} field="price" value={r.price} type="number" format={v => v ? '₱' + v.toFixed(2) : 'N/A'} />
+                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="feeding_days" value={r.feeding_days} type="number" />
+                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="batch" value={r.batch} />
+                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="beneficiaries" value={r.beneficiaries} type="number" format={formatNumber} style={{ fontWeight: 600 }} />
+                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="milk_type" value={r.milk_type} render={v => <span className={'badge badge-' + (v?.toLowerCase() || '')}>{v || 'N/A'}</span>} />
+                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="price" value={r.price} type="number" format={v => v ? '₱' + v.toFixed(2) : 'N/A'} />
                   
                   <td>{(r as any).cooperatives?.name ?? 'N/A'}</td>
                   
-                  <EditableCell onSave={handleCellSave} id={r.id} field="milk_cost" value={r.milk_cost} type="number" format={v => v ? '₱' + formatNumber(v) : 'N/A'} />
-                  <EditableCell onSave={handleCellSave} id={r.id} field="service_fee" value={r.service_fee} type="number" format={v => v ? '₱' + formatNumber(v) : 'N/A'} />
-                  <EditableCell onSave={handleCellSave} id={r.id} field="total_funds_transferred" value={r.total_funds_transferred} type="number" format={v => v ? '₱' + formatNumber(v) : 'N/A'} style={{ fontWeight: 600 }} />
-                  <EditableCell onSave={handleCellSave} id={r.id} field="mode_of_procurement" value={r.mode_of_procurement} />
+                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="milk_cost" value={r.milk_cost} type="number" format={v => v ? '₱' + formatNumber(v) : 'N/A'} />
+                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="service_fee" value={r.service_fee} type="number" format={v => v ? '₱' + formatNumber(v) : 'N/A'} />
+                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="total_funds_transferred" value={r.total_funds_transferred} type="number" format={v => v ? '₱' + formatNumber(v) : 'N/A'} style={{ fontWeight: 600 }} />
+                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="mode_of_procurement" value={r.mode_of_procurement} />
                   
-                  <EditableCell onSave={handleCellSave} id={r.id} field="moa_signing" value={r.moa_signing} type="date" format={formatDate} />
-                  <EditableCell onSave={handleCellSave} id={r.id} field="fund_transfer" value={r.fund_transfer} type="date" format={formatDate} />
-                  <EditableCell onSave={handleCellSave} id={r.id} field="date_started" value={r.date_started} type="date" format={formatDate} />
-                  <EditableCell onSave={handleCellSave} id={r.id} field="date_completed" value={r.date_completed} type="date" format={formatDate} />
-                  <EditableCell onSave={handleCellSave} id={r.id} field="liquidation" value={r.liquidation} type="date" format={formatDate} />
+                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="moa_signing" value={r.moa_signing} type="date" format={formatDate} />
+                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="fund_transfer" value={r.fund_transfer} type="date" format={formatDate} />
+                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="date_started" value={r.date_started} type="date" format={formatDate} />
+                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="date_completed" value={r.date_completed} type="date" format={formatDate} />
+                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="liquidation" value={r.liquidation} type="date" format={formatDate} />
 
                   {/* AD/AE — one merged cell per SDO (division), like Excel */}
                   {(() => {
@@ -503,15 +509,17 @@ export function DataTable({
                     )
                   })()}
                   
-                  <td>
-                    <Link
-                      href={`/data/${r.id}/edit`}
-                      className="btn btn-outline"
-                      style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}
-                    >
-                      Edit
-                    </Link>
-                  </td>
+                  {!readOnly && (
+                    <td>
+                      <Link
+                        href={`/data/${r.id}/edit`}
+                        className="btn btn-outline"
+                        style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}
+                      >
+                        Edit
+                      </Link>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
