@@ -1192,9 +1192,15 @@ export default function SbfpSpreadsheetReport() {
         if (r.region && r.region !== '—') group.regions.add(r.region)
         group.beneficiaries += (Number(r.beneficiaries_pm) || 0) + (Number(r.beneficiaries_sm) || 0) + (Number(r.beneficiaries_cm) || 0)
         if (r.supplier_id) group.coops.add(String(r.supplier_id))
-        const packsToDeliver = effectivePacksToDeliver(r)
-        group.packs += packsToDeliver
-        group.rawMilkLiters += rawMilkUtilizedLiters(packsToDeliver)
+        const start = Math.min(mcFromMonth, mcToMonth)
+        const end = Math.max(mcFromMonth, mcToMonth)
+        let deliveredPacksInRange = 0
+        for (let m = start; m <= end; m++) {
+          deliveredPacksInRange += packsForMonth(r as any, m, { year: Number(year) })
+        }
+        
+        group.packs += deliveredPacksInRange
+        group.rawMilkLiters += rawMilkUtilizedLiters(deliveredPacksInRange)
         group.contractAmount += (Number(r.contract_amount) || 0)
       })
 
@@ -2515,9 +2521,15 @@ export default function SbfpSpreadsheetReport() {
                 if (r.region && r.region !== '—') group.regions.add(r.region)
                 group.beneficiaries += (Number(r.beneficiaries_pm) || 0) + (Number(r.beneficiaries_sm) || 0) + (Number(r.beneficiaries_cm) || 0)
                 if (r.supplier_id) group.coops.add(String(r.supplier_id))
-                const packsToDeliver = effectivePacksToDeliver(r as any)
-                group.packs += packsToDeliver
-                group.rawMilkLiters += rawMilkUtilizedLiters(packsToDeliver)
+                const start = Math.min(mcFromMonth, mcToMonth)
+                const end = Math.max(mcFromMonth, mcToMonth)
+                let deliveredPacksInRange = 0
+                for (let m = start; m <= end; m++) {
+                  deliveredPacksInRange += packsForMonth(r as any, m, { year: Number(year) })
+                }
+                
+                group.packs += deliveredPacksInRange
+                group.rawMilkLiters += rawMilkUtilizedLiters(deliveredPacksInRange)
                 group.contractAmount += (Number(r.contract_amount) || 0)
               })
 
