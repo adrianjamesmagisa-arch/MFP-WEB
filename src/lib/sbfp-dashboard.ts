@@ -26,6 +26,8 @@ type SbfpDashRow = SbfpRawMilkRow & {
   amount?: number | null
   contract_amount?: number | null
   beneficiaries_pm?: number | null
+  beneficiaries_sm?: number | null
+  beneficiaries_cm?: number | null
   delivery_start?: string | null
   include_in_report?: boolean | null
 }
@@ -44,7 +46,7 @@ export async function loadSbfpDashboardStats(
   let sdoQ = supabase
     .from('sbfp_data')
     .select(
-      'id,year,center,sdo,milk_type,procurement_status,include_in_report,packs_to_deliver,packs_delivered,amount,contract_amount,beneficiaries_pm,delivery_start,delivery_end,monthly_packs_delivered,delivery_snapshots,raw_milk_prices',
+      'id,year,center,sdo,milk_type,procurement_status,include_in_report,packs_to_deliver,packs_delivered,amount,contract_amount,beneficiaries_pm,beneficiaries_sm,beneficiaries_cm,delivery_start,delivery_end,monthly_packs_delivered,delivery_snapshots,raw_milk_prices',
     )
   let dropQ = supabase
     .from('sbfp_dropoff_points')
@@ -141,8 +143,8 @@ export async function loadSbfpDashboardStats(
         row.provinces++
       }
     }
-    row.amount += Number(r.amount || r.contract_amount) || 0
-    row.beneficiaries += Number(r.beneficiaries_pm) || 0
+    row.amount += Number(r.contract_amount) || 0
+    row.beneficiaries += (Number(r.beneficiaries_pm) || 0) + (Number(r.beneficiaries_sm) || 0) + (Number(r.beneficiaries_cm) || 0)
     tallyStatus(r.procurement_status, status)
   }
 
@@ -165,10 +167,8 @@ export async function loadSbfpDashboardStats(
     dropBeneByCenter.set(key, (dropBeneByCenter.get(key) || 0) + (Number(r.beneficiaries) || 0))
   }
 
-  for (const [key, bene] of dropBeneByCenter) {
-    const row = byCenter.get(key)
-    if (row && bene > 0) row.beneficiaries = bene
-  }
+  // Removed logic that overwrites sbfp_data beneficiaries with dropoff beneficiaries
+  // to ensure consistency with the SBFP Masterlist Report.
 
   for (const [key, row] of byCenter) {
     const centerRows = reportableSdos.filter(r => String(r.center || '').trim() === key)

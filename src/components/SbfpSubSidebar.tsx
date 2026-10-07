@@ -88,7 +88,7 @@ export function SbfpSubSidebar({
   const showCentersNav = !encoderCenter
 
   if (role === 'viewer') {
-    navMain = navMain.filter(item => item.label !== 'Budget Breakdown' && item.label !== 'Status of Activities')
+    navMain = navMain.filter(item => item.label === 'Dashboard')
   }
 
   const linkStyle = (isActive: boolean, compact?: boolean): CSSProperties => ({

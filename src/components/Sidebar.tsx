@@ -13,6 +13,7 @@ import { sbfpEncoderHomePath, monitoringEncoderHomePath } from '@/lib/center-ali
 import type { MonitoringProgramId } from '@/lib/monitoring-programs'
 import { useAsyncFeedback } from '@/components/loading/AsyncFeedback'
 import { Spinner } from '@/components/loading/Spinner'
+import { SbfpViewerModal } from '@/components/SbfpViewerModal'
 
 const navItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -46,6 +47,7 @@ export default function Sidebar({ userRole, userCenter, userName }: {
   const supabase = createClient()
   const { runAsync } = useAsyncFeedback()
   const [signingOut, setSigningOut] = useState(false)
+  const [sbfpModalOpen, setSbfpModalOpen] = useState(false)
   const isCollapsed = pathname.includes('/edit') || pathname.includes('/add') || pathname.includes('/new') || pathname.includes('/bulk-edit')
 
   const isInReports = pathname.startsWith('/reports')
@@ -143,16 +145,28 @@ export default function Sidebar({ userRole, userCenter, userName }: {
           </div>
         )}
 
-        <Link
-          href={sbfpHref}
-          className={`sidebar-link ${sbfpActive ? 'active' : ''}`}
-        >
-          <Milk size={16} />
-          {!isCollapsed && <span>SBFP</span>}
-          {sbfpActive && !isCollapsed && <ChevronRight size={14} style={{ marginLeft: 'auto' }} />}
-        </Link>
+        {userRole === 'viewer' ? (
+          <button
+            onClick={() => setSbfpModalOpen(true)}
+            className={`sidebar-link ${sbfpActive ? 'active' : ''}`}
+            style={{ width: '100%', textAlign: 'left', border: 'none', background: 'transparent', cursor: 'pointer', outline: 'none' }}
+          >
+            <Milk size={16} />
+            {!isCollapsed && <span>SBFP</span>}
+            {sbfpActive && !isCollapsed && <ChevronRight size={14} style={{ marginLeft: 'auto' }} />}
+          </button>
+        ) : (
+          <Link
+            href={sbfpHref}
+            className={`sidebar-link ${sbfpActive ? 'active' : ''}`}
+          >
+            <Milk size={16} />
+            {!isCollapsed && <span>SBFP</span>}
+            {sbfpActive && !isCollapsed && <ChevronRight size={14} style={{ marginLeft: 'auto' }} />}
+          </Link>
+        )}
 
-        {visibleMonitoringItems.map(item => {
+        {userRole !== 'viewer' && visibleMonitoringItems.map(item => {
           const Icon = item.icon
           const isActive = pathname.startsWith(`/monitoring/${item.program}`)
           return (
@@ -213,7 +227,7 @@ export default function Sidebar({ userRole, userCenter, userName }: {
         )}
 
         {/* Collapsed: show report icons */}
-        {isCollapsed && visibleMonitoringItems.map(item => {
+        {isCollapsed && userRole !== 'viewer' && visibleMonitoringItems.map(item => {
           const Icon = item.icon
           const isActive = pathname.startsWith(`/monitoring/${item.program}`)
           return (
@@ -266,6 +280,8 @@ export default function Sidebar({ userRole, userCenter, userName }: {
           {!isCollapsed && <span>{signingOut ? 'Signing out…' : 'Sign Out'}</span>}
         </button>
       </div>
+
+      <SbfpViewerModal isOpen={sbfpModalOpen} onClose={() => setSbfpModalOpen(false)} />
     </aside>
   )
 }

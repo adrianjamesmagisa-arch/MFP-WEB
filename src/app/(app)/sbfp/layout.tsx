@@ -24,7 +24,7 @@ export default async function SbfpLayout({ children }: { children: React.ReactNo
 
   return (
     <div style={{ display: 'flex', flex: 1, height: '100%', minHeight: 0, overflow: 'hidden' }}>
-      {!encoderCenter && (
+      {!encoderCenter && role !== 'viewer' && (
         <Suspense fallback={<aside style={{ width: 44, flexShrink: 0, background: 'var(--navy)' }} />}>
           <SbfpSubSidebar schoolYears={schoolYears} encoderCenter={encoderCenter} role={role} />
         </Suspense>
