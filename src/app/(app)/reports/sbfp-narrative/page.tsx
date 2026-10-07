@@ -23,6 +23,7 @@ import {
   officialSbfpStatusLabel,
   SBFP_PROCUREMENT_STATUSES,
   SBFP_STATUS_FILTER_OPTIONS,
+  effectivePacksToDeliver,
   type SbfpReportSourceRow,
   type SbfpSenateMetrics,
   type SbfpProcurementStatus,
@@ -31,7 +32,7 @@ import { uniqueSdoCountKey } from '@/lib/sbfp-dropoff-sync'
 import { excludeAuxSbfp, isSbfpAuxRow } from '@/lib/sbfp-aux'
 import { sbfpCenterAliases, sbfpNavCenter } from '@/lib/center-aliases'
 import { milkTypeLabel } from '@/lib/sbfp-pack-price'
-import { readMonthlyMap } from '@/lib/sbfp-raw-milk'
+import { readMonthlyMap, rawMilkUtilizedLiters, packsForMonth } from '@/lib/sbfp-raw-milk'
 
 // Philippine regional display order
 const REGION_ORDER: Record<string, number> = {
@@ -63,6 +64,7 @@ type ReportTab =
   | 'senate_center'
   | 'senate_delivery'
   | 'milk_procurement'
+  | 'monthly_cummulated'
 
 const th: CSSProperties = { border: '1px solid #cbd5e1', padding: '8px 8px', textAlign: 'right', whiteSpace: 'normal', lineHeight: 1.2 }
 const thC: CSSProperties = { ...th, textAlign: 'center' }
@@ -136,6 +138,10 @@ export default function SbfpSpreadsheetReport() {
   // Milk Procurement Status 'As Of' dropdown states
   const [milkAsOfMonth, setMilkAsOfMonth]   = useState<string>('ALL')
   const [milkAsOfYear, setMilkAsOfYear]     = useState<string>(String(new Date().getFullYear()))
+
+  // Monthly Cummulated tab states
+  const [mcFromMonth, setMcFromMonth]       = useState<number>(1)
+  const [mcToMonth, setMcToMonth]           = useState<number>(8)
   /** When set, center filter is locked to the encoder's assigned center. */
   const [lockedCenter, setLockedCenter]     = useState<string | null>(null)
 
@@ -1146,6 +1152,79 @@ export default function SbfpSpreadsheetReport() {
       ])
       colTypes = ['num','text','text','text','text','text','text','cur','text','text','text','text','text','text','num','cur','text','text','num','num','text','text']
 
+    } else if (targetTab === 'monthly_cummulated') {
+      sheetName = 'Monthly Cummulated'
+      filename = `sbfp_monthly_cummulated_${year}_${dateStr}.xlsx`
+      headers = [
+        'CLUSTER', 'REGION', 'BENEFICIARIES', 'NO. OF COOPS', 'RAW MILK USED IN LITERS',
+        'MILK PACKS', 'CONTRACT AMOUNT'
+      ]
+
+      const getCluster = (region: string) => {
+        const r = (region || '').toUpperCase().trim();
+        if (['NCR', 'NATIONAL CAPITAL REGION', 'CAR', 'CORDILLERA ADMINISTRATIVE REGION', 'I', 'II', 'III', 'IV-A', 'IVA', 'CALABARZON', 'IV-B', 'IVB', 'MIMAROPA', 'V'].includes(r)) return 'Luzon';
+        if (['VI', 'VII', 'VIII', 'NIR'].includes(r)) return 'Visayas';
+        if (['IX', 'X', 'XI', 'XII', 'XIII', 'CARAGA', 'BARMM'].includes(r)) return 'Mindanao';
+        return 'Unknown';
+      }
+
+      const clusterMap: Record<string, { regions: Set<string>; beneficiaries: number; coops: Set<string>; rawMilkLiters: number; packs: number; contractAmount: number }> = {
+        Luzon: { regions: new Set(), beneficiaries: 0, coops: new Set(), rawMilkLiters: 0, packs: 0, contractAmount: 0 },
+        Visayas: { regions: new Set(), beneficiaries: 0, coops: new Set(), rawMilkLiters: 0, packs: 0, contractAmount: 0 },
+        Mindanao: { regions: new Set(), beneficiaries: 0, coops: new Set(), rawMilkLiters: 0, packs: 0, contractAmount: 0 },
+        Unknown: { regions: new Set(), beneficiaries: 0, coops: new Set(), rawMilkLiters: 0, packs: 0, contractAmount: 0 },
+      }
+
+      const hasDeliveryInRange = (r: any) => {
+        const start = Math.min(mcFromMonth, mcToMonth)
+        const end = Math.max(mcFromMonth, mcToMonth)
+        for (let m = start; m <= end; m++) {
+          if (packsForMonth(r as any, m, { year: Number(year) }) > 0) return true
+        }
+        return false
+      }
+
+      filteredRecords.forEach(r => {
+        if (!hasDeliveryInRange(r)) return
+        const cluster = getCluster(r.region || '')
+        const group = clusterMap[cluster]
+        if (!group) return
+        if (r.region && r.region !== '—') group.regions.add(r.region)
+        group.beneficiaries += (Number(r.beneficiaries_pm) || 0) + (Number(r.beneficiaries_sm) || 0) + (Number(r.beneficiaries_cm) || 0)
+        if (r.supplier_id) group.coops.add(String(r.supplier_id))
+        const packsToDeliver = effectivePacksToDeliver(r)
+        group.packs += packsToDeliver
+        group.rawMilkLiters += rawMilkUtilizedLiters(packsToDeliver)
+        group.contractAmount += (Number(r.contract_amount) || 0)
+      })
+
+      const clusterRows = ['Luzon', 'Visayas', 'Mindanao']
+        .filter(c => clusterMap[c].packs > 0 || clusterMap[c].contractAmount > 0)
+        .map(c => {
+          const g = clusterMap[c]
+          return [
+            c,
+            Array.from(g.regions).join(', '),
+            g.beneficiaries,
+            g.coops.size,
+            g.rawMilkLiters,
+            g.packs,
+            g.contractAmount
+          ]
+        })
+
+      rows = clusterRows
+      rows.push([
+        'TOTAL',
+        '',
+        clusterRows.reduce((s, r) => s + (r[2] as number), 0),
+        clusterRows.reduce((s, r) => s + (r[3] as number), 0),
+        clusterRows.reduce((s, r) => s + (r[4] as number), 0),
+        clusterRows.reduce((s, r) => s + (r[5] as number), 0),
+        clusterRows.reduce((s, r) => s + (r[6] as number), 0),
+      ])
+      colTypes = ['text', 'text', 'num', 'num', 'dec', 'num', 'cur']
+
     } else if (targetTab === 'senate_region') {
       sheetName = 'Regional Distribution'
       filename = `sbfp_regional_distribution_${year}_${dateStr}.xlsx`
@@ -1251,6 +1330,8 @@ export default function SbfpSpreadsheetReport() {
       'senate_region',
       'senate_center',
       'senate_delivery',
+      'milk_procurement',
+      'monthly_cummulated',
     ]
     const dateStr = new Date().toISOString().split('T')[0]
     const wb = XLSX.utils.book_new()
@@ -1539,6 +1620,7 @@ export default function SbfpSpreadsheetReport() {
               ['senate_center', '4. Center Distribution', Building2],
               ['senate_delivery', '5. Contract & Delivery Details', CircleDollarSign],
               ['milk_procurement', '6. Milk Procurement Status', FileSpreadsheet],
+              ['monthly_cummulated', '7. Monthly Cummulated', BarChart2],
             ] as const).map(([id, label, Icon]) => (
               <button
                 key={id}
@@ -2376,6 +2458,158 @@ export default function SbfpSpreadsheetReport() {
                           <td style={{ border: '1px solid #93c5fd', padding: '7px 10px' }}></td>
                           <td style={{ border: '1px solid #93c5fd', padding: '7px 10px', textAlign: 'right' }}>{totalDelivered.toLocaleString()}</td>
                           <td style={{ border: '1px solid #93c5fd', padding: '7px 10px', textAlign: 'right' }}>{totalBalance.toLocaleString()}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+              )
+            })()}
+
+            {activeTab === 'monthly_cummulated' && (() => {
+              const ALL_MONTHS = [
+                { val: 1, label: 'January' },
+                { val: 2, label: 'February' },
+                { val: 3, label: 'March' },
+                { val: 4, label: 'April' },
+                { val: 5, label: 'May' },
+                { val: 6, label: 'June' },
+                { val: 7, label: 'July' },
+                { val: 8, label: 'August' },
+                { val: 9, label: 'September' },
+                { val: 10, label: 'October' },
+                { val: 11, label: 'November' },
+                { val: 12, label: 'December' },
+              ]
+              const toMonthLabel = ALL_MONTHS.find(m => m.val === mcToMonth)?.label.toUpperCase() || 'AUGUST'
+
+              const getCluster = (region: string) => {
+                const r = (region || '').toUpperCase().trim();
+                if (['NCR', 'NATIONAL CAPITAL REGION', 'CAR', 'CORDILLERA ADMINISTRATIVE REGION', 'I', 'II', 'III', 'IV-A', 'IVA', 'CALABARZON', 'IV-B', 'IVB', 'MIMAROPA', 'V'].includes(r)) return 'Luzon';
+                if (['VI', 'VII', 'VIII', 'NIR'].includes(r)) return 'Visayas';
+                if (['IX', 'X', 'XI', 'XII', 'XIII', 'CARAGA', 'BARMM'].includes(r)) return 'Mindanao';
+                return 'Unknown';
+              }
+
+              const clusterMap: Record<string, { regions: Set<string>; beneficiaries: number; coops: Set<string>; rawMilkLiters: number; packs: number; contractAmount: number }> = {
+                Luzon: { regions: new Set(), beneficiaries: 0, coops: new Set(), rawMilkLiters: 0, packs: 0, contractAmount: 0 },
+                Visayas: { regions: new Set(), beneficiaries: 0, coops: new Set(), rawMilkLiters: 0, packs: 0, contractAmount: 0 },
+                Mindanao: { regions: new Set(), beneficiaries: 0, coops: new Set(), rawMilkLiters: 0, packs: 0, contractAmount: 0 },
+                Unknown: { regions: new Set(), beneficiaries: 0, coops: new Set(), rawMilkLiters: 0, packs: 0, contractAmount: 0 },
+              }
+
+              const hasDeliveryInRange = (r: any) => {
+                const start = Math.min(mcFromMonth, mcToMonth)
+                const end = Math.max(mcFromMonth, mcToMonth)
+                for (let m = start; m <= end; m++) {
+                  if (packsForMonth(r as any, m, { year: Number(year) }) > 0) return true
+                }
+                return false
+              }
+
+              filteredRecords.forEach(r => {
+                if (!hasDeliveryInRange(r)) return
+                const cluster = getCluster(r.region || '')
+                const group = clusterMap[cluster]
+                if (!group) return
+                if (r.region && r.region !== '—') group.regions.add(r.region)
+                group.beneficiaries += (Number(r.beneficiaries_pm) || 0) + (Number(r.beneficiaries_sm) || 0) + (Number(r.beneficiaries_cm) || 0)
+                if (r.supplier_id) group.coops.add(String(r.supplier_id))
+                const packsToDeliver = effectivePacksToDeliver(r as any)
+                group.packs += packsToDeliver
+                group.rawMilkLiters += rawMilkUtilizedLiters(packsToDeliver)
+                group.contractAmount += (Number(r.contract_amount) || 0)
+              })
+
+              const clusterRows = ['Luzon', 'Visayas', 'Mindanao']
+                // Only filter out rows if there's no data at all to match image closely
+                .map(c => {
+                  const g = clusterMap[c]
+                  return {
+                    cluster: c,
+                    region: Array.from(g.regions).join(', '),
+                    beneficiaries: g.beneficiaries,
+                    coops: g.coops.size,
+                    rawMilkLiters: g.rawMilkLiters,
+                    packs: g.packs,
+                    contractAmount: g.contractAmount
+                  }
+                })
+
+              const totalBeneficiaries = clusterRows.reduce((s, r) => s + r.beneficiaries, 0)
+              const totalCoops = clusterRows.reduce((s, r) => s + r.coops, 0)
+              const totalRawMilk = clusterRows.reduce((s, r) => s + r.rawMilkLiters, 0)
+              const totalPacks = clusterRows.reduce((s, r) => s + r.packs, 0)
+              const totalContractAmount = clusterRows.reduce((s, r) => s + r.contractAmount, 0)
+
+              return (
+                <div style={{ background: '#ffffff', borderRadius: 8, border: '1px solid #cbd5e1', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                  <div style={{ padding: '1rem', background: '#f8fafc', borderBottom: '1px solid #cbd5e1', display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center' }}>
+                      <label style={{ fontSize: '0.85rem', fontWeight: 600, marginRight: '0.5rem', color: '#475569' }}>From Month:</label>
+                      <select 
+                        value={mcFromMonth} 
+                        onChange={e => setMcFromMonth(Number(e.target.value))}
+                        style={{ padding: '0.4rem 0.75rem', borderRadius: 6, border: '1px solid #cbd5e1', backgroundColor: '#fff', fontSize: '0.9rem', color: '#1e293b', outline: 'none', cursor: 'pointer' }}
+                      >
+                        {ALL_MONTHS.map(m => <option key={m.val} value={m.val}>{m.label}</option>)}
+                      </select>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center' }}>
+                      <label style={{ fontSize: '0.85rem', fontWeight: 600, marginRight: '0.5rem', color: '#475569' }}>To Month:</label>
+                      <select 
+                        value={mcToMonth} 
+                        onChange={e => setMcToMonth(Number(e.target.value))}
+                        style={{ padding: '0.4rem 0.75rem', borderRadius: 6, border: '1px solid #cbd5e1', backgroundColor: '#fff', fontSize: '0.9rem', color: '#1e293b', outline: 'none', cursor: 'pointer' }}
+                      >
+                        {ALL_MONTHS.map(m => <option key={m.val} value={m.val}>{m.label}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div style={{ background: '#1e3a8a', padding: '1rem', textAlign: 'center', color: '#fff' }}>
+                    <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, textTransform: 'uppercase' }}>
+                      MILK FEEDING PROGRAM AS OF {toMonthLabel} {year}
+                    </h2>
+                  </div>
+                  <div style={{ background: '#3b82f6', padding: '0.5rem', textAlign: 'center', color: '#fff' }}>
+                    <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700, textTransform: 'uppercase' }}>
+                      SCHOOL BASED FEEDING PROGRAM FUNDED BY THE DEPARTMENT OF EDUCATION (DepEd)
+                    </h3>
+                  </div>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem', fontFamily: 'Arial, sans-serif' }}>
+                      <thead>
+                        <tr style={{ background: '#e0f2fe', color: '#0369a1' }}>
+                          <th style={{ ...thC, borderColor: '#bae6fd' }}>CLUSTER</th>
+                          <th style={{ ...thC, borderColor: '#bae6fd' }}>REGION</th>
+                          <th style={{ ...thC, borderColor: '#bae6fd' }}>BENEFICIARIES</th>
+                          <th style={{ ...thC, borderColor: '#bae6fd' }}>NO. OF COOPS</th>
+                          <th style={{ ...thC, borderColor: '#bae6fd' }}>RAW MILK USED IN LITERS</th>
+                          <th style={{ ...thC, borderColor: '#bae6fd' }}>MILK PACKS</th>
+                          <th style={{ ...thC, borderColor: '#bae6fd' }}>CONTRACT AMOUNT</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {clusterRows.map((r, i) => (
+                          <tr key={r.cluster} style={{ background: '#334155', color: '#fff' }}>
+                            <td style={{ border: '1px solid #475569', padding: '8px 10px', textAlign: 'left', fontWeight: 700, background: '#1e3a8a' }}>{r.cluster}</td>
+                            <td style={{ border: '1px solid #475569', padding: '8px 10px', textAlign: 'center' }}>{r.region}</td>
+                            <td style={{ border: '1px solid #475569', padding: '8px 10px', textAlign: 'center' }}>{r.beneficiaries > 0 ? r.beneficiaries.toLocaleString() : ''}</td>
+                            <td style={{ border: '1px solid #475569', padding: '8px 10px', textAlign: 'center' }}>{r.coops > 0 ? r.coops : ''}</td>
+                            <td style={{ border: '1px solid #475569', padding: '8px 10px', textAlign: 'center' }}>{r.rawMilkLiters > 0 ? r.rawMilkLiters.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 1 }) : ''}</td>
+                            <td style={{ border: '1px solid #475569', padding: '8px 10px', textAlign: 'center' }}>{r.packs > 0 ? r.packs.toLocaleString() : ''}</td>
+                            <td style={{ border: '1px solid #475569', padding: '8px 10px', textAlign: 'center' }}>{r.contractAmount > 0 ? fmtPeso(r.contractAmount) : ''}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr style={{ background: '#eab308', color: '#fff', fontWeight: 800 }}>
+                          <td style={{ border: '1px solid #ca8a04', padding: '8px 10px', textAlign: 'right' }} colSpan={2}>TOTAL</td>
+                          <td style={{ border: '1px solid #ca8a04', padding: '8px 10px', textAlign: 'center' }}>{totalBeneficiaries > 0 ? totalBeneficiaries.toLocaleString() : ''}</td>
+                          <td style={{ border: '1px solid #ca8a04', padding: '8px 10px', textAlign: 'center' }}>{totalCoops > 0 ? totalCoops : ''}</td>
+                          <td style={{ border: '1px solid #ca8a04', padding: '8px 10px', textAlign: 'center' }}>{totalRawMilk > 0 ? totalRawMilk.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 1 }) : ''}</td>
+                          <td style={{ border: '1px solid #ca8a04', padding: '8px 10px', textAlign: 'center' }}>{totalPacks > 0 ? totalPacks.toLocaleString() : ''}</td>
+                          <td style={{ border: '1px solid #ca8a04', padding: '8px 10px', textAlign: 'center' }}>{totalContractAmount > 0 ? fmtPeso(totalContractAmount) : ''}</td>
                         </tr>
                       </tfoot>
                     </table>
