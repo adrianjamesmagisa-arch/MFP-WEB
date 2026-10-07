@@ -30,10 +30,12 @@ const reportItems = [
 export function SbfpSubSidebar({
   schoolYears,
   encoderCenter = null,
+  role = null,
 }: {
   schoolYears?: string[]
   /** When set, only this center appears under Centers (encoder lock). */
   encoderCenter?: string | null
+  role?: string | null
 }) {
   const pathname = usePathname()
   const router = useRouter()
@@ -81,9 +83,13 @@ export function SbfpSubSidebar({
   const hasSyInUrl = Boolean(searchParams.get('sy')?.trim())
 
   // Encoders: center monitoring only — hide national nav, SBFP Report, and center picker
-  const navMain = encoderCenter ? [] : mainItems
+  let navMain = encoderCenter ? [] : mainItems
   const navReports = encoderCenter ? [] : reportItems
   const showCentersNav = !encoderCenter
+
+  if (role === 'viewer') {
+    navMain = navMain.filter(item => item.label !== 'Budget Breakdown' && item.label !== 'Status of Activities')
+  }
 
   const linkStyle = (isActive: boolean, compact?: boolean): CSSProperties => ({
     display: 'flex',

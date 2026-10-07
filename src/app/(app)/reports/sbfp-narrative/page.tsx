@@ -1153,8 +1153,8 @@ export default function SbfpSpreadsheetReport() {
       colTypes = ['num','text','text','text','text','text','text','cur','text','text','text','text','text','text','num','cur','text','text','num','num','text','text']
 
     } else if (targetTab === 'monthly_cummulated') {
-      sheetName = 'Monthly Cummulated'
-      filename = `sbfp_monthly_cummulated_${year}_${dateStr}.xlsx`
+      sheetName = 'CDP Report'
+      filename = `sbfp_cdp_report_${year}_${dateStr}.xlsx`
       headers = [
         'CLUSTER', 'REGION', 'BENEFICIARIES', 'NO. OF COOPS', 'RAW MILK USED IN LITERS',
         'MILK PACKS', 'CONTRACT AMOUNT'
@@ -1626,7 +1626,7 @@ export default function SbfpSpreadsheetReport() {
               ['senate_center', '4. Center Distribution', Building2],
               ['senate_delivery', '5. Contract & Delivery Details', CircleDollarSign],
               ['milk_procurement', '6. Milk Procurement Status', FileSpreadsheet],
-              ['monthly_cummulated', '7. Monthly Cummulated', BarChart2],
+              ['monthly_cummulated', '7. CDP Report', BarChart2],
             ] as const).map(([id, label, Icon]) => (
               <button
                 key={id}
