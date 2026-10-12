@@ -122,7 +122,7 @@ export function ProgramCenterWorkspace({
           </p>
         </div>
         <Link href={pimdHref} className="btn btn-outline">
-          <BarChart3 size={16} /> PIMD report
+          <BarChart3 size={16} /> Factsheet
         </Link>
       </div>
 

@@ -29,7 +29,7 @@ const monitoringNavItems: { program: MonitoringProgramId; icon: typeof HeartHand
 ]
 
 const reportItems = [
-  { href: '/reports/pimd',         icon: BarChart3,      label: 'PIMD Report' },
+  { href: '/reports/pimd',         icon: BarChart3,      label: 'Factsheet' },
   { href: '/reports/sbfp-narrative',icon: FileBarChart2, label: 'SBFP Report' },
   { href: '/reports/summary-deped',icon: BookOpenCheck,  label: 'Summary DepEd' },
   { href: '/reports/summary-lds',  icon: Church,         label: 'Summary LDS' },

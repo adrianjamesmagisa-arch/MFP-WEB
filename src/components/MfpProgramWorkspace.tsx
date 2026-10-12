@@ -101,7 +101,7 @@ export function MfpProgramWorkspace({
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <Link href={pimdHref} className="btn btn-outline">
-            <BarChart3 size={16} /> PIMD report
+            <BarChart3 size={16} /> Factsheet
           </Link>
           <Link href={program.summaryHref} className="btn btn-outline">
             Summary
