@@ -2,7 +2,7 @@
 
 import { useEffect, useTransition } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { APP_YEAR_STRINGS } from '@/lib/app-years'
+import { REPORT_YEAR_STRINGS } from '@/lib/app-years'
 import { PROGRAM_MONTHS } from '@/lib/monitoring-programs'
 import { PCC_CENTERS } from '@/lib/types'
 import { useAsyncFeedback } from '@/components/loading/AsyncFeedback'
@@ -73,7 +73,7 @@ export function ProgramOverallFilter({
         Year
         <select className="form-input" style={selectStyle} value={year} onChange={e => apply(e.target.value, month, center)}>
           <option value="">All years</option>
-          {APP_YEAR_STRINGS.map(y => (
+          {REPORT_YEAR_STRINGS.map(y => (
             <option key={y} value={y}>{y}</option>
           ))}
         </select>

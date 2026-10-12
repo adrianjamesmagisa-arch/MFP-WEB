@@ -4,7 +4,6 @@ import { useState, useEffect, useMemo, useCallback, type CSSProperties } from 'r
 import { createClient } from '@/lib/supabase/client'
 import { Printer, Download, Filter, Search, RotateCcw, Table, BarChart2, Layers, Building2, FileSpreadsheet, CircleDollarSign, ClipboardList, MapPinned, FileDown } from 'lucide-react'
 import { SBFP_DATA_ENCODER_COLUMNS } from '@/lib/encoder-selects'
-import * as XLSX from 'xlsx-js-style'
 import { dbYearToSchoolYear, FALLBACK_SCHOOL_YEARS, schoolYearToDbYear } from '@/lib/sbfp-year'
 import {
   defaultDeliveredPackRange,
@@ -913,6 +912,7 @@ export default function SbfpSpreadsheetReport() {
   }
 
   function buildStyledSheet(
+    XLSX: any,
     hdrs: string[],
     dataRows: Array<Array<string | number>>,
     colTypes: ColType[],
@@ -1308,27 +1308,29 @@ export default function SbfpSpreadsheetReport() {
   }
 
   /** Export the currently active tab to a single-sheet styled Excel (.xlsx) file. */
-  const exportToExcel = (targetTab?: ReportTab) => {
+  const exportToExcel = async (targetTab?: ReportTab) => {
     if (filteredRecords.length === 0) {
       alert('No data to export.')
       return
     }
+    const XLSX = (await import('xlsx-js-style')).default || (await import('xlsx-js-style'))
     const tabToExport = targetTab || activeTab
     const data = getTabExportData(tabToExport)
 
     // Build styled workbook and download
     const wb = XLSX.utils.book_new()
-    const ws = buildStyledSheet(data.headers, data.rows, data.colTypes)
+    const ws = buildStyledSheet(XLSX, data.headers, data.rows, data.colTypes)
     XLSX.utils.book_append_sheet(wb, ws, data.sheetName)
     XLSX.writeFile(wb, data.filename)
   }
 
   /** Export all report tabs into one multi-sheet styled Excel (.xlsx) workbook. */
-  const exportAllTabsToExcel = () => {
+  const exportAllTabsToExcel = async () => {
     if (filteredRecords.length === 0) {
       alert('No data to export.')
       return
     }
+    const XLSX = (await import('xlsx-js-style')).default || (await import('xlsx-js-style'))
     const allTabIds: ReportTab[] = [
       'master',
       'senate_perf',
@@ -1344,7 +1346,7 @@ export default function SbfpSpreadsheetReport() {
 
     for (const tabId of allTabIds) {
       const data = getTabExportData(tabId)
-      const ws = buildStyledSheet(data.headers, data.rows, data.colTypes)
+      const ws = buildStyledSheet(XLSX, data.headers, data.rows, data.colTypes)
       XLSX.utils.book_append_sheet(wb, ws, data.sheetName)
     }
 

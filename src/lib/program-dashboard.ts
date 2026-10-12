@@ -3,6 +3,7 @@ import { rowMatchesMonitoringProgram, type MonitoringProgramId } from '@/lib/mon
 import { computeSbfpAccomplishment, filterReportableSbfpRows } from '@/lib/sbfp-accomplishment'
 import { packsForMonth, type SbfpRawMilkRow } from '@/lib/sbfp-raw-milk'
 import type { ProgramDropoffRow, ProgramProcurementRow } from '@/lib/program-dropoff-sync'
+import { REPORT_MIN_YEAR } from '@/lib/app-years'
 
 type SupabaseLike = { from: (table: string) => any }
 
@@ -52,6 +53,21 @@ export function emptyStatus(): ProgramDashStatus {
   return { prep: 0, ongoing: 0, awarded: 0, done: 0, failed: 0 }
 }
 
+export function emptyProgramDashboardStats(): ProgramDashboardStats {
+  return {
+    provinces: 0,
+    municipalities: 0,
+    beneficiaries: 0,
+    targetPacks: 0,
+    deliveredPacks: 0,
+    amount: 0,
+    masterlistRecords: 0,
+    status: emptyStatus(),
+    byCenter: [],
+    byMonth: Array.from({ length: 12 }, (_, i) => ({ month: i + 1, deliveredPacks: 0 })),
+  }
+}
+
 export function tallyStatus(status: string | null | undefined, acc: ProgramDashStatus) {
   const st = (status || '').toUpperCase()
   if (st === 'FOR PREPARATION') acc.prep++
@@ -74,9 +90,16 @@ export async function loadProgramDashboardStats(
     .range(0, 19999)
 
   if (filters.year) {
+    if (filters.year < REPORT_MIN_YEAR) {
+      return emptyProgramDashboardStats()
+    }
     procQ = procQ.eq('year', filters.year)
     dropQ = dropQ.eq('year', filters.year)
     mfpQ = mfpQ.eq('year', filters.year)
+  } else {
+    procQ = procQ.gte('year', REPORT_MIN_YEAR)
+    dropQ = dropQ.gte('year', REPORT_MIN_YEAR)
+    mfpQ = mfpQ.gte('year', REPORT_MIN_YEAR)
   }
   if (filters.center) {
     procQ = procQ.eq('center', filters.center)

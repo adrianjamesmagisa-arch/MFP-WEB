@@ -1,20 +1,14 @@
 import { Suspense } from 'react'
-import { createClient } from '@/lib/supabase/server'
+import { getCurrentUser } from '@/lib/auth-session'
 import { sbfpNavCenter } from '@/lib/center-aliases'
 
 export default async function SbfpLayout({ children }: { children: React.ReactNode }) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user, profile } = await getCurrentUser()
   let encoderCenter: string | null = null
   let role: string | null = null
-  if (user) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role,center')
-      .eq('id', user.id)
-      .single()
-    role = profile?.role || null
-    if (profile?.role === 'encoder') {
+  if (user && profile) {
+    role = profile.role || null
+    if (profile.role === 'encoder') {
       encoderCenter = sbfpNavCenter(profile.center)
     }
   }

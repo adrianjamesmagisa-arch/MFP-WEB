@@ -7,6 +7,7 @@ import { REGIONS, PCC_CENTERS } from '@/lib/types'
 import { APP_YEAR_STRINGS, APP_YEARS, defaultReportYearString } from '@/lib/app-years'
 import { MFP_DATA_LIST_COLUMNS } from '@/lib/encoder-selects'
 import { fetchAllRows } from '@/lib/supabase-paginate'
+import { getCurrentUser } from '@/lib/auth-session'
 
 export default async function DataPage({
   searchParams,
@@ -28,17 +29,10 @@ export default async function DataPage({
     input_year?: string
   }>
 }) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { user, profile } = await getCurrentUser()
   if (!user) redirect('/login')
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role,center')
-    .eq('id', user.id)
-    .single()
+  const supabase = await createClient()
 
   const params = await searchParams
 
@@ -64,6 +58,7 @@ export default async function DataPage({
       .gte('year', APP_YEARS[0] ?? 2026)
       .order('year', { ascending: false })
       .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
 
     if (profile?.role === 'encoder' && profile?.center) {
       query = query.eq('center', profile.center)
@@ -190,8 +185,10 @@ export default async function DataPage({
       <DataFilters filterOptions={filterOptions} />
 
       <DataTable
+        key={`${params.year ?? 'all'}:${params.search ?? ''}:${params.funded_by ?? ''}:${params.center ?? ''}:${params.region ?? ''}:${params.province ?? ''}:${params.division ?? ''}:${params.municipality ?? ''}:${params.milk_type ?? ''}:${params.supplier ?? ''}:${params.date_started_month ?? ''}:${params.date_completed_month ?? ''}`}
         records={records ?? []}
         readOnly={profile?.role === 'viewer'}
+        userRole={profile?.role ?? 'viewer'}
         resyncDelivery={
           syncCenter
             ? {

@@ -2,18 +2,16 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { DashboardOverview } from '@/components/dashboard/DashboardOverview'
 import { loadDashboardStats } from '@/lib/dashboard-stats'
+import { getCurrentUser } from '@/lib/auth-session'
 
 export default async function DashboardPage(props: {
   searchParams: Promise<{ year?: string; month?: string; center?: string }>
 }) {
   const searchParams = await props.searchParams
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { user, profile } = await getCurrentUser()
   if (!user) redirect('/login')
 
-  const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+  const supabase = await createClient()
 
   const isEncoder = profile?.role === 'encoder'
   const centerFilter = isEncoder ? profile?.center : searchParams.center

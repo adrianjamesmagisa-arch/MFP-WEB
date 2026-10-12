@@ -7,7 +7,7 @@ import { fetchAllRows } from '@/lib/supabase-paginate'
 import { sbfpCenterAliases } from '@/lib/center-aliases'
 import { resolveReportSchoolYearFilter } from '@/lib/report-year'
 import { schoolYearsFromRows } from '@/lib/sbfp-year'
-import { MIN_DATA_YEAR } from '@/lib/app-years'
+import { REPORT_MIN_YEAR } from '@/lib/app-years'
 import { excludeAuxSbfp } from '@/lib/sbfp-aux'
 import {
   incomeForMonth,
@@ -77,7 +77,7 @@ export default async function SummaryDepEdPage(props: {
     let query = supabase
       .from('sbfp_data')
       .select(SBFP_DEPED_SELECT)
-      .gte('year', MIN_DATA_YEAR)
+      .gte('year', REPORT_MIN_YEAR)
     if (!allYears && yearNum != null) query = query.eq('year', yearNum)
     if (centerAliases?.length === 1) query = query.eq('center', centerAliases[0])
     else if (centerAliases && centerAliases.length > 1) query = query.in('center', centerAliases)
@@ -132,7 +132,7 @@ export default async function SummaryDepEdPage(props: {
     let q = supabase
       .from('sbfp_dropoff_points')
       .select('id,year,center,sbfp_data_id')
-      .gte('year', MIN_DATA_YEAR)
+      .gte('year', REPORT_MIN_YEAR)
     if (!allYears && yearNum != null) q = q.eq('year', yearNum)
     if (centerAliases?.length === 1) q = q.eq('center', centerAliases[0])
     else if (centerAliases && centerAliases.length > 1) q = q.in('center', centerAliases)

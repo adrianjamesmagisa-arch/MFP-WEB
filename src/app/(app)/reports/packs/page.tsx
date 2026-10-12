@@ -5,7 +5,7 @@ import { DashboardFilter } from '@/components/DashboardFilter'
 import { PCC_CENTERS } from '@/lib/types'
 import { fetchAllRows } from '@/lib/supabase-paginate'
 import { resolveReportYearFilter } from '@/lib/report-year'
-import { MIN_DATA_YEAR } from '@/lib/app-years'
+import { REPORT_MIN_YEAR } from '@/lib/app-years'
 
 export default async function PacksDeliveredPage(props: {
   searchParams: Promise<{ year?: string; month?: string; center?: string }>
@@ -25,7 +25,7 @@ export default async function PacksDeliveredPage(props: {
     let query = supabase
       .from('mfp_data')
       .select('beneficiaries, milk_packs, milk_cost, total_funds_transferred, milk_type, funded_by, year, center, region, province, date_started, feeding_days')
-      .gte('year', MIN_DATA_YEAR)
+      .gte('year', REPORT_MIN_YEAR)
     if (!allYears && yearNum != null) query = query.eq('year', yearNum)
     if (centerFilter) query = query.eq('center', centerFilter)
     return query

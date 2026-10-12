@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useRouter, useParams } from 'next/navigation'
 import { PCC_CENTERS, REGIONS, MODES_OF_PROCUREMENT, type Cooperative } from '@/lib/types'
 import { APP_YEAR_STRINGS } from '@/lib/app-years'
-import { Save, X, AlertCircle, CheckCircle2, RotateCcw, PenLine } from 'lucide-react'
+import { Save, X, AlertCircle, CheckCircle2, RotateCcw, PenLine, Lock } from 'lucide-react'
 
 // ─── Formula defaults ───────────────────────────────────────────────────────────
 const DEFAULT_FORMULAS = {
@@ -356,6 +356,12 @@ export default function EditRecordPage() {
       setError('Beneficiaries (Q) and Price (S) are required.')
       return
     }
+    const isHistorical = parseInt(validRows[0].year, 10) < 2026
+    const canEditHistorical = profile?.role === 'admin' || profile?.role === 'super_admin'
+    if (isHistorical && !canEditHistorical) {
+      setError('Historical archive records (2019–2025) are read-only and can only be edited by an Administrator.')
+      return
+    }
     setLoading(true); setError('')
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setError('Not authenticated'); setLoading(false); return }
@@ -388,6 +394,9 @@ export default function EditRecordPage() {
 
   // ── Derived ───────────────────────────────────────────────────────────────────
   const isSuperAdmin = profile?.role === 'super_admin'
+  const isHistoricalRecord = parseInt(rows[0]?.year || '0', 10) < 2026
+  const canEditHistorical = profile?.role === 'admin' || profile?.role === 'super_admin'
+  const isLockedHistorical = isHistoricalRecord && !canEditHistorical
   const validRowCount = rows.filter(isRowValid).length
   const activeBorder = (rowIdx: number, letter: string): React.CSSProperties => {
     if (activeCell?.rowIdx !== rowIdx || activeCell?.letter !== letter) return {}
@@ -649,12 +658,18 @@ export default function EditRecordPage() {
         <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
           {formulasSaved && <span style={{ fontSize: '0.78rem', color: '#16a34a', display: 'flex', alignItems: 'center', gap: 4 }}><CheckCircle2 size={13} /> Formulas saved</span>}
           <button type="button" onClick={() => router.back()} className="btn btn-outline"><X size={16} /> Cancel</button>
-          <button form="xls-form" type="submit" className="btn btn-gold" disabled={loading} style={{ padding: '0.55rem 1.5rem' }}>
-            <Save size={16} />
-            {loading ? 'Saving...' : validRowCount > 0 ? `Save ${validRowCount} Record${validRowCount !== 1 ? 's' : ''}` : 'Save Records'}
+          <button form="xls-form" type="submit" className="btn btn-gold" disabled={loading || isLockedHistorical} style={{ padding: '0.55rem 1.5rem', opacity: isLockedHistorical ? 0.6 : 1, cursor: isLockedHistorical ? 'not-allowed' : 'pointer' }}>
+            {isLockedHistorical ? <Lock size={16} /> : <Save size={16} />}
+            {isLockedHistorical ? 'Locked (Admin Only)' : loading ? 'Saving...' : validRowCount > 0 ? `Save ${validRowCount} Record${validRowCount !== 1 ? 's' : ''}` : 'Save Records'}
           </button>
         </div>
       </div>
+
+      {isLockedHistorical && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#fef3c7', color: '#92400e', padding: '0.75rem 1rem', borderRadius: 8, marginBottom: '0.75rem', fontSize: '0.875rem', border: '1px solid #fde68a' }}>
+          <Lock size={16} /> <strong>Historical Archive (2019–2025):</strong> This record is read-only. Only Administrators can modify historical records.
+        </div>
+      )}
 
       {/* Error */}
       {error && (

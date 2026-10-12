@@ -146,9 +146,23 @@ async function main() {
   Object.keys(data[0]).forEach((k, i) => console.log(`  [${i + 1}] ${k}`))
   console.log()
 
+  // Filter ONLY for years 2019 to 2025 (exclude 2026 as per user request)
+  const targetData = data.filter((row) => {
+    const y = parseNumber(row['Year'], true)
+    return y >= 2019 && y <= 2025
+  })
+
+  console.log(`🎯 Rows matching 2019–2025 to seed: ${targetData.length}`)
+  console.log(`⏭️  Excluded rows (2026 or outside range): ${data.length - targetData.length}\n`)
+
+  if (targetData.length === 0) {
+    console.error('❌ No rows found for years 2019–2025. Aborting.')
+    process.exit(1)
+  }
+
   // 2. Extract unique suppliers → upsert into cooperatives
-  console.log('🤝 Extracting unique suppliers/cooperatives...')
-  const supplierNames = [...new Set(data.map((r) => r['Supplier']).filter(Boolean))]
+  console.log('🤝 Extracting unique suppliers/cooperatives for 2019–2025...')
+  const supplierNames = [...new Set(targetData.map((r) => r['Supplier']).filter(Boolean))]
   const supplierMap = {}
 
   for (const name of supplierNames) {
@@ -182,7 +196,7 @@ async function main() {
 
   // 3. Map Excel rows → mfp_data records
   console.log('🔄 Mapping Excel rows to database records...')
-  const records = data.map((row) => {
+  const records = targetData.map((row) => {
     return {
       year: parseNumber(row['Year'], true),
       funded_by: normalizeFundedBy(row['Funded By']),
@@ -225,7 +239,7 @@ async function main() {
     }
   })
 
-  console.log(`✅ Prepared ${records.length} records.\n`)
+  console.log(`✅ Prepared ${records.length} records for insertion.\n`)
 
   // Preview first 3 records
   console.log('👁️  Sample records (first 3):')
@@ -238,19 +252,20 @@ async function main() {
     return
   }
 
-  // 4. Optionally clear existing data
+  // 4. Optionally clear existing 2019-2025 data (preserving 2026 data intact)
   if (!SKIP_DELETE) {
-    console.log('🗑️  Clearing existing mfp_data rows...')
+    console.log('🗑️  Clearing existing 2019–2025 mfp_data rows (preserving 2026 data)...')
     const { error: delError } = await supabase
       .from('mfp_data')
       .delete()
-      .neq('id', '00000000-0000-0000-0000-000000000000')
+      .gte('year', 2019)
+      .lte('year', 2025)
 
     if (delError) {
-      console.error('❌ Failed to clear mfp_data:', delError.message)
+      console.error('❌ Failed to clear existing 2019–2025 mfp_data:', delError.message)
       process.exit(1)
     }
-    console.log('✅ Existing data cleared.\n')
+    console.log('✅ Existing 2019–2025 data cleared (2026 data remains untouched).\n')
   }
 
   // 5. Insert in chunks
@@ -275,6 +290,16 @@ async function main() {
   if (errors > 0) {
     console.warn(`⚠️  ${errors} chunk(s) failed. Check the logs above.`)
     process.exit(1)
+  }
+
+  // 6. Verify row counts by year in Supabase
+  console.log('\n📊 Verifying final row counts in mfp_data by year:')
+  for (const y of [2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]) {
+    const { count } = await supabase
+      .from('mfp_data')
+      .select('*', { count: 'exact', head: true })
+      .eq('year', y)
+    console.log(`  Year ${y}: ${count} rows`)
   }
 }
 

@@ -338,6 +338,12 @@ export default function NewRecordPage() {
       setError('Please fill at least one row — Beneficiaries (Q) and Price (S) are required per row')
       return
     }
+    const hasHistorical = validRows.some(row => parseInt(row.year, 10) < 2026)
+    const canEditHistorical = profile?.role === 'admin' || profile?.role === 'super_admin'
+    if (hasHistorical && !canEditHistorical) {
+      setError('Only Administrators can create historical archive records (2019–2025).')
+      return
+    }
     setLoading(true); setError('')
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setError('Not authenticated'); setLoading(false); return }

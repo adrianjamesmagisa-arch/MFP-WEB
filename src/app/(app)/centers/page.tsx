@@ -19,6 +19,7 @@ export default async function CentersPage() {
   const { data: latestInputs } = await supabase
     .from('mfp_data')
     .select('center, created_at')
+    .gte('year', 2026)
     .order('created_at', { ascending: false })
   
   // Aggregate to find the most recent created_at per center

@@ -17,6 +17,7 @@ import {
 } from '@/lib/sbfp-raw-milk'
 import { fetchAllRows } from '@/lib/supabase-paginate'
 import { centerDisplayLabel, mfpCenterAliases, sbfpCenterAliases } from '@/lib/center-aliases'
+import { REPORT_MIN_YEAR } from '@/lib/app-years'
 
 export type DashFunderStat = {
   funded_by: string
@@ -108,6 +109,7 @@ export async function loadDashboardStats(
         'id,year,center,sdo,region,milk_type,batch,feeding_days,remarks,delivery_start,delivery_end,packs_to_deliver,packs_delivered,monthly_packs_delivered,delivery_snapshots,amount,contract_amount,raw_milk_prices,raw_milk_month,beneficiaries_pm,procurement_status,include_in_report',
       )
       if (year) q = q.eq('year', year)
+      else q = q.gte('year', REPORT_MIN_YEAR)
       return q
     }),
     fetchAllRows<any>(() => {
@@ -117,6 +119,7 @@ export async function loadDashboardStats(
           'beneficiaries,milk_packs,milk_cost,total_funds_transferred,funded_by,year,center,date_started,target_milk_packs_to_deliver,total_milk_packs_delivered',
         )
       if (year) q = q.eq('year', year)
+      else q = q.gte('year', REPORT_MIN_YEAR)
       return q
     }),
     loadDswdDashboardSlice(supabase, { year, month, center }),

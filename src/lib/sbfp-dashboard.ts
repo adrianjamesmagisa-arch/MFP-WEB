@@ -3,8 +3,10 @@ import { excludeAuxSbfp } from '@/lib/sbfp-aux'
 import { uniqueSdoCountKey } from '@/lib/sbfp-dropoff-sync'
 import { computeSbfpAccomplishment, filterReportableSbfpRows } from '@/lib/sbfp-accomplishment'
 import { packsForMonth, type SbfpRawMilkRow } from '@/lib/sbfp-raw-milk'
+import { REPORT_MIN_YEAR } from '@/lib/app-years'
 import {
   emptyStatus,
+  emptyProgramDashboardStats,
   tallyStatus,
   type ProgramDashCenterRow,
   type ProgramDashFilters,
@@ -60,9 +62,16 @@ export async function loadSbfpDashboardStats(
     .range(0, 19999)
 
   if (filters.year) {
+    if (filters.year < REPORT_MIN_YEAR) {
+      return emptyProgramDashboardStats()
+    }
     sdoQ = sdoQ.eq('year', filters.year)
     dropQ = dropQ.eq('year', filters.year)
     mfpQ = mfpQ.eq('year', filters.year)
+  } else {
+    sdoQ = sdoQ.gte('year', REPORT_MIN_YEAR)
+    dropQ = dropQ.gte('year', REPORT_MIN_YEAR)
+    mfpQ = mfpQ.gte('year', REPORT_MIN_YEAR)
   }
   if (filters.center) {
     sdoQ = sdoQ.eq('center', filters.center)

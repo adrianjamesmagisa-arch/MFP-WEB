@@ -380,6 +380,13 @@ export default function BulkEditPage() {
       setLoading(false)
       return
     }
+    const hasHistorical = validRows.some(row => parseInt(row.year, 10) < 2026)
+    const canEditHistorical = profile?.role === 'admin' || profile?.role === 'super_admin'
+    if (hasHistorical && !canEditHistorical) {
+      setError('Historical archive records (2019–2025) are read-only and can only be edited by an Administrator.')
+      setLoading(false)
+      return
+    }
     for (const row of validRows) {
       if (isDuplicateInForm(row, validRows.indexOf(row), validRows)) {
         setError('Duplicate entries found within the form. Please resolve them.')

@@ -24,7 +24,7 @@ import {
   normalizeSdoName,
 } from '@/lib/sbfp-dropoff-sync'
 import { calcMilkFormulations, litersPerPackForMilkType, packagingSizeForMilkType, normalizeMilkTypeCode } from '@/lib/mfp-formulas'
-import { APP_YEAR_STRINGS } from '@/lib/app-years'
+import { REPORT_YEAR_STRINGS, REPORT_MIN_YEAR } from '@/lib/app-years'
 import { mfpCenterAliases, sbfpCenterAliases, centerDisplayLabel } from '@/lib/center-aliases'
 import { Download, Filter, Printer, ZoomIn, ZoomOut, Maximize2, AlignCenter } from 'lucide-react'
 import { Spinner } from '@/components/loading/Spinner'
@@ -44,7 +44,7 @@ const MAX_ZOOM  = 1.50
 
 type ZoomMode = 'fit-page' | 'fit-width' | 'custom'
 
-const YEARS  = APP_YEAR_STRINGS
+const YEARS  = REPORT_YEAR_STRINGS
 const MONTHS = [
   ['1','January'],['2','February'],['3','March'],['4','April'],
   ['5','May'],['6','June'],['7','July'],['8','August'],
@@ -360,6 +360,7 @@ export default function PIMDReportPage() {
         q = aliases.length === 1 ? q.eq('center', aliases[0]) : q.in('center', aliases)
       }
       if (year) q = q.eq('year', parseInt(year))
+      else q = q.gte('year', REPORT_MIN_YEAR)
       // Prefer exact DB spellings; DepEd is stored as "DepEd"
       if (funder === 'DepEd') q = q.eq('funded_by', 'DepEd')
       else if (funder === 'DSWD') q = q.eq('funded_by', 'DSWD')
@@ -403,6 +404,7 @@ export default function PIMDReportPage() {
         sq = aliases.length === 1 ? sq.eq('center', aliases[0]) : sq.in('center', aliases)
       }
       if (year) sq = sq.eq('year', parseInt(year))
+      else sq = sq.gte('year', REPORT_MIN_YEAR)
       const { data: sbfpRows } = await sq
       if (sbfpRows && sbfpRows.length > 0) {
         sbfpAll = excludeAuxSbfp(sbfpRows)

@@ -12,6 +12,7 @@ import {
 import type { ProgramDropoffRow, ProgramProcurementRow } from '@/lib/program-dropoff-sync'
 import { computeSbfpAccomplishment, filterReportableSbfpRows } from '@/lib/sbfp-accomplishment'
 import { sumRowIncome, type SbfpRawMilkRow } from '@/lib/sbfp-raw-milk'
+import { REPORT_MIN_YEAR } from '@/lib/app-years'
 
 export type DswdSummaryRow = {
   year: number
@@ -105,6 +106,7 @@ export async function loadDswdMonitoringSummaryRows(
         .select(PROGRAM_DROPOFF_ENCODER_COLUMNS)
         .eq('program', 'dswd')
       if (filters.year) q = q.eq('year', filters.year)
+      else q = q.gte('year', REPORT_MIN_YEAR)
       return q
     }),
     fetchAllRows<ProgramProcurementRow>(() => {
@@ -113,6 +115,7 @@ export async function loadDswdMonitoringSummaryRows(
         .select(`${PROGRAM_PROCUREMENT_ENCODER_COLUMNS}, cooperatives:supplier_id(name)`)
         .eq('program', 'dswd')
       if (filters.year) q = q.eq('year', filters.year)
+      else q = q.gte('year', REPORT_MIN_YEAR)
       return q
     }),
   ])
@@ -167,6 +170,7 @@ export async function loadDswdDashboardSlice(
       .select(PROGRAM_PROCUREMENT_ENCODER_COLUMNS)
       .eq('program', 'dswd')
     if (filters.year) q = q.eq('year', filters.year)
+    else q = q.gte('year', REPORT_MIN_YEAR)
     return q
   })
 

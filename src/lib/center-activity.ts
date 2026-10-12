@@ -182,18 +182,20 @@ export async function loadCenterActivityLog(
     else console.warn('load activity log:', msg)
   }
 
-  // Derived timeline from record stamps (works even before migration).
+  // Derived timeline from record stamps (capped to recent items for high performance).
+  const fetchLimit = Math.max(limit * 2, 50)
+
   try {
-    const mfpRows = await fetchAllRows(() =>
-      supabase
-        .from('mfp_data')
-        .select(
-          'id,center,funded_by,elementary_school,municipality,created_at,updated_at,created_by',
-        )
-        .eq('center', center)
-        .order('created_at', { ascending: false }),
-    )
-    for (const row of mfpRows) {
+    const { data: mfpRows } = await supabase
+      .from('mfp_data')
+      .select(
+        'id,center,funded_by,elementary_school,municipality,created_at,updated_at,created_by',
+      )
+      .eq('center', center)
+      .order('created_at', { ascending: false })
+      .limit(fetchLimit)
+
+    for (const row of mfpRows || []) {
       const label =
         String(row.elementary_school || row.municipality || 'record').trim() || 'record'
       const funded = String(row.funded_by || '').trim()
@@ -231,14 +233,14 @@ export async function loadCenterActivityLog(
   }
 
   try {
-    const sbfpRows = await fetchAllRows(() =>
-      supabase
-        .from('sbfp_data')
-        .select('id,center,sdo,created_at,updated_at')
-        .eq('center', center)
-        .order('created_at', { ascending: false }),
-    )
-    for (const row of sbfpRows) {
+    const { data: sbfpRows } = await supabase
+      .from('sbfp_data')
+      .select('id,center,sdo,created_at,updated_at')
+      .eq('center', center)
+      .order('created_at', { ascending: false })
+      .limit(fetchLimit)
+
+    for (const row of sbfpRows || []) {
       const label = String(row.sdo || 'SDO').trim() || 'SDO'
       if (row.created_at) {
         pushEvent(events, {
@@ -270,14 +272,14 @@ export async function loadCenterActivityLog(
   }
 
   try {
-    const dropRows = await fetchAllRows(() =>
-      supabase
-        .from('sbfp_dropoff_points')
-        .select('id,center,dropoff_name,sdo,created_at,updated_at')
-        .eq('center', center)
-        .order('created_at', { ascending: false }),
-    )
-    for (const row of dropRows) {
+    const { data: dropRows } = await supabase
+      .from('sbfp_dropoff_points')
+      .select('id,center,dropoff_name,sdo,created_at,updated_at')
+      .eq('center', center)
+      .order('created_at', { ascending: false })
+      .limit(fetchLimit)
+
+    for (const row of dropRows || []) {
       const label = String(row.dropoff_name || 'school').trim() || 'school'
       if (row.created_at) {
         pushEvent(events, {

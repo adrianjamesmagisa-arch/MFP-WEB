@@ -28,8 +28,11 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Public routes — no auth needed
-  const publicRoutes = ['/login']
-  if (publicRoutes.includes(pathname)) {
+  if (pathname === '/api/health') {
+    return supabaseResponse
+  }
+
+  if (pathname === '/login') {
     if (user) {
       return NextResponse.redirect(new URL('/dashboard', request.url))
     }

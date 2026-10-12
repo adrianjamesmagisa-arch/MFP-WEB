@@ -1,6 +1,7 @@
 import type { MonitoringProgramId } from '@/lib/monitoring-programs'
 import { MONITORING_PROGRAMS, rowMatchesMonitoringProgram } from '@/lib/monitoring-programs'
 import { mfpCenterAliases } from '@/lib/center-aliases'
+import { REPORT_MIN_YEAR } from '@/lib/app-years'
 
 export type MfpProgramYearCard = {
   year: number
@@ -46,6 +47,7 @@ export async function loadMfpProgramRecords(
   center: string,
   year: number,
 ): Promise<MfpProgramRecord[]> {
+  if (year < REPORT_MIN_YEAR) return []
   let q = centerFilter(
     supabase.from('mfp_data').select(
       'id,year,center,funded_by,region,province,division,municipality,elementary_school,beneficiaries,feeding_days,milk_packs,milk_type,date_started,date_completed,target_milk_packs_to_deliver,total_milk_packs_delivered,milk_cost,total_funds_transferred',
@@ -77,7 +79,7 @@ export async function loadMfpProgramYearCards(
       'year,division,elementary_school,beneficiaries,target_milk_packs_to_deliver,total_milk_packs_delivered,funded_by',
     ),
     center,
-  )
+  ).gte('year', REPORT_MIN_YEAR)
 
   const { data, error } = await q.limit(10000)
   if (error || !data) return []

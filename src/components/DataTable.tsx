@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { formatCurrency, formatNumber, formatDate } from '@/lib/utils'
-import { Edit2, Trash2 } from 'lucide-react'
+import { Edit2, Trash2, Lock } from 'lucide-react'
 import { Spinner } from '@/components/loading/Spinner'
 import { useAsyncTask } from '@/components/loading/AsyncFeedback'
 import { logCenterActivity } from '@/lib/center-activity'
@@ -124,12 +124,15 @@ export function DataTable({
   resyncDelivery,
   resyncProgram,
   readOnly = false,
+  userRole = 'viewer',
 }: {
   records: any[]
   resyncDelivery?: { center: string; year: number } | null
   /** Push DSWD/LDS/etc. monitoring drop-offs into masterlist for this center/year. */
   resyncProgram?: { center: string; year: number; program?: string } | null
   readOnly?: boolean
+  /** The current user's role — used to lock historical (pre-2026) rows for non-admins. */
+  userRole?: string
 }) {
   const router = useRouter()
   const supabase = createClient()
@@ -139,13 +142,24 @@ export function DataTable({
   const [undoStack, setUndoStack] = useState<any[]>([])
   const [redoStack, setRedoStack] = useState<any[]>([])
   const [bulkDeleting, setBulkDeleting] = useState(false)
+  const [pageSize, setPageSize] = useState<number>(100)
+  const [currentPage, setCurrentPage] = useState<number>(1)
 
   useEffect(() => {
     setLocalRecords(records)
+    setCurrentPage(1)
   }, [records])
 
   const displayRecords = useMemo(() => {
-    return [...localRecords].sort((a, b) => {
+    const seenIds = new Set<string>()
+    const unique = localRecords.filter(r => {
+      if (!r?.id) return true
+      if (seenIds.has(r.id)) return false
+      seenIds.add(r.id)
+      return true
+    })
+
+    return unique.sort((a, b) => {
       const y = (Number(b.year) || 0) - (Number(a.year) || 0)
       if (y !== 0) return y
       const c = String(a.center || '').localeCompare(String(b.center || ''))
@@ -155,6 +169,13 @@ export function DataTable({
       return String(a.elementary_school || '').localeCompare(String(b.elementary_school || ''))
     })
   }, [localRecords])
+
+  const totalPages = pageSize === -1 ? 1 : Math.ceil(displayRecords.length / pageSize) || 1
+  const paginatedRecords = useMemo(() => {
+    if (pageSize === -1 || pageSize >= displayRecords.length) return displayRecords
+    const start = (currentPage - 1) * pageSize
+    return displayRecords.slice(start, start + pageSize)
+  }, [displayRecords, currentPage, pageSize])
 
   // SDO-level AD/AE (one target + delivered total per year+center+division)
   const divisionDelivery = useMemo(() => {
@@ -170,16 +191,16 @@ export function DataTable({
     return keyData
   }, [displayRecords])
 
-  // One merged AD/AE block per consecutive SDO group (Excel-style), using division totals.
+  // One merged AD/AE block per consecutive SDO group on current page (Excel-style)
   const divisionRowSpan = useMemo(() => {
     const result: { firstInGroup: boolean; rowspan: number; target: number; delivered: number }[] = []
     let i = 0
-    while (i < displayRecords.length) {
-      const r = displayRecords[i]
+    while (i < paginatedRecords.length) {
+      const r = paginatedRecords[i]
       const key = `${r.year}|${r.center}|${r.division}`
       let span = 1
-      while (i + span < displayRecords.length) {
-        const nr = displayRecords[i + span]
+      while (i + span < paginatedRecords.length) {
+        const nr = paginatedRecords[i + span]
         if (`${nr.year}|${nr.center}|${nr.division}` === key) span++
         else break
       }
@@ -191,7 +212,7 @@ export function DataTable({
       i += span
     }
     return result
-  }, [displayRecords, divisionDelivery])
+  }, [paginatedRecords, divisionDelivery])
 
   useEffect(() => {
     if (!resyncDelivery?.center || !resyncDelivery?.year) return
@@ -260,6 +281,11 @@ export function DataTable({
   }, [resyncProgram?.center, resyncProgram?.year, resyncProgram?.program, runTask])
 
   const handleCellSave = (id: string, field: string, oldVal: any, newVal: any) => {
+    const target = localRecords.find(r => r.id === id)
+    if (target && Number(target.year) < 2026 && !canEditHistorical) {
+      alert('Historical records (2019–2025) can only be edited by an Administrator.')
+      return
+    }
     setLocalRecords(prev => prev.map(r => r.id === id ? { ...r, [field]: newVal } : r))
     setUndoStack(prev => [...prev, { id, field, oldVal, newVal }])
     setRedoStack([])
@@ -306,14 +332,19 @@ export function DataTable({
 
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === records.length) {
+    const selectableRecords = canEditHistorical ? records : records.filter(r => Number(r.year) >= 2026)
+    if (selectedIds.size === selectableRecords.length && selectableRecords.length > 0) {
       setSelectedIds(new Set())
     } else {
-      setSelectedIds(new Set(records.map(r => r.id)))
+      setSelectedIds(new Set(selectableRecords.map(r => r.id)))
     }
   }
 
   const toggleRow = (id: string) => {
+    const target = records.find(r => r.id === id)
+    if (target && Number(target.year) < 2026 && !canEditHistorical) {
+      return
+    }
     const newSet = new Set(selectedIds)
     if (newSet.has(id)) newSet.delete(id)
     else newSet.add(id)
@@ -321,6 +352,13 @@ export function DataTable({
   }
 
   const handleBulkEdit = () => {
+    if (!canEditHistorical) {
+      const hasHistorical = records.some(r => selectedIds.has(r.id) && Number(r.year) < 2026)
+      if (hasHistorical) {
+        alert('Only Administrators can edit historical records (2019–2025).')
+        return
+      }
+    }
     sessionStorage.setItem('bulkEditIds', JSON.stringify(Array.from(selectedIds)))
     router.push('/data/bulk-edit')
   }
@@ -328,6 +366,13 @@ export function DataTable({
   const handleBulkDelete = async () => {
     const ids = Array.from(selectedIds)
     if (ids.length === 0 || bulkDeleting) return
+    if (!canEditHistorical) {
+      const hasHistorical = records.some(r => selectedIds.has(r.id) && Number(r.year) < 2026)
+      if (hasHistorical) {
+        alert('Only Administrators can delete historical records (2019–2025).')
+        return
+      }
+    }
     const ok = confirm(
       `Delete ${ids.length} selected record${ids.length === 1 ? '' : 's'} from MFP Data? This cannot be undone.`,
     )
@@ -359,6 +404,9 @@ export function DataTable({
       setBulkDeleting(false)
     }
   }
+
+  /** Only admin / super_admin can edit historical (pre-2026) rows. */
+  const canEditHistorical = userRole === 'admin' || userRole === 'super_admin'
 
   return (
     <>
@@ -417,51 +465,67 @@ export function DataTable({
               </tr>
             </thead>
                         <tbody>
-              {displayRecords?.map((r, rIdx) => (
+              {paginatedRecords?.map((r, rIdx) => {
+                const isHistorical = Number(r.year) < 2026
+                const canEditThisRow = !readOnly && (!isHistorical || canEditHistorical)
+                return (
                 <tr
-                  key={r.id}
+                  key={r.id || `row-${rIdx}`}
                   className={selectedIds.has(r.id) ? 'mfp-data-row-selected' : undefined}
-                  style={{ background: selectedIds.has(r.id) ? '#e0e7ff' : undefined }}
+                  style={{ background: selectedIds.has(r.id) ? '#e0e7ff' : (isHistorical ? '#fcfdfd' : undefined) }}
                 >
                   {!readOnly && (
                     <td className="col-check" style={{ textAlign: 'center' }}>
-                      <input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => toggleRow(r.id)} style={{ cursor: 'pointer' }} />
+                      {isHistorical && !canEditHistorical ? (
+                        <input type="checkbox" disabled title="Historical archive (2019–2025) cannot be deleted or bulk-edited by non-admins" style={{ opacity: 0.25, cursor: 'not-allowed' }} />
+                      ) : (
+                        <input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => toggleRow(r.id)} style={{ cursor: 'pointer' }} />
+                      )}
                     </td>
                   )}
-                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="year" value={r.year} type="number" className="col-year" style={{ fontWeight: 700 }} />
-                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="funded_by" value={r.funded_by} className="col-funded" render={v => <span className={'badge badge-' + (v?.toLowerCase() || '')}>{v}</span>} />
-                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="region" value={r.region} className="col-region" />
-                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="center" value={r.center} className="col-center" style={{ fontWeight: 600, color: 'var(--navy)' }} />
-                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="province" value={r.province} className="col-prov" />
-                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="division" value={r.division} className="col-div" />
-                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="municipality" value={r.municipality} className="col-muni" />
-                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="elementary_school" value={r.elementary_school} className="col-school" />
+                  <EditableCell
+                    readOnly={!canEditThisRow}
+                    onSave={handleCellSave}
+                    id={r.id}
+                    field="year"
+                    value={r.year}
+                    type="number"
+                    className="col-year"
+                    style={{ fontWeight: 700 }}
+                  />
+                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="funded_by" value={r.funded_by} className="col-funded" render={v => <span className={'badge badge-' + (v?.toLowerCase() || '')}>{v}</span>} />
+                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="region" value={r.region} className="col-region" />
+                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="center" value={r.center} className="col-center" style={{ fontWeight: 600, color: 'var(--navy)' }} />
+                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="province" value={r.province} className="col-prov" />
+                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="division" value={r.division} className="col-div" />
+                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="municipality" value={r.municipality} className="col-muni" />
+                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="elementary_school" value={r.elementary_school} className="col-school" />
                   
-                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="milk_packs" value={r.milk_packs} type="number" format={formatNumber} />
-                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="total_volume_requirements" value={r.total_volume_requirements} type="number" format={formatNumber} />
-                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="raw_milk_liters" value={r.raw_milk_liters} type="number" format={formatNumber} />
-                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="whole_milk_kg" value={r.whole_milk_kg} type="number" format={v => v?.toFixed(2) ?? 'N/A'} />
-                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="skimmed_milk_kg" value={r.skimmed_milk_kg} type="number" format={v => v?.toFixed(2) ?? 'N/A'} />
-                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="sugar" value={r.sugar} type="number" format={v => v?.toFixed(2) ?? 'N/A'} />
+                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="milk_packs" value={r.milk_packs} type="number" format={formatNumber} />
+                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="total_volume_requirements" value={r.total_volume_requirements} type="number" format={formatNumber} />
+                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="raw_milk_liters" value={r.raw_milk_liters} type="number" format={formatNumber} />
+                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="whole_milk_kg" value={r.whole_milk_kg} type="number" format={v => v?.toFixed(2) ?? 'N/A'} />
+                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="skimmed_milk_kg" value={r.skimmed_milk_kg} type="number" format={v => v?.toFixed(2) ?? 'N/A'} />
+                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="sugar" value={r.sugar} type="number" format={v => v?.toFixed(2) ?? 'N/A'} />
                   
-                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="feeding_days" value={r.feeding_days} type="number" />
-                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="batch" value={r.batch} />
-                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="beneficiaries" value={r.beneficiaries} type="number" format={formatNumber} style={{ fontWeight: 600 }} />
-                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="milk_type" value={r.milk_type} render={v => <span className={'badge badge-' + (v?.toLowerCase() || '')}>{v || 'N/A'}</span>} />
-                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="price" value={r.price} type="number" format={v => v ? '₱' + v.toFixed(2) : 'N/A'} />
+                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="feeding_days" value={r.feeding_days} type="number" />
+                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="batch" value={r.batch} />
+                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="beneficiaries" value={r.beneficiaries} type="number" format={formatNumber} style={{ fontWeight: 600 }} />
+                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="milk_type" value={r.milk_type} render={v => <span className={'badge badge-' + (v?.toLowerCase() || '')}>{v || 'N/A'}</span>} />
+                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="price" value={r.price} type="number" format={v => v ? '₱' + v.toFixed(2) : 'N/A'} />
                   
                   <td>{(r as any).cooperatives?.name ?? 'N/A'}</td>
                   
-                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="milk_cost" value={r.milk_cost} type="number" format={v => v ? '₱' + formatNumber(v) : 'N/A'} />
-                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="service_fee" value={r.service_fee} type="number" format={v => v ? '₱' + formatNumber(v) : 'N/A'} />
-                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="total_funds_transferred" value={r.total_funds_transferred} type="number" format={v => v ? '₱' + formatNumber(v) : 'N/A'} style={{ fontWeight: 600 }} />
-                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="mode_of_procurement" value={r.mode_of_procurement} />
+                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="milk_cost" value={r.milk_cost} type="number" format={v => v ? '₱' + formatNumber(v) : 'N/A'} />
+                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="service_fee" value={r.service_fee} type="number" format={v => v ? '₱' + formatNumber(v) : 'N/A'} />
+                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="total_funds_transferred" value={r.total_funds_transferred} type="number" format={v => v ? '₱' + formatNumber(v) : 'N/A'} style={{ fontWeight: 600 }} />
+                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="mode_of_procurement" value={r.mode_of_procurement} />
                   
-                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="moa_signing" value={r.moa_signing} type="date" format={formatDate} />
-                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="fund_transfer" value={r.fund_transfer} type="date" format={formatDate} />
-                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="date_started" value={r.date_started} type="date" format={formatDate} />
-                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="date_completed" value={r.date_completed} type="date" format={formatDate} />
-                  <EditableCell readOnly={readOnly} onSave={handleCellSave} id={r.id} field="liquidation" value={r.liquidation} type="date" format={formatDate} />
+                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="moa_signing" value={r.moa_signing} type="date" format={formatDate} />
+                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="fund_transfer" value={r.fund_transfer} type="date" format={formatDate} />
+                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="date_started" value={r.date_started} type="date" format={formatDate} />
+                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="date_completed" value={r.date_completed} type="date" format={formatDate} />
+                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="liquidation" value={r.liquidation} type="date" format={formatDate} />
 
                   {/* AD/AE — one merged cell per SDO (division), like Excel */}
                   {(() => {
@@ -511,19 +575,143 @@ export function DataTable({
                   
                   {!readOnly && (
                     <td>
-                      <Link
-                        href={`/data/${r.id}/edit`}
-                        className="btn btn-outline"
-                        style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}
-                      >
-                        Edit
-                      </Link>
+                      {canEditThisRow ? (
+                        <Link
+                          href={`/data/${r.id}/edit`}
+                          className="btn btn-outline"
+                          style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}
+                        >
+                          Edit
+                        </Link>
+                      ) : (
+                        <span
+                          className="badge"
+                          style={{
+                            fontSize: '0.7rem',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4,
+                            background: '#f1f5f9',
+                            color: '#64748b',
+                            padding: '0.25rem 0.5rem',
+                          }}
+                          title="Archived record (2019–2025) — editable only by Admin"
+                        >
+                          <Lock size={11} /> Archived
+                        </span>
+                      )}
                     </td>
                   )}
                 </tr>
-              ))}
+              )})}
             </tbody>
           </table>
+        </div>
+
+        {/* Pagination Bar */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '0.6rem 1rem',
+            borderTop: '1px solid #e2e8f0',
+            background: '#f8fafc',
+            fontSize: '0.82rem',
+            color: '#475569',
+            flexWrap: 'wrap',
+            gap: '0.75rem',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+            <span>
+              Showing{' '}
+              <strong>
+                {displayRecords.length === 0
+                  ? 0
+                  : (currentPage - 1) * (pageSize === -1 ? displayRecords.length : pageSize) + 1}
+              </strong>{' '}
+              to{' '}
+              <strong>
+                {pageSize === -1
+                  ? displayRecords.length
+                  : Math.min(currentPage * pageSize, displayRecords.length)}
+              </strong>{' '}
+              of <strong>{displayRecords.length.toLocaleString()}</strong> records
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              <span>Rows per page:</span>
+              <select
+                value={pageSize}
+                onChange={e => {
+                  setPageSize(Number(e.target.value))
+                  setCurrentPage(1)
+                }}
+                style={{
+                  padding: '0.2rem 0.5rem',
+                  borderRadius: '4px',
+                  border: '1px solid #cbd5e1',
+                  background: '#fff',
+                  fontSize: '0.82rem',
+                  cursor: 'pointer',
+                }}
+              >
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+                <option value={250}>250</option>
+                <option value={500}>500</option>
+                <option value={-1}>All ({displayRecords.length})</option>
+              </select>
+            </div>
+          </div>
+
+          {totalPages > 1 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              <button
+                type="button"
+                className="btn btn-outline"
+                disabled={currentPage <= 1}
+                onClick={() => setCurrentPage(1)}
+                style={{ padding: '0.25rem 0.6rem', fontSize: '0.78rem' }}
+                title="First page"
+              >
+                « First
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline"
+                disabled={currentPage <= 1}
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                style={{ padding: '0.25rem 0.6rem', fontSize: '0.78rem' }}
+                title="Previous page"
+              >
+                ‹ Prev
+              </button>
+              <span style={{ margin: '0 0.5rem', fontWeight: 600 }}>
+                Page {currentPage} of {totalPages}
+              </span>
+              <button
+                type="button"
+                className="btn btn-outline"
+                disabled={currentPage >= totalPages}
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                style={{ padding: '0.25rem 0.6rem', fontSize: '0.78rem' }}
+                title="Next page"
+              >
+                Next ›
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline"
+                disabled={currentPage >= totalPages}
+                onClick={() => setCurrentPage(totalPages)}
+                style={{ padding: '0.25rem 0.6rem', fontSize: '0.78rem' }}
+                title="Last page"
+              >
+                Last »
+              </button>
+            </div>
+          )}
         </div>
       </div>
       

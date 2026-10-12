@@ -5,7 +5,7 @@ import { PCC_CENTERS } from '@/lib/types'
 import { SummaryLdsClient } from './SummaryLdsClient'
 import { fetchAllRows } from '@/lib/supabase-paginate'
 import { resolveReportYearFilter } from '@/lib/report-year'
-import { MIN_DATA_YEAR } from '@/lib/app-years'
+import { REPORT_MIN_YEAR } from '@/lib/app-years'
 
 const LDS_SELECT = `
   year,
@@ -46,7 +46,7 @@ export default async function SummaryLDSPage(props: {
       .from('mfp_data')
       .select(LDS_SELECT)
       .eq('funded_by', 'LDS')
-      .gte('year', MIN_DATA_YEAR)
+      .gte('year', REPORT_MIN_YEAR)
     if (!allYears && yearNum != null) query = query.eq('year', yearNum)
     if (centerFilter && centerFilter !== '__ALL_CENTERS__') {
       query = query.eq('center', centerFilter === 'NHQGP (NIZ)' ? 'NIZ' : centerFilter)
@@ -63,7 +63,7 @@ export default async function SummaryLDSPage(props: {
 
   let years = yearsForUi
   if (allYears) {
-    years = Array.from(new Set(rows.map(r => r.year).filter((y: number) => y >= MIN_DATA_YEAR))).sort(
+    years = Array.from(new Set(rows.map(r => r.year).filter((y: number) => y >= REPORT_MIN_YEAR))).sort(
       (a: number, b: number) => a - b,
     )
     if (years.length === 0) years = yearsForUi

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useTransition } from 'react'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
-import { APP_YEAR_STRINGS, defaultReportYearString } from '@/lib/app-years'
+import { REPORT_YEAR_STRINGS, defaultReportYearString } from '@/lib/app-years'
 import { normalizeSchoolYearParam } from '@/lib/report-year'
 import { parseSchoolYear } from '@/lib/sbfp-year'
 import { useAsyncFeedback } from '@/components/loading/AsyncFeedback'
@@ -56,7 +56,7 @@ export function DashboardFilter({
   const currentMonth = searchParams.get('month') || ''
   const currentCenter = searchParams.get('center') || ''
 
-  const years = useSchoolYears ? schoolYears! : APP_YEAR_STRINGS
+  const years = useSchoolYears ? schoolYears! : REPORT_YEAR_STRINGS
 
   useEffect(() => {
     if (isPending) beginTask('dashboard-filter', 'Loading dashboard…', { blocking: true })
