@@ -5,7 +5,7 @@ import { SpreadsheetStyle } from '@/components/reports/spreadsheet/SpreadsheetSt
 import { SpreadsheetTabs, TabType } from '@/components/reports/spreadsheet/SpreadsheetTabs'
 import { getAvg, valOrDash, curOrDash } from '@/components/reports/spreadsheet/SpreadsheetUtils'
 import { dbYearToSchoolYear } from '@/lib/sbfp-year'
-import { baseSdoName, normalizeSdoName } from '@/lib/sbfp-dropoff-sync'
+import { baseSdoName, normalizeSdoName, uniqueSdoCountKey } from '@/lib/sbfp-dropoff-sync'
 
 interface MfpRow {
   year: number
@@ -83,6 +83,15 @@ export function SummaryDepEdClient({
   const coops: Record<string, Record<number, boolean>> = {}
   const coopCenters: Record<string, Set<string>> = {}
 
+  // Identify base SDO names that appear in multiple centers (e.g. San Fernando City in DMMMSU and NHQ)
+  const baseNameToCenters = new Map<string, Set<string>>()
+  rows.forEach(r => {
+    const base = normalizeSdoName(r.division || '')
+    if (!base) return
+    if (!baseNameToCenters.has(base)) baseNameToCenters.set(base, new Set())
+    if (r.center) baseNameToCenters.get(base)!.add(r.center)
+  })
+
   years.forEach(y => {
     parameters.feeding_days[y] = []
     parameters.budget[y] = 0
@@ -116,8 +125,13 @@ export function SummaryDepEdClient({
     if (r.mode_of_procurement) parameters.procurement[y].add(r.mode_of_procurement)
     if (r.region) parameters.regions[y].add(r.region)
     if (r.province) parameters.provinces[y].add(r.province)
-    const sdoKey = normalizeSdoName(r.division || '')
-    const sdoLabel = baseSdoName(r.division || '') || r.division
+    const sdoKey = uniqueSdoCountKey(r.division || '', r.center)
+    const base = baseSdoName(r.division || '') || r.division
+    const norm = normalizeSdoName(r.division || '')
+    const isMultiCenter = (baseNameToCenters.get(norm)?.size ?? 0) > 1
+    const sdoLabel = isMultiCenter && r.center
+      ? `${base} (${r.region ? `Region ${r.region} · ` : ''}${r.center})`
+      : base
     if (sdoKey) parameters.sdos[y].add(sdoKey)
     if (r.supplier_id) parameters.coops[y].add(r.supplier_id)
 

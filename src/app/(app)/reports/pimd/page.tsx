@@ -22,6 +22,7 @@ import {
   filterDropoffsForProcurementRows,
   geographyCountsFromDropoffs,
   normalizeSdoName,
+  uniqueSdoCountKey,
 } from '@/lib/sbfp-dropoff-sync'
 import { calcMilkFormulations, litersPerPackForMilkType, packagingSizeForMilkType, normalizeMilkTypeCode } from '@/lib/mfp-formulas'
 import { REPORT_YEAR_STRINGS, REPORT_MIN_YEAR } from '@/lib/app-years'
@@ -754,7 +755,7 @@ export default function PIMDReportPage() {
       outPacksBySize = charts.packsBySize
       outCoopCount = new Set(sbfpScoped.map(r => r.supplier_id).filter(Boolean)).size
       outDivisionCount = new Set(
-        sbfpScoped.map(r => normalizeSdoName(r.sdo || '')).filter(Boolean),
+        sbfpScoped.map(r => uniqueSdoCountKey(r.sdo, r.center)).filter(Boolean),
       ).size
       const scopedDropoffs = filterDropoffsForProcurementRows(sbfpDropoffs, sbfpScoped)
       if (scopedDropoffs.length > 0) {

@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { excludeAuxSbfp } from '@/lib/sbfp-aux'
-import { normalizeSdoName } from '@/lib/sbfp-dropoff-sync'
+import { normalizeSdoName, uniqueSdoCountKey } from '@/lib/sbfp-dropoff-sync'
 import {
   FALLBACK_SCHOOL_YEARS,
   labelFromDbYear,
@@ -93,7 +93,7 @@ export async function loadCenterSchoolYearCards(center: string): Promise<CenterS
   const [{ data: allSbfp }, { data: allDrop }] = await Promise.all([
     supabase
       .from('sbfp_data')
-      .select('year,sdo,procurement_status,packs_to_deliver,milk_type')
+      .select('year,center,sdo,procurement_status,packs_to_deliver,milk_type')
       .eq('center', center),
     supabase.from('sbfp_dropoff_points').select('year').eq('center', center),
   ])
@@ -106,7 +106,7 @@ export async function loadCenterSchoolYearCards(center: string): Promise<CenterS
 
   return years.map(year => {
     const rows = excludeAuxSbfp((allSbfp || []).filter(r => Number(r.year) === year))
-    const sdoCount = new Set(rows.map(r => normalizeSdoName(String(r.sdo || ''))).filter(Boolean)).size
+    const sdoCount = new Set(rows.map(r => uniqueSdoCountKey(r.sdo, r.center || center)).filter(Boolean)).size
     const packsToDeliver = rows.reduce((s, r) => s + (Number(r.packs_to_deliver) || 0), 0)
     const stats = rows.reduce(
       (acc, r) => {
