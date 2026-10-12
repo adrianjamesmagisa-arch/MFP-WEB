@@ -213,19 +213,24 @@ export function useAsyncTask(defaultMessage = 'Saving…') {
 
 export function AppMainWithLoading({
   children,
+  className,
   style,
 }: {
   children: ReactNode
+  className?: string
   style?: React.CSSProperties
 }) {
   const ctx = useAsyncFeedbackOptional()
   const busy = ctx ? ctx.isNavigating || ctx.isBlocking : false
+  const classNames = [className, ctx?.isNavigating ? 'app-main-navigating' : undefined]
+    .filter(Boolean)
+    .join(' ')
 
   return (
     <main
       style={style}
       aria-busy={busy}
-      className={ctx?.isNavigating ? 'app-main-navigating' : undefined}
+      className={classNames || undefined}
     >
       {children}
     </main>

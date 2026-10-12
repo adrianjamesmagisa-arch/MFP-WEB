@@ -16,12 +16,17 @@ export function AppShell({
 
   return (
     <AsyncFeedbackProvider>
-      <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
-        {sidebar}
+      <div className="app-shell-root" style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+        <div className="app-shell-sidebar no-print" style={{ height: '100%', flexShrink: 0 }}>
+          {sidebar}
+        </div>
         <AppMainWithLoading
+          className="app-shell-main"
           style={{ flex: 1, overflowY: 'auto', background: 'var(--gray-50)', position: 'relative' }}
         >
-          <div style={{ padding: fullBleed ? '1rem 1.25rem 1.5rem' : '2rem' }}>{children}</div>
+          <div className="app-shell-content" style={{ padding: fullBleed ? '1rem 1.25rem 1.5rem' : '2rem' }}>
+            {children}
+          </div>
         </AppMainWithLoading>
       </div>
     </AsyncFeedbackProvider>

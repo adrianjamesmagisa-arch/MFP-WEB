@@ -93,7 +93,7 @@ export default function Sidebar({ userRole, userCenter, userName }: {
   })
 
   return (
-    <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`} style={{ height: '100vh', overflowY: 'auto', flexShrink: 0, transition: 'width 0.2s ease' }}>
+    <aside className={`sidebar no-print ${isCollapsed ? 'collapsed' : ''}`} style={{ height: '100vh', overflowY: 'auto', flexShrink: 0, transition: 'width 0.2s ease' }}>
       {/* Logo */}
       <div style={{ padding: '1.5rem 1.25rem', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>

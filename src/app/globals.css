@@ -897,3 +897,172 @@ h1, h2, h3 {
   font-size: 0.75rem;
   color: #64748b;
 }
+
+/* ==========================================================================
+   GLOBAL PRINT ENGINE
+   Ensures printouts only show the actual report/data content in clean landscape,
+   stripping out sidebars, app chrome, buttons, headers, and scroll-locks.
+   ========================================================================== */
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 8mm 6mm;
+  }
+
+  /* 1. Hide all application chrome and navigation */
+  aside,
+  .sidebar,
+  .app-shell-sidebar,
+  .no-print,
+  button,
+  .btn,
+  input,
+  select,
+  nav,
+  header,
+  footer,
+  .card-toolbar,
+  .dash-funder-grid {
+    display: none !important;
+  }
+
+  /* 2. Show print-only headers and titles */
+  .print-only {
+    display: block !important;
+    visibility: visible !important;
+  }
+
+  /* 3. Reset document layout from viewport-locked to natural printable flow */
+  html,
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: auto !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    font-size: 8pt !important;
+  }
+
+  /* 4. Neutralize all scroll-locking / flex / 100vh wrappers */
+  .app-shell-root,
+  .app-shell-main,
+  .app-shell-content,
+  div[style*="height: 100vh"],
+  div[style*="height: 100%"],
+  div[style*="overflow-y: auto"],
+  div[style*="overflow: auto"],
+  div[style*="overflow: hidden"],
+  div[style*="overflow-x: auto"] {
+    display: block !important;
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    position: static !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  @page {
+    size: landscape;
+    margin: 6mm 4mm;
+  }
+
+  /* 5. Force tables to fit printable page width and paginate across sheets */
+  table {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    border-collapse: collapse !important;
+    table-layout: auto !important;
+    font-size: 6.2pt !important;
+    page-break-inside: auto !important;
+  }
+
+  table * {
+    font-size: inherit !important;
+  }
+
+  /* Keep short codes, dates, and amounts on a single line — no letter stacking */
+  th,
+  td {
+    position: static !important;
+    box-sizing: border-box !important;
+    padding: 2px 3px !important;
+    word-break: normal !important;
+    white-space: nowrap !important;
+    color: #000000 !important;
+    border: 1px solid #cbd5e1 !important;
+    font-size: inherit !important;
+    background-color: transparent !important;
+    vertical-align: middle !important;
+  }
+
+  /* Headers can wrap by words if needed */
+  th {
+    white-space: normal !important;
+    word-break: normal !important;
+    line-height: 1.15 !important;
+  }
+
+  /* Wrap long entity names like Cooperatives, Schools, and Remarks naturally */
+  td:nth-child(3),
+  td:nth-child(5),
+  td:nth-child(9),
+  td:nth-child(21),
+  .wrap-text {
+    white-space: normal !important;
+    word-break: normal !important;
+    overflow-wrap: break-word !important;
+  }
+
+  .badge {
+    display: inline-block !important;
+    white-space: nowrap !important;
+    padding: 1px 4px !important;
+    font-size: 5.5pt !important;
+    line-height: 1.2 !important;
+    border-radius: 3px !important;
+  }
+
+  thead {
+    display: table-header-group !important;
+  }
+
+  thead tr {
+    background-color: #f1f5f9 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  thead th {
+    background-color: #e2e8f0 !important;
+    color: #0f172a !important;
+    font-weight: 700 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  tfoot {
+    display: table-footer-group !important;
+  }
+
+  tr {
+    page-break-inside: avoid !important;
+    page-break-after: auto !important;
+  }
+
+  /* 6. Preserve essential background colors / badges */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}

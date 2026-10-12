@@ -2645,10 +2645,82 @@ export default function SbfpSpreadsheetReport() {
         @media print {
           .no-print { display: none !important; }
           .print-only { display: block !important; }
-          body { background: white !important; }
-          @page { size: A4 landscape; margin: 8mm; }
-          table { width: 100% !important; min-width: 100% !important; font-size: 7.5pt !important; }
-          th, td { padding: 3px 4px !important; }
+          body, html { background: white !important; height: auto !important; overflow: visible !important; }
+          @page { size: A4 landscape; margin: 8mm 6mm; }
+
+          /* Unconstrain table scroll wrapper so all rows paginate naturally */
+          div {
+            overflow: visible !important;
+            max-height: none !important;
+            height: auto !important;
+          }
+
+          table {
+            width: 100% !important;
+            min-width: 0 !important;
+            max-width: 100% !important;
+            table-layout: auto !important;
+            font-size: 6.2pt !important;
+            border-collapse: collapse !important;
+            page-break-inside: auto !important;
+          }
+
+          th, td {
+            position: static !important;
+            padding: 2px 3px !important;
+            font-size: 6.2pt !important;
+            line-height: 1.15 !important;
+            word-break: normal !important;
+            white-space: nowrap !important;
+            border: 1px solid #cbd5e1 !important;
+            vertical-align: middle !important;
+          }
+
+          th {
+            white-space: normal !important;
+            word-break: normal !important;
+          }
+
+          td:nth-child(3),
+          td:nth-child(5),
+          td:nth-child(6),
+          td:nth-child(9),
+          td:nth-child(21) {
+            white-space: normal !important;
+            word-break: normal !important;
+            overflow-wrap: break-word !important;
+          }
+
+          .badge {
+            display: inline-block !important;
+            white-space: nowrap !important;
+            padding: 1px 3px !important;
+            font-size: 5.5pt !important;
+            line-height: 1.1 !important;
+            border-radius: 3px !important;
+          }
+
+          thead {
+            display: table-header-group !important;
+          }
+
+          thead tr {
+            background-color: #f1f5f9 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+
+          thead th {
+            background-color: #e2e8f0 !important;
+            color: #0f172a !important;
+            font-weight: 700 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+
+          tr {
+            page-break-inside: avoid !important;
+          }
         }
       `}</style>
     </div>
