@@ -31,7 +31,7 @@ import { uniqueSdoCountKey } from '@/lib/sbfp-dropoff-sync'
 import { excludeAuxSbfp, isSbfpAuxRow } from '@/lib/sbfp-aux'
 import { sbfpCenterAliases, sbfpNavCenter } from '@/lib/center-aliases'
 import { milkTypeLabel } from '@/lib/sbfp-pack-price'
-import { readMonthlyMap, rawMilkUtilizedLiters, packsForMonth } from '@/lib/sbfp-raw-milk'
+import { rawMilkUtilizedLiters, packsForMonth } from '@/lib/sbfp-raw-milk'
 
 // Philippine regional display order
 const REGION_ORDER: Record<string, number> = {
@@ -2301,14 +2301,22 @@ export default function SbfpSpreadsheetReport() {
                 if (milkAsOfMonth === 'ALL') {
                   deliveredPacks = view?.delivered_packs ?? Number(r.packs_delivered) ?? 0
                 } else {
-                  // Cumulative sum using readMonthlyMap
-                  // Month sequence for School Year: Aug(8) -> Jul(7)
-                  const asOfMonthSequence = ['8', '9', '10', '11', '12', '1', '2', '3', '4', '5', '6', '7']
-                  const monthlyMap = readMonthlyMap(r.monthly_packs_delivered)
-                  const targetIdx = asOfMonthSequence.indexOf(milkAsOfMonth)
-                  if (targetIdx !== -1) {
+                  // Cumulative sum up-to-and-including the selected month.
+                  // School Year sequence: Aug(8) → Sep(9) → … → Dec(12) → Jan(1) → … → Jul(7)
+                  // Use packsForMonth (not readMonthlyMap) so delivery_snapshots are included.
+                  const asOfMonthSequence = [8, 9, 10, 11, 12, 1, 2, 3, 4, 5, 6, 7]
+                  const dbYearNum = Number(year)
+                  const targetMonth = parseInt(milkAsOfMonth, 10)
+                  const targetIdx = asOfMonthSequence.indexOf(targetMonth)
+                  if (targetIdx !== -1 && Number.isFinite(dbYearNum)) {
+                    const useSnapshots = Array.isArray((r as any).delivery_snapshots) &&
+                      (r as any).delivery_snapshots.some((s: any) => Number(s?.packs) > 0)
+                    const monthOpts = {
+                      year: dbYearNum,
+                      preferSnapshotsOverMonthly: useSnapshots,
+                    }
                     for (let i = 0; i <= targetIdx; i++) {
-                      deliveredPacks += (monthlyMap[asOfMonthSequence[i]] || 0)
+                      deliveredPacks += packsForMonth(r as any, asOfMonthSequence[i], monthOpts)
                     }
                   } else {
                     deliveredPacks = view?.delivered_packs ?? Number(r.packs_delivered) ?? 0
