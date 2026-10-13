@@ -31,11 +31,11 @@ interface Message {
   timestamp: string
 }
 
-const DEFAULT_MODEL = 'llama-3.3-70b-versatile'
+const DEFAULT_MODEL = 'openai/gpt-oss-120b'
 const GROQ_MODELS = [
-  { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B (Versatile · Recommended)' },
-  { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B (Instant · Ultra-fast)' },
-  { id: 'mixtral-8x7b-32768', name: 'Mixtral 8x7b (32k context)' },
+  { id: 'openai/gpt-oss-120b', name: 'GPT-OSS 120B (High Intelligence · Recommended)' },
+  { id: 'qwen/qwen3.8-27b', name: 'Qwen 3.8 27B (Fast & Accurate)' },
+  { id: 'openai/gpt-oss-20b', name: 'GPT-OSS 20B (Compact)' },
 ]
 
 const QUICK_PROMPTS = [

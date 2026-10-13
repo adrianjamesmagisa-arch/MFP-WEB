@@ -55,7 +55,7 @@ export async function POST(req: Request) {
 
     // 3. Parse request body
     const body: RequestBody = await req.json()
-    const { messages, context, model = 'llama-3.3-70b-versatile' } = body
+    const { messages, context, model = 'openai/gpt-oss-120b' } = body
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: 'Messages array is required.' }, { status: 400 })
