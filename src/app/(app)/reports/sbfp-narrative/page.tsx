@@ -32,7 +32,6 @@ import { excludeAuxSbfp, isSbfpAuxRow } from '@/lib/sbfp-aux'
 import { sbfpCenterAliases, sbfpNavCenter } from '@/lib/center-aliases'
 import { milkTypeLabel } from '@/lib/sbfp-pack-price'
 import { rawMilkUtilizedLiters, packsForMonth } from '@/lib/sbfp-raw-milk'
-
 import { SbfpAiAgent } from '@/components/SbfpAiAgent'
 
 // Philippine regional display order
@@ -66,17 +65,6 @@ type ReportTab =
   | 'senate_delivery'
   | 'milk_procurement'
   | 'monthly_cummulated'
-
-const REPORT_TAB_LABELS: Record<ReportTab, string> = {
-  master: 'SDO Masterlist',
-  senate_perf: '1. Procurement & Delivery',
-  senate_status: '2. Implementation Status',
-  senate_region: '3. Regional Distribution',
-  senate_center: '4. Center Distribution',
-  senate_delivery: '5. Contract & Delivery Details',
-  milk_procurement: '6. Milk Procurement Status',
-  monthly_cummulated: '7. CDP Report',
-}
 
 const th: CSSProperties = { border: '1px solid #cbd5e1', padding: '8px 8px', textAlign: 'right', whiteSpace: 'normal', lineHeight: 1.2 }
 const thC: CSSProperties = { ...th, textAlign: 'center' }
@@ -1491,6 +1479,27 @@ export default function SbfpSpreadsheetReport() {
 
           {/* Right Action Buttons */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <SbfpAiAgent
+              filteredRecords={filteredRecords}
+              getViewForSource={getViewForSource}
+              stats={stats}
+              yearLabel={`SY ${schoolYearOptions.find(sy => String(schoolYearToDbYear(sy)) === year) || year}`}
+              filterCenter={filterCenter}
+              filterRegion={filterRegion}
+              filterStatus={filterStatus}
+              filterMonth={filterMonth}
+              deliveredDateRange={
+                deliveredDateFilterEnabled
+                  ? `${formatRangeLabel(effectiveDeliveredRange.from)} – ${formatRangeLabel(effectiveDeliveredRange.to)}`
+                  : 'Aug 1 – today (Full SY)'
+              }
+              searchQuery={searchQuery}
+              activeTab={activeTab}
+              regionalSummary={regionalSummary}
+              centerSummary={centerSummary}
+              implSummary={implSummary}
+            />
+
             <button
               onClick={clearFilters}
               title="Reset all filters"
@@ -1501,30 +1510,6 @@ export default function SbfpSpreadsheetReport() {
             >
               <RotateCcw size={13} /> Reset
             </button>
-
-            {/* Groq-Powered SBFP AI Agent */}
-            <SbfpAiAgent
-              records={filteredRecords}
-              allRecords={records}
-              stats={stats}
-              activeTab={activeTab}
-              activeTabLabel={REPORT_TAB_LABELS[activeTab] || activeTab}
-              schoolYearLabel={
-                schoolYearOptions.find(o => schoolYearToDbYear(o) === Number(year)) ||
-                dbYearToSchoolYear(Number(year))
-              }
-              year={year}
-              filterCenter={filterCenter}
-              filterRegion={filterRegion}
-              filterStatus={filterStatus}
-              filterMonth={filterMonth}
-              searchQuery={searchQuery}
-              deliveredDateFilterEnabled={deliveredDateFilterEnabled}
-              deliveredFrom={deliveredFrom}
-              deliveredTo={deliveredTo}
-              regionalSummary={regionalSummary}
-              centerSummary={centerSummary}
-            />
 
             <button
               onClick={exportToCSV}

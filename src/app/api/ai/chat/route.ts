@@ -11,49 +11,8 @@ interface ChatMessage {
 interface RequestBody {
   messages: ChatMessage[]
   context?: {
-    programType?: 'sbfp' | 'mfp'
-    activeTab?: { id: string; label: string }
-    schoolYear?: string
-    // SBFP specific:
-    stats?: {
-      count: number
-      rowCount: number
-      totalPacks: number
-      totalDelivered: number
-      pctDelivered: number
-      totalContractAmt: number
-      totalFunds?: number
-      totalBeneficiaries: number
-      totalCoops: number
-      totalPaid?: number
-      totalRemainingPay?: number
-      totalContractedL?: number
-      totalDeliveredL?: number
-      totalUndeliveredL?: number
-      totalValueDelivered?: number
-    }
-    statusBreakdown?: Record<string, number>
-    regionalSummary?: Array<{
-      region: string
-      sdoCount: number
-      coopCount: number
-      targetPacks: number
-      deliveredPacks: number
-      pctDelivered: number
-      contractAmt: number
-    }>
-    centerSummary?: Array<{
-      center: string
-      sdoCount: number
-      coopCount: number
-      targetPacks: number
-      deliveredPacks: number
-      pctDelivered: number
-      contractAmt: number
-    }>
-    cooperatives?: string[]
-    // Generic MFP fields:
-    totalRecords?: number
+    module?: 'mfp' | 'sbfp'
+    totalRecords: number
     activeFilters?: Record<string, string | number | undefined>
     summaryMetrics?: {
       totalPacks: number
@@ -67,6 +26,21 @@ interface RequestBody {
       fundedBy: string[]
       milkTypes: string[]
       cooperatives?: string[]
+    }
+    sbfpMetrics?: {
+      sdoCount: number
+      totalPacks: number
+      totalDelivered: number
+      pctDelivered: number
+      totalContractAmt: number
+      totalFunds: number
+      totalBeneficiaries: number
+      totalCoops: number
+      statusBreakdown?: Record<string, number>
+      regionalSummary?: string[]
+      centerSummary?: string[]
+      cooperatives?: string[]
+      activeTab?: string
     }
     compactTable?: string
   }
@@ -105,23 +79,23 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Messages array is required.' }, { status: 400 })
     }
 
-    // 4. Construct grounded system prompt with token optimization
+    // 4. Construct grounded system prompt with filtered table context (token-optimized)
+    const totalRecords = context?.totalRecords ?? 0
     const activeFilters = context?.activeFilters ?? {}
     const compactTable = context?.compactTable ?? ''
+
     const filterEntries = Object.entries(activeFilters)
       .filter(([_, v]) => v != null && v !== '')
       .map(([k, v]) => `${k}: ${v}`)
       .join(', ')
 
+    const isSbfp = Boolean(context?.sbfpMetrics || context?.module === 'sbfp')
+
     let systemPrompt = ''
 
-    if (context?.programType === 'sbfp') {
-      const activeTabLabel = context.activeTab?.label || 'SDO Masterlist'
-      const activeTabId = context.activeTab?.id || 'master'
-      const schoolYear = context.schoolYear || 'SY 2026-2027'
-      const sbfpStats = context.stats || {
-        count: 0,
-        rowCount: 0,
+    if (isSbfp) {
+      const sbfp = context?.sbfpMetrics || {
+        sdoCount: totalRecords,
         totalPacks: 0,
         totalDelivered: 0,
         pctDelivered: 0,
@@ -129,111 +103,75 @@ export async function POST(req: Request) {
         totalFunds: 1121141000,
         totalBeneficiaries: 0,
         totalCoops: 0,
-        totalPaid: 0,
-        totalRemainingPay: 0,
-        totalContractedL: 0,
-        totalDeliveredL: 0,
+        statusBreakdown: {},
+        regionalSummary: [],
+        centerSummary: [],
+        cooperatives: [],
+        activeTab: 'SDO Masterlist',
       }
 
-      // Compact regional distribution text
-      const regLines = (context.regionalSummary || [])
-        .slice(0, 18)
-        .map(
-          r =>
-            `${r.region}: ${r.sdoCount} SDOs, ${r.coopCount} coops | Packs: ${r.deliveredPacks.toLocaleString()}/${r.targetPacks.toLocaleString()} (${r.pctDelivered.toFixed(1)}%) | ₱${(r.contractAmt / 1e6).toFixed(2)}M`,
-        )
-        .join('\n')
+      const statusBreakdownText =
+        sbfp.statusBreakdown && Object.keys(sbfp.statusBreakdown).length > 0
+          ? Object.entries(sbfp.statusBreakdown)
+              .map(([k, v]) => `- ${k}: ${v} SDOs`)
+              .join('\n')
+          : 'All'
 
-      // Compact center distribution text
-      const centerLines = (context.centerSummary || [])
-        .slice(0, 14)
-        .map(
-          c =>
-            `${c.center}: ${c.sdoCount} SDOs, ${c.coopCount} coops | Packs: ${c.deliveredPacks.toLocaleString()}/${c.targetPacks.toLocaleString()} (${c.pctDelivered.toFixed(1)}%) | ₱${(c.contractAmt / 1e6).toFixed(2)}M`,
-        )
-        .join('\n')
+      const regionalSummaryText =
+        sbfp.regionalSummary && sbfp.regionalSummary.length > 0
+          ? sbfp.regionalSummary.map(r => `- ${r}`).join('\n')
+          : 'All regions'
 
-      // Status breakdown
-      const statusText = context.statusBreakdown
-        ? Object.entries(context.statusBreakdown)
-            .map(([k, v]) => `${k}: ${v} SDOs`)
-            .join(', ')
-        : 'None'
+      const centerSummaryText =
+        sbfp.centerSummary && sbfp.centerSummary.length > 0
+          ? sbfp.centerSummary.map(c => `- ${c}`).join('\n')
+          : 'All centers'
 
-      // Top coops
       const coopsText =
-        (context.cooperatives || [])
-          .slice(0, 25)
-          .map(c => `- ${c}`)
-          .join('\n') || 'None recorded'
+        sbfp.cooperatives && sbfp.cooperatives.length > 0
+          ? sbfp.cooperatives.map(c => `- ${c}`).join('\n')
+          : 'None'
 
-      systemPrompt = `You are the DA-PCC SBFP AI Analyst & Program Copilot, an expert AI embedded into the Department of Agriculture - Philippine Carabao Center (DA-PCC) School-Based Feeding Program (SBFP) Monitoring System.
+      systemPrompt = `You are the DA-PCC SBFP AI Analyst, an intelligent copilot for the Department of Agriculture - Philippine Carabao Center (DA-PCC) School-Based Feeding Program (SBFP) Monitoring System.
 
-### OFFICIAL GROUND TRUTH:
-The SBFP monitoring dataset and report currently displayed on screen is your SOLE SOURCE OF TRUTH. Always answer user queries based on this verified data.
+You have access to the exact filtered SDO and milk procurement dataset currently displayed on the user's screen.
 
-### PROGRAM CONTEXT:
-- Program: DA-PCC School-Based Feeding Program (SBFP), partnered with DepEd (Department of Education).
-- Goal: Deliver fresh, nutritious local carabao milk to school children across the Philippines.
-- Legal & Procurement Basis: RA 11037 (Masustansyang Pagkain para sa Batang Pilipino) and RA 11321 (Sagip Saka Act / Negotiated Procurement - Community Participation).
-- Milk Types:
-  * PM = Pasteurized Milk (200ml, chilled, 5 packs = 1 Liter)
-  * SM = Sterilized Milk / Retort Pouch (shelf-stable, 5.5555 packs = 1 Liter)
-  * CM = Choco Milk (pasteurized flavored, 5 packs = 1 Liter)
-- 13 PCC Centers: NHQ, CLSU, UPLB, DMMMSU, CSU, MMSU, LCSF, WVSU, USF, VSU, MLPC, CMU, USM.
+### SCOPE & PRE-CALCULATED TOTALS:
+- Filtered SDOs in scope: ${sbfp.sdoCount} (Total records: ${totalRecords})
+- Active View / Tab: ${sbfp.activeTab || 'SDO Masterlist'}
+- Active filters applied: ${filterEntries || 'None (All records in scope)'}
+- Key Aggregates:
+  * Total Milk Packs Target: ${sbfp.totalPacks.toLocaleString('en-US')}
+  * Total Milk Packs Delivered: ${sbfp.totalDelivered.toLocaleString('en-US')}
+  * Delivery Completion Rate: ${sbfp.pctDelivered.toFixed(1)}%
+  * Total Value of Milk Contracts: ₱${sbfp.totalContractAmt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+  * Total Program Funds: ₱${(sbfp.totalFunds || 1121141000).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+  * Total Beneficiaries: ${sbfp.totalBeneficiaries.toLocaleString('en-US')}
+  * Participating Cooperatives: ${sbfp.totalCoops}
 
-### THE 8 SBFP REPORT TABS (YOU KNOW ALL 8 TABS):
-1. 'SDO Masterlist' (tab: master): Complete division masterlist with cooperatives, contract amounts, Sagip Saka mode, PR/ORS/PO details, batches, delivery periods, packs, and payment statuses (Obligated, etc.).
-2. '1. Procurement & Delivery' (tab: senate_perf): Oversight performance metrics: Contract values, contracted vs delivered volumes (in Liters), amounts paid/disbursed, accomplishment % rate.
-3. '2. Implementation Status' (tab: senate_status): Procurement pipeline milestones: For Preparation, Ongoing Procurement, Ongoing (For Award), Awarded (For Delivery), Awarded (Ongoing Delivery), Completed, Failed. SDO counts and volume per status.
-4. '3. Regional Distribution' (tab: senate_region): Regional breakdown across 17 Philippine regions (CAR, I, II, III, IV-A, IV-B, V, NCR, VI, VII, NIR, VIII, IX, X, XI, XII, CARAGA, BARMM): SDO counts, coops, packs, accomplishment %, contract values.
-5. '4. Center Distribution' (tab: senate_center): Breakdown across the 13 PCC Centers: SDOs covered, participating coops, target packs, delivered packs, delivery accomplishment %, contract funds.
-6. '5. Contract & Delivery Details' (tab: senate_delivery): Granular contract & delivery records per SDO: PR/PO numbers, ORS dates, mode of procurement, delivery start & end dates, contract amounts, contracted vs delivered liters, completion status.
-7. '6. Milk Procurement Status' (tab: milk_procurement): Milk procurement progress as of selected cut-off month & year: pasteurized vs sterilized breakdown, fresh carabao milk utilized (in liters), farmer engagement.
-8. '7. CDP Report' (tab: monthly_cummulated): Cumulative Delivery Performance (CDP) & Monthly Cumulated report: month-by-month delivery volume progressions (Jan-Dec), monthly targets vs actuals, cluster breakdown (Luzon, Visayas, Mindanao).
+### PROCUREMENT STATUS BREAKDOWN:
+${statusBreakdownText}
 
-### CURRENT VIEW & SCOPE:
-- CURRENTLY ACTIVE TAB: "${activeTabLabel}" (${activeTabId})
-- Active School Year: ${schoolYear}
-- Active Filters: ${filterEntries || 'None (All SDOs in scope)'}
+### REGIONAL SUMMARY BREAKDOWN:
+${regionalSummaryText}
 
-### KEY KPI METRICS:
-- Filtered SDOs (Divisions): ${sbfpStats.count} (Total records: ${sbfpStats.rowCount})
-- Target Milk Packs: ${sbfpStats.totalPacks.toLocaleString('en-US')}
-- Delivered Milk Packs: ${sbfpStats.totalDelivered.toLocaleString('en-US')} (${sbfpStats.pctDelivered.toFixed(1)}% accomplished)
-- Total Contract Amount: ₱${sbfpStats.totalContractAmt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-- Total Program Funds: ₱${(sbfpStats.totalFunds || 1121141000).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-- Target Beneficiaries: ${sbfpStats.totalBeneficiaries.toLocaleString('en-US')}
-- Participating Cooperatives: ${sbfpStats.totalCoops}
-- Delivered Volume (L): ${(sbfpStats.totalDeliveredL || 0).toLocaleString('en-US', { maximumFractionDigits: 1 })} L
-- Contracted Volume (L): ${(sbfpStats.totalContractedL || 0).toLocaleString('en-US', { maximumFractionDigits: 1 })} L
-- Actual Amount Paid: ₱${(sbfpStats.totalPaid || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-- Remaining to Pay: ₱${(sbfpStats.totalRemainingPay || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+### PCC CENTERS BREAKDOWN:
+${centerSummaryText}
 
-### STATUS BREAKDOWN:
-${statusText}
-
-### REGIONAL SUMMARY:
-${regLines || 'None'}
-
-### CENTER SUMMARY:
-${centerLines || 'None'}
-
-### PARTICIPATING COOPERATIVES (${context.cooperatives?.length || sbfpStats.totalCoops}):
+### PARTICIPATING COOPERATIVES / SUPPLIERS (${sbfp.cooperatives?.length || 0}):
 ${coopsText}
 
-### SDO DIVISION RECORDS (Pipe-delimited sample):
+### SAMPLE SDO ROWS (Pipe-separated table):
 ${compactTable}
 
 ### INSTRUCTIONS:
-1. Ground every answer strictly in the official data above. Do not invent numbers.
-2. State which of the 8 tabs contains the relevant details when applicable.
-3. If asked about the currently active tab (${activeTabLabel}), explain what it shows and highlight key figures from it.
-4. Currency format: "₱" with commas (e.g. ₱1,005,479,489.00). Quantities: formatted with commas (e.g. 39,946,886 packs).
-5. Format responses using GitHub-flavored Markdown (bullet lists, bold highlights, tables when comparing multiple items).
+1. Base your answers strictly on the dataset and pre-calculated aggregates provided above.
+2. If asked about SDOs, centers, or cooperatives, reference the specific names and figures from the data.
+3. If asked for accomplishment rates, compare delivered packs against target packs.
+4. Currency format: "₱" with commas (e.g. ₱1,250,000.00). Quantities format: with commas (e.g. 103,467 packs).
+5. Format cleanly using GitHub-flavored Markdown (bullet lists, bold text, or markdown tables).
 6. Be concise, direct, professional, and helpful.`
     } else {
-      // General MFP context
       const summary = context?.summaryMetrics || {
         totalPacks: 0,
         totalDelivered: 0,
@@ -247,8 +185,6 @@ ${compactTable}
         milkTypes: [],
         cooperatives: [],
       }
-
-      const totalRecords = context?.totalRecords ?? 0
 
       const coopsText =
         summary.cooperatives && summary.cooperatives.length > 0

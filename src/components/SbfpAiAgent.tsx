@@ -13,14 +13,13 @@ import {
   AlertCircle,
   Key,
   ExternalLink,
-  ChevronDown,
   RotateCw,
-  Table,
 } from 'lucide-react'
+import type { SbfpReportSourceRow } from '@/lib/sbfp-report-sync'
 
 export interface SbfpAiAgentProps {
-  records: any[]
-  allRecords?: any[]
+  filteredRecords: SbfpReportSourceRow[]
+  getViewForSource: (sourceId: string | undefined) => any
   stats: {
     count: number
     rowCount: number
@@ -28,46 +27,46 @@ export interface SbfpAiAgentProps {
     totalDelivered: number
     pctDelivered: number
     totalContractAmt: number
-    totalFunds?: number
+    totalPaid?: number
     totalBeneficiaries: number
     totalCoops: number
-    totalPaid?: number
-    totalRemainingPay?: number
-    totalContractedL?: number
-    totalDeliveredL?: number
-    totalUndeliveredL?: number
     statusCounts?: Record<string, number>
+    [key: string]: any
   }
-  activeTab: string
-  activeTabLabel: string
-  schoolYearLabel: string
-  year: string
+  yearLabel?: string
   filterCenter?: string
   filterRegion?: string
   filterStatus?: string
   filterMonth?: string
+  deliveredDateRange?: string
   searchQuery?: string
-  deliveredDateFilterEnabled?: boolean
-  deliveredFrom?: string
-  deliveredTo?: string
+  activeTab?: string
   regionalSummary?: Array<{
     region: string
     sdoCount: number
-    coopCount: number
-    targetPacks: number
-    deliveredPacks: number
-    pctDelivered: number
-    contractAmt: number
+    targetPacks?: number
+    deliveredPacks?: number
+    pctDelivered?: number
+    coopCount?: number
+    contractedL?: number
+    deliveredL?: number
+    [key: string]: any
   }>
   centerSummary?: Array<{
     center: string
     sdoCount: number
-    coopCount: number
-    targetPacks: number
-    deliveredPacks: number
-    pctDelivered: number
-    contractAmt: number
+    targetPacks?: number
+    deliveredPacks?: number
+    pctDelivered?: number
+    coopCount?: number
+    contractedL?: number
+    deliveredL?: number
+    [key: string]: any
   }>
+  implSummary?: {
+    buckets: Record<string, any>
+    [key: string]: any
+  }
 }
 
 interface Message {
@@ -85,32 +84,40 @@ const GROQ_MODELS = [
 ]
 
 const QUICK_PROMPTS = [
-  'Summarize overall SBFP procurement & delivery progress',
-  'Explain what data is in the 8 report tabs and what my active tab shows',
-  'Which SDOs have completed delivery vs still in preparation?',
-  'Top cooperatives by contract amount & delivered packs',
-  'Breakdown of packs and delivery status by PCC Center',
-  'Regional distribution summary: which regions have the highest target packs?',
+  'Summarize the overall SBFP procurement & delivery accomplishment',
+  'Which SDOs and Centers have completed their milk deliveries?',
+  'List SDOs that are still "For Preparation" or delayed',
+  'Break down delivered packs & completion rate by Region',
+  'Which cooperatives are participating and what are their assigned SDOs?',
+  'Compare packs to deliver vs delivered packs across PCC Centers',
 ]
 
+const TAB_LABELS: Record<string, string> = {
+  master: 'SDO Masterlist',
+  senate_perf: '1. Procurement & Delivery',
+  senate_status: '2. Implementation Status',
+  senate_region: '3. Regional Distribution',
+  senate_center: '4. Center Distribution',
+  senate_delivery: '5. Contract & Delivery Details',
+  milk_procurement: '6. Milk Procurement Status',
+  monthly_cummulated: '7. CDP Report',
+}
+
 export function SbfpAiAgent({
-  records,
-  allRecords,
+  filteredRecords,
+  getViewForSource,
   stats,
-  activeTab,
-  activeTabLabel,
-  schoolYearLabel,
-  year,
-  filterCenter,
-  filterRegion,
-  filterStatus,
-  filterMonth,
-  searchQuery,
-  deliveredDateFilterEnabled,
-  deliveredFrom,
-  deliveredTo,
+  yearLabel = 'SY 2026-2027',
+  filterCenter = 'ALL',
+  filterRegion = 'ALL',
+  filterStatus = 'ALL',
+  filterMonth = '',
+  deliveredDateRange = 'Aug 1 – today',
+  searchQuery = '',
+  activeTab = 'master',
   regionalSummary = [],
   centerSummary = [],
+  implSummary,
 }: SbfpAiAgentProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
@@ -125,12 +132,12 @@ export function SbfpAiAgent({
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  // Load saved API key and model from localStorage (shares key with MFP agent)
+  // Load saved API key and model from localStorage on mount (shares key with MFP agent)
   useEffect(() => {
     try {
-      const savedKey = localStorage.getItem('mfp_groq_api_key')
+      const savedKey = localStorage.getItem('groq_api_key') || localStorage.getItem('mfp_groq_api_key')
       if (savedKey) setApiKey(savedKey)
-      const savedModel = localStorage.getItem('mfp_groq_model')
+      const savedModel = localStorage.getItem('sbfp_groq_model') || localStorage.getItem('mfp_groq_model')
       if (savedModel) setSelectedModel(savedModel)
     } catch {
       // localStorage not accessible
@@ -144,7 +151,7 @@ export function SbfpAiAgent({
     }
   }, [messages, isOpen, isLoading])
 
-  // Focus input when drawer opens
+  // Focus input when opened
   useEffect(() => {
     if (isOpen) {
       setTimeout(() => inputRef.current?.focus(), 150)
@@ -156,8 +163,10 @@ export function SbfpAiAgent({
     setApiKey(keyVal)
     try {
       if (keyVal.trim()) {
+        localStorage.setItem('groq_api_key', keyVal.trim())
         localStorage.setItem('mfp_groq_api_key', keyVal.trim())
       } else {
+        localStorage.removeItem('groq_api_key')
         localStorage.removeItem('mfp_groq_api_key')
       }
     } catch {
@@ -169,54 +178,92 @@ export function SbfpAiAgent({
   const handleSelectModel = (modelId: string) => {
     setSelectedModel(modelId)
     try {
-      localStorage.setItem('mfp_groq_model', modelId)
+      localStorage.setItem('sbfp_groq_model', modelId)
     } catch {
       // ignore
     }
   }
 
-  // Deduplicate and aggregate participating cooperatives from records
-  const coopsList = useMemo(() => {
-    const coopsMap = new Map<string, { packs: number; delivered: number; contractAmt: number; sdos: Set<string> }>()
-    for (const r of records) {
-      const coopName = (r.cooperatives as any)?.name || r.supplier_id || r.coop_name || null
-      if (!coopName || coopName === '—' || coopName === '-') continue
-      const packs = Number(r.packs_to_deliver) || 0
-      const delivered = Number(r.packs_delivered) || 0
-      const amt = Number(r.contract_amount) || Number(r.amount) || 0
-      const prev = coopsMap.get(coopName) || { packs: 0, delivered: 0, contractAmt: 0, sdos: new Set<string>() }
-      if (r.sdo) prev.sdos.add(String(r.sdo))
-      coopsMap.set(coopName, {
-        packs: prev.packs + packs,
-        delivered: prev.delivered + delivered,
-        contractAmt: prev.contractAmt + amt,
-        sdos: prev.sdos,
+  // Precompute aggregate summaries with low token footprint
+  const sbfpContext = useMemo(() => {
+    // 1. Cooperative breakdown
+    const coopMap = new Map<string, { sdos: Set<string>; packs: number; delivered: number }>()
+    filteredRecords.forEach(r => {
+      const v = getViewForSource(r.id)
+      const coopName = v?.coop_name?.trim()
+      if (coopName && coopName !== '—' && coopName !== '-') {
+        const prev = coopMap.get(coopName) || { sdos: new Set(), packs: 0, delivered: 0 }
+        if (r.sdo) prev.sdos.add(String(r.sdo))
+        prev.packs += v?.packs_to_deliver || 0
+        prev.delivered += v?.delivered_packs || 0
+        coopMap.set(coopName, prev)
+      }
+    })
+
+    const coopsList = Array.from(coopMap.entries())
+      .sort((a, b) => b[1].packs - a[1].packs)
+      .slice(0, 30)
+      .map(
+        ([name, data]) =>
+          `${name} (${data.sdos.size} SDOs, ${data.packs.toLocaleString('en-US')} packs target, ${data.delivered.toLocaleString('en-US')} delivered)`,
+      )
+
+    // 2. Regional summary
+    const regList = (regionalSummary || [])
+      .map(r => {
+        const target = r.targetPacks ?? r.contractedL ?? 0
+        const delivered = r.deliveredPacks ?? r.deliveredL ?? 0
+        const pct = r.pctDelivered ?? (target > 0 ? (delivered / target) * 100 : 0)
+        return `Region ${r.region}: ${r.sdoCount} SDOs, target: ${target.toLocaleString('en-US')} packs, delivered: ${delivered.toLocaleString('en-US')} (${pct.toFixed(1)}%), ${r.coopCount ?? 0} coops`
       })
+      .slice(0, 20)
+
+    // 3. Center summary
+    const centerList = (centerSummary || [])
+      .map(c => {
+        const target = c.targetPacks ?? c.contractedL ?? 0
+        const delivered = c.deliveredPacks ?? c.deliveredL ?? 0
+        const pct = c.pctDelivered ?? (target > 0 ? (delivered / target) * 100 : 0)
+        return `${c.center}: ${c.sdoCount} SDOs, target: ${target.toLocaleString('en-US')} packs, delivered: ${delivered.toLocaleString('en-US')} (${pct.toFixed(1)}%), ${c.coopCount ?? 0} coops`
+      })
+      .slice(0, 20)
+
+    // 4. Status breakdown
+    const statusBreakdown: Record<string, number> = {}
+    if (implSummary?.buckets) {
+      Object.entries(implSummary.buckets).forEach(([status, b]: [string, any]) => {
+        statusBreakdown[status] = b.sdoCount || 0
+      })
+    } else if (stats.statusCounts) {
+      Object.assign(statusBreakdown, stats.statusCounts)
     }
 
-    return Array.from(coopsMap.entries())
-      .sort((a, b) => b[1].packs - a[1].packs)
-      .map(([name, stat]) => `${name} (${stat.sdos.size} SDOs, ${stat.packs.toLocaleString()} packs, ₱${(stat.contractAmt / 1e6).toFixed(2)}M)`)
-      .slice(0, 30)
-  }, [records])
-
-  // Ultra-compact pipe-delimited sample table (~15 tokens per row)
-  const compactTable = useMemo(() => {
-    const header = 'SDO|Region|Center|Coop|Status|Milk|ContractAmt|PacksTarget|Delivered'
-    const rows = records.slice(0, 35).map(r => {
-      const sdo = String(r.sdo || '').replace(/\|/g, '')
-      const reg = String(r.region || '')
-      const center = String(r.center || '')
-      const coop = String((r.cooperatives as any)?.name || r.supplier_id || '-').slice(0, 20).replace(/\|/g, '')
-      const status = String(r.procurement_status || 'For Preparation').replace(/\|/g, '')
-      const milk = String(r.milk_type || 'PM')
-      const amt = Number(r.contract_amount) || Number(r.amount) || 0
-      const targetPacks = Number(r.packs_to_deliver) || 0
-      const delivPacks = Number(r.packs_delivered) || 0
-      return `${sdo}|${reg}|${center}|${coop}|${status}|${milk}|${amt}|${targetPacks}|${delivPacks}`
+    // 5. Ultra-compact pipe-delimited sample rows (~15 tokens per row)
+    const header = 'Region|SDO|Center|Coop|Status|Milk|Target|Deliv|ContractAmt'
+    const rows = filteredRecords.slice(0, 40).map(r => {
+      const v = getViewForSource(r.id)
+      const reg = v?.region || r.region || '-'
+      const sdo = v?.sdo || r.sdo || '-'
+      const center = v?.center || r.center || '-'
+      const coop = v?.coop_name || '-'
+      const status = v?.procurement_status || r.procurement_status || '-'
+      const milk = v?.milk_type || r.milk_type || '-'
+      const target = v?.packs_to_deliver ?? 0
+      const deliv = v?.delivered_packs ?? 0
+      const amt = v?.contract_amount ?? (Number(r.contract_amount) || 0)
+      const amtStr = amt > 0 ? `₱${(amt / 1e6).toFixed(2)}M` : '-'
+      return `${reg}|${sdo}|${center}|${coop}|${status}|${milk}|${target}|${deliv}|${amtStr}`
     })
-    return [header, ...rows].join('\n')
-  }, [records])
+    const compactTable = [header, ...rows].join('\n')
+
+    return {
+      cooperatives: coopsList,
+      regionalSummary: regList,
+      centerSummary: centerList,
+      statusBreakdown,
+      compactTable,
+    }
+  }, [filteredRecords, getViewForSource, stats, regionalSummary, centerSummary, implSummary])
 
   // Send prompt to Groq API
   const handleSend = async (textToSend?: string) => {
@@ -244,7 +291,7 @@ export function SbfpAiAgent({
         headers['x-groq-api-key'] = apiKey.trim()
       }
 
-      // Send only last 4 messages to stay strictly within Groq's 8,000 TPM limit
+      // Send last 4 messages to preserve Groq token budget
       const trimmedHistory = newMessages.slice(-4).map(m => ({ role: m.role, content: m.content }))
 
       const res = await fetch('/api/ai/chat', {
@@ -254,41 +301,34 @@ export function SbfpAiAgent({
           messages: trimmedHistory,
           model: selectedModel,
           context: {
-            programType: 'sbfp',
-            activeTab: {
-              id: activeTab,
-              label: activeTabLabel,
+            module: 'sbfp',
+            totalRecords: filteredRecords.length,
+            activeFilters: {
+              'School Year': yearLabel,
+              Center: filterCenter === 'ALL' ? 'All Centers' : filterCenter,
+              Region: filterRegion === 'ALL' ? 'All Regions' : `Region ${filterRegion}`,
+              'Procurement Status': filterStatus === 'ALL' ? 'All Statuses' : filterStatus,
+              'Delivery Month': filterMonth || 'All Months',
+              'Delivered Date Range': deliveredDateRange,
+              Search: searchQuery || undefined,
+              'Active View Tab': TAB_LABELS[activeTab] || activeTab,
             },
-            schoolYear: schoolYearLabel,
-            stats: {
-              count: stats.count,
-              rowCount: stats.rowCount,
+            sbfpMetrics: {
+              sdoCount: stats.count,
               totalPacks: stats.totalPacks,
               totalDelivered: stats.totalDelivered,
               pctDelivered: stats.pctDelivered,
               totalContractAmt: stats.totalContractAmt,
-              totalFunds: stats.totalFunds || 1121141000,
+              totalFunds: 1121141000,
               totalBeneficiaries: stats.totalBeneficiaries,
               totalCoops: stats.totalCoops,
-              totalPaid: stats.totalPaid,
-              totalRemainingPay: stats.totalRemainingPay,
-              totalContractedL: stats.totalContractedL,
-              totalDeliveredL: stats.totalDeliveredL,
-              totalUndeliveredL: stats.totalUndeliveredL,
+              statusBreakdown: sbfpContext.statusBreakdown,
+              regionalSummary: sbfpContext.regionalSummary,
+              centerSummary: sbfpContext.centerSummary,
+              cooperatives: sbfpContext.cooperatives,
+              activeTab: TAB_LABELS[activeTab] || activeTab,
             },
-            statusBreakdown: stats.statusCounts,
-            regionalSummary,
-            centerSummary,
-            cooperatives: coopsList,
-            activeFilters: {
-              center: filterCenter !== 'ALL' ? filterCenter : undefined,
-              region: filterRegion !== 'ALL' ? filterRegion : undefined,
-              status: filterStatus !== 'ALL' ? filterStatus : undefined,
-              month: filterMonth ? `Month ${filterMonth}` : undefined,
-              search: searchQuery || undefined,
-              deliveryDateRange: deliveredDateFilterEnabled ? `${deliveredFrom} to ${deliveredTo}` : undefined,
-            },
-            compactTable,
+            compactTable: sbfpContext.compactTable,
           },
         }),
       })
@@ -310,9 +350,9 @@ export function SbfpAiAgent({
       }
 
       setMessages(prev => [...prev, assistantMsg])
-    } catch (err) {
-      console.error('SBFP AI Agent error:', err)
-      setErrorMessage(err instanceof Error ? err.message : 'An error occurred while contacting AI.')
+    } catch (err: any) {
+      console.error('SBFP AI chat error:', err)
+      setErrorMessage(err.message || 'Error communicating with Groq AI.')
     } finally {
       setIsLoading(false)
     }
@@ -332,53 +372,55 @@ export function SbfpAiAgent({
   }
 
   const clearChat = () => {
-    setMessages([])
-    setErrorMessage(null)
+    if (confirm('Clear chat conversation?')) {
+      setMessages([])
+      setErrorMessage(null)
+    }
   }
 
   return (
     <>
-      {/* 1. Trigger Button beside Export as .CSV */}
+      {/* 1. Header Trigger Button (Placed beside Reset & Export buttons) */}
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        title={`Ask SBFP AI Assistant about ${stats.count} SDOs and active tab data`}
+        title="Ask AI questions about the filtered SBFP SDO data and report metrics"
         style={{
           height: 34,
           padding: '0 0.85rem',
           borderRadius: 6,
           border: '1px solid #1e3a8a',
-          background: 'linear-gradient(135deg, #0a1628 0%, #1e3a8a 100%)',
+          background: 'linear-gradient(135deg, #0a1628 0%, #1e3a6e 50%, #2563eb 100%)',
           color: '#ffffff',
-          fontSize: '0.85rem',
+          fontSize: '0.82rem',
           fontWeight: 600,
           display: 'flex',
           alignItems: 'center',
           gap: 6,
           cursor: 'pointer',
-          boxShadow: '0 1px 3px rgba(30, 58, 138, 0.25)',
+          boxShadow: '0 2px 4px rgba(37, 99, 235, 0.25)',
           transition: 'all 0.15s ease',
         }}
       >
-        <Sparkles size={15} color="#fbbf24" style={{ filter: 'drop-shadow(0 0 4px rgba(251, 191, 36, 0.7))' }} />
+        <Sparkles size={14} color="#fbbf24" style={{ filter: 'drop-shadow(0 0 4px rgba(251, 191, 36, 0.6))' }} />
         <span>AI Agent</span>
         <span
           style={{
-            background: 'rgba(255, 255, 255, 0.22)',
+            background: 'rgba(255, 255, 255, 0.2)',
             color: '#fef3c7',
-            fontSize: '0.7rem',
-            padding: '0.1rem 0.45rem',
-            borderRadius: 999,
+            fontSize: '0.68rem',
+            padding: '0.05rem 0.4rem',
+            borderRadius: '999px',
             fontWeight: 700,
           }}
         >
-          {stats.count} SDOs
+          {stats.count}
         </span>
       </button>
 
       {/* 2. Slide-over Copilot Drawer */}
       {isOpen && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 80 }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 70 }}>
           {/* Subtle backdrop overlay */}
           <div
             onClick={() => setIsOpen(false)}
@@ -404,7 +446,7 @@ export function SbfpAiAgent({
               boxShadow: '-8px 0 24px rgba(10, 22, 40, 0.18)',
               display: 'flex',
               flexDirection: 'column',
-              zIndex: 85,
+              zIndex: 75,
               borderLeft: '1px solid #e2e8f0',
             }}
           >
@@ -412,7 +454,7 @@ export function SbfpAiAgent({
             <div
               style={{
                 padding: '1rem 1.25rem',
-                background: 'linear-gradient(135deg, #0a1628 0%, #1e293b 100%)',
+                background: 'linear-gradient(135deg, #0a1628 0%, #162d55 100%)',
                 color: 'white',
                 display: 'flex',
                 alignItems: 'center',
@@ -453,12 +495,12 @@ export function SbfpAiAgent({
                     </span>
                   </div>
                   <p style={{ fontSize: '0.75rem', color: '#cbd5e1', margin: '0.1rem 0 0 0' }}>
-                    {schoolYearLabel} · {stats.count} SDOs · Tab: {activeTabLabel}
+                    {stats.count} SDO{stats.count !== 1 ? 's' : ''} · {filteredRecords.length} records in scope
                   </p>
                 </div>
               </div>
 
-              {/* Action buttons */}
+              {/* Header Action buttons */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                 <button
                   type="button"
@@ -516,7 +558,7 @@ export function SbfpAiAgent({
               </div>
             </div>
 
-            {/* Scope / Context Pill Banner */}
+            {/* Scope / Context Banner */}
             <div
               style={{
                 background: '#f8fafc',
@@ -529,15 +571,25 @@ export function SbfpAiAgent({
                 color: '#64748b',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                <span style={{ fontWeight: 700, color: '#0f172a' }}>Active Tab:</span>
-                <span style={{ color: '#2563eb', fontWeight: 600 }}>{activeTabLabel}</span>
-                <span>·</span>
-                <span>{filterCenter && filterCenter !== 'ALL' ? filterCenter : 'All Centers'}</span>
-                {filterRegion && filterRegion !== 'ALL' && <span>· Reg {filterRegion}</span>}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <span style={{ fontWeight: 600, color: '#0f172a' }}>Scope:</span>
+                <span>
+                  {yearLabel} · {filterCenter === 'ALL' ? 'All Centers' : filterCenter} ·{' '}
+                  {filterRegion === 'ALL' ? 'All Regions' : `Region ${filterRegion}`} ·{' '}
+                  {TAB_LABELS[activeTab] || activeTab}
+                </span>
               </div>
-              <span style={{ fontWeight: 700, color: '#b45309' }}>
-                ₱{(stats.totalContractAmt / 1e6).toFixed(1)}M
+              <span style={{ fontWeight: 700, color: '#059669' }}>
+                {stats.pctDelivered.toFixed(1)}% delivered
               </span>
             </div>
 
@@ -551,7 +603,16 @@ export function SbfpAiAgent({
                   fontSize: '0.8rem',
                 }}
               >
-                <div style={{ fontWeight: 600, color: '#0f172a', marginBottom: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <div
+                  style={{
+                    fontWeight: 600,
+                    color: '#0f172a',
+                    marginBottom: '0.4rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                  }}
+                >
                   <Key size={14} color="#2563eb" /> Groq API Configuration
                 </div>
                 <div style={{ marginBottom: '0.5rem' }}>
@@ -562,7 +623,7 @@ export function SbfpAiAgent({
                     type="password"
                     placeholder="gsk_..."
                     value={apiKey}
-                    onChange={(e) => handleSaveApiKey(e.target.value)}
+                    onChange={e => handleSaveApiKey(e.target.value)}
                     style={{
                       width: '100%',
                       padding: '0.4rem 0.6rem',
@@ -573,7 +634,15 @@ export function SbfpAiAgent({
                       background: 'white',
                     }}
                   />
-                  <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '0.25rem', display: 'flex', justifyContent: 'space-between' }}>
+                  <div
+                    style={{
+                      fontSize: '0.7rem',
+                      color: '#64748b',
+                      marginTop: '0.25rem',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                    }}
+                  >
                     <span>Leave empty if defined in <code>.env.local</code></span>
                     <a
                       href="https://console.groq.com/keys"
@@ -581,7 +650,7 @@ export function SbfpAiAgent({
                       rel="noreferrer"
                       style={{ color: '#2563eb', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}
                     >
-                      Get Key <ExternalLink size={10} />
+                      Get Free Key <ExternalLink size={10} />
                     </a>
                   </div>
                 </div>
@@ -592,7 +661,7 @@ export function SbfpAiAgent({
                   </label>
                   <select
                     value={selectedModel}
-                    onChange={(e) => handleSelectModel(e.target.value)}
+                    onChange={e => handleSelectModel(e.target.value)}
                     style={{
                       width: '100%',
                       padding: '0.4rem 0.6rem',
@@ -603,14 +672,42 @@ export function SbfpAiAgent({
                     }}
                   >
                     {GROQ_MODELS.map(m => (
-                      <option key={m.id} value={m.id}>{m.name}</option>
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
                     ))}
                   </select>
                 </div>
               </div>
             )}
 
-            {/* Chat Messages Body */}
+            {/* Error Message Toast */}
+            {errorMessage && (
+              <div
+                style={{
+                  background: '#fef2f2',
+                  borderBottom: '1px solid #fecaca',
+                  color: '#991b1b',
+                  padding: '0.65rem 1rem',
+                  fontSize: '0.78rem',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '0.5rem',
+                }}
+              >
+                <AlertCircle size={15} style={{ flexShrink: 0, marginTop: 2 }} />
+                <div style={{ flex: 1 }}>{errorMessage}</div>
+                <button
+                  type="button"
+                  onClick={() => setErrorMessage(null)}
+                  style={{ background: 'none', border: 'none', color: '#991b1b', cursor: 'pointer', padding: 0 }}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            )}
+
+            {/* Chat Body & Conversation */}
             <div
               style={{
                 flex: 1,
@@ -618,285 +715,229 @@ export function SbfpAiAgent({
                 padding: '1rem',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '0.85rem',
+                gap: '1rem',
                 background: '#fafafa',
               }}
             >
-              {/* If no messages yet: Welcome Screen */}
-              {messages.length === 0 && (
-                <div style={{ marginTop: '0.5rem' }}>
+              {messages.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '1.5rem 0.5rem' }}>
                   <div
                     style={{
-                      textAlign: 'center',
-                      padding: '1.25rem 1rem',
-                      background: 'white',
-                      borderRadius: '12px',
-                      border: '1px solid #e2e8f0',
-                      boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-                      marginBottom: '1rem',
+                      width: 50,
+                      height: 50,
+                      borderRadius: '50%',
+                      background: '#eff6ff',
+                      border: '1px solid #bfdbfe',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      margin: '0 auto 1rem',
                     }}
                   >
+                    <Bot size={26} color="#2563eb" />
+                  </div>
+                  <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: '0 0 0.35rem', color: '#0f172a' }}>
+                    SBFP Intelligence Copilot
+                  </h3>
+                  <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '0 0 1.25rem', lineHeight: 1.4 }}>
+                    Ask questions grounded on the <strong>{stats.count} SDOs</strong> and live monitoring metrics visible
+                    on your screen.
+                  </p>
+
+                  {/* Quick Prompts List */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', textAlign: 'left' }}>
                     <div
                       style={{
-                        width: 44,
-                        height: 44,
-                        borderRadius: '12px',
-                        background: 'linear-gradient(135deg, #0a1628 0%, #1e3a8a 100%)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        margin: '0 auto 0.75rem auto',
+                        fontSize: '0.7rem',
+                        fontWeight: 700,
+                        color: '#64748b',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.04em',
+                        marginBottom: '0.1rem',
                       }}
                     >
-                      <Bot size={24} color="white" />
+                      Suggested Prompts:
                     </div>
-                    <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0f172a', margin: '0 0 0.25rem 0' }}>
-                      SBFP Monitoring Knowledge Assistant
-                    </h3>
-                    <p style={{ fontSize: '0.8rem', color: '#64748b', margin: 0, lineHeight: 1.4 }}>
-                      Authoritative intelligence grounded in the SBFP Monitoring dataset. Aware of all 8 tabs, SDO procurement, and delivery accomplishments across your {stats.count} currently filtered divisions.
-                    </p>
-                  </div>
-
-                  {/* Quick prompt suggestions */}
-                  <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#475569', marginBottom: '0.5rem' }}>
-                    Suggested queries:
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                    {QUICK_PROMPTS.map((prompt, idx) => (
+                    {QUICK_PROMPTS.map((qp, idx) => (
                       <button
                         key={idx}
                         type="button"
-                        onClick={() => handleSend(prompt)}
+                        onClick={() => handleSend(qp)}
                         style={{
-                          textAlign: 'left',
-                          padding: '0.55rem 0.75rem',
                           background: 'white',
                           border: '1px solid #e2e8f0',
                           borderRadius: '8px',
-                          fontSize: '0.8rem',
-                          color: '#1e3a8a',
+                          padding: '0.55rem 0.75rem',
+                          fontSize: '0.78rem',
+                          color: '#1e293b',
                           cursor: 'pointer',
-                          transition: 'all 0.15s ease',
+                          textAlign: 'left',
                           display: 'flex',
                           alignItems: 'center',
-                          justifyContent: 'space-between',
+                          gap: '0.45rem',
+                          transition: 'all 0.15s ease',
+                          boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
                         }}
-                        onMouseEnter={(e) => {
+                        onMouseEnter={e => {
                           e.currentTarget.style.borderColor = '#2563eb'
-                          e.currentTarget.style.background = '#f0f7ff'
+                          e.currentTarget.style.background = '#f8fafc'
                         }}
-                        onMouseLeave={(e) => {
+                        onMouseLeave={e => {
                           e.currentTarget.style.borderColor = '#e2e8f0'
                           e.currentTarget.style.background = 'white'
                         }}
                       >
-                        <span>{prompt}</span>
-                        <ChevronDown size={14} color="#94a3b8" style={{ transform: 'rotate(-90deg)', flexShrink: 0 }} />
+                        <Sparkles size={12} color="#2563eb" style={{ flexShrink: 0 }} />
+                        <span style={{ flex: 1 }}>{qp}</span>
                       </button>
                     ))}
                   </div>
                 </div>
-              )}
-
-              {/* Message List */}
-              {messages.map((msg) => (
-                <div
-                  key={msg.id}
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                    maxWidth: '100%',
-                  }}
-                >
+              ) : (
+                messages.map(msg => (
                   <div
+                    key={msg.id}
                     style={{
-                      maxWidth: '92%',
-                      padding: '0.75rem 0.95rem',
-                      borderRadius: msg.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
-                      background: msg.role === 'user' ? '#1e3a8a' : 'white',
-                      color: msg.role === 'user' ? 'white' : '#1e293b',
-                      border: msg.role === 'user' ? 'none' : '1px solid #e2e8f0',
-                      boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-                      fontSize: '0.85rem',
-                      lineHeight: 1.5,
-                      wordBreak: 'break-word',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start',
                     }}
                   >
-                    {msg.role === 'user' ? (
-                      <div style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</div>
-                    ) : (
-                      <div>
-                        <MarkdownText content={msg.content} />
-                        <div
+                    <div
+                      style={{
+                        maxWidth: '92%',
+                        borderRadius: msg.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
+                        padding: '0.75rem 0.95rem',
+                        background: msg.role === 'user' ? '#1e3a8a' : '#ffffff',
+                        color: msg.role === 'user' ? '#ffffff' : '#0f172a',
+                        border: msg.role === 'user' ? 'none' : '1px solid #e2e8f0',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                        fontSize: '0.82rem',
+                        lineHeight: 1.5,
+                        position: 'relative',
+                        wordBreak: 'break-word',
+                      }}
+                    >
+                      {msg.role === 'assistant' ? (
+                        <MarkdownView content={msg.content} />
+                      ) : (
+                        <div style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</div>
+                      )}
+                    </div>
+
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.4rem',
+                        marginTop: '0.25rem',
+                        fontSize: '0.68rem',
+                        color: '#94a3b8',
+                      }}
+                    >
+                      <span>{msg.timestamp}</span>
+                      {msg.role === 'assistant' && (
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard(msg.id, msg.content)}
+                          title="Copy response to clipboard"
                           style={{
-                            display: 'flex',
-                            justifyContent: 'flex-end',
-                            marginTop: '0.5rem',
-                            paddingTop: '0.4rem',
-                            borderTop: '1px solid #f1f5f9',
+                            background: 'none',
+                            border: 'none',
+                            color: copiedId === msg.id ? '#059669' : '#94a3b8',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.2rem',
+                            padding: '0 0.2rem',
                           }}
                         >
-                          <button
-                            type="button"
-                            onClick={() => copyToClipboard(msg.id, msg.content)}
-                            style={{
-                              background: 'transparent',
-                              border: 'none',
-                              color: copiedId === msg.id ? '#16a34a' : '#94a3b8',
-                              fontSize: '0.7rem',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '0.25rem',
-                            }}
-                          >
-                            {copiedId === msg.id ? (
-                              <>
-                                <Check size={12} /> Copied!
-                              </>
-                            ) : (
-                              <>
-                                <Copy size={12} /> Copy
-                              </>
-                            )}
-                          </button>
-                        </div>
-                      </div>
-                    )}
+                          {copiedId === msg.id ? <Check size={11} /> : <Copy size={11} />}
+                          <span>{copiedId === msg.id ? 'Copied' : 'Copy'}</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <span
+                ))
+              )}
+
+              {isLoading && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.5rem 0' }}>
+                  <div
                     style={{
-                      fontSize: '0.65rem',
-                      color: '#94a3b8',
-                      marginTop: '0.2rem',
-                      padding: '0 0.2rem',
+                      background: 'white',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '12px 12px 12px 2px',
+                      padding: '0.65rem 0.9rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      fontSize: '0.78rem',
+                      color: '#475569',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
                     }}
                   >
-                    {msg.timestamp}
-                  </span>
-                </div>
-              ))}
-
-              {/* Loading Indicator */}
-              {isLoading && (
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    background: 'white',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '12px 12px 12px 2px',
-                    padding: '0.65rem 0.85rem',
-                    width: 'fit-content',
-                    boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
-                  }}
-                >
-                  <RotateCw size={14} className="animate-spin" color="#2563eb" />
-                  <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                    Analyzing SBFP dataset & tabs...
-                  </span>
+                    <RotateCw size={14} className="animate-spin" color="#2563eb" style={{ animation: 'spin 1s linear infinite' }} />
+                    <span>Analyzing SBFP monitoring data...</span>
+                  </div>
                 </div>
               )}
-
-              {/* Error Message */}
-              {errorMessage && (
-                <div
-                  style={{
-                    background: '#fef2f2',
-                    border: '1px solid #fecaca',
-                    color: '#b91c1c',
-                    borderRadius: '8px',
-                    padding: '0.6rem 0.8rem',
-                    fontSize: '0.8rem',
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: '0.4rem',
-                  }}
-                >
-                  <AlertCircle size={16} style={{ flexShrink: 0, marginTop: '0.1rem' }} />
-                  <div style={{ flex: 1 }}>{errorMessage}</div>
-                </div>
-              )}
-
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Input Bar */}
+            {/* Input Bar Footer */}
             <div
               style={{
                 padding: '0.75rem 1rem',
+                background: '#ffffff',
                 borderTop: '1px solid #e2e8f0',
-                background: 'white',
+                display: 'flex',
+                gap: '0.5rem',
+                alignItems: 'flex-end',
               }}
             >
-              <div
+              <textarea
+                ref={inputRef}
+                value={inputMessage}
+                onChange={e => setInputMessage(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Ask about SDOs, completion rates, coops, or centers..."
+                disabled={isLoading}
+                rows={2}
                 style={{
-                  display: 'flex',
-                  alignItems: 'flex-end',
-                  gap: '0.5rem',
-                  background: '#f8fafc',
-                  border: '1.5px solid #cbd5e1',
-                  borderRadius: '10px',
-                  padding: '0.45rem 0.6rem',
+                  flex: 1,
+                  resize: 'none',
+                  padding: '0.55rem 0.75rem',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '0.82rem',
+                  outline: 'none',
+                  fontFamily: 'inherit',
+                  lineHeight: 1.4,
                 }}
-              >
-                <textarea
-                  ref={inputRef}
-                  value={inputMessage}
-                  onChange={(e) => setInputMessage(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder={`Ask about ${stats.count} SDOs, active tab (${activeTabLabel}), coops...`}
-                  rows={2}
-                  style={{
-                    flex: 1,
-                    border: 'none',
-                    background: 'transparent',
-                    outline: 'none',
-                    resize: 'none',
-                    fontSize: '0.85rem',
-                    fontFamily: 'inherit',
-                    color: '#1e293b',
-                    maxHeight: 120,
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => handleSend()}
-                  disabled={!inputMessage.trim() || isLoading}
-                  style={{
-                    background: inputMessage.trim() && !isLoading ? '#1e3a8a' : '#cbd5e1',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '8px',
-                    width: 32,
-                    height: 32,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: inputMessage.trim() && !isLoading ? 'pointer' : 'default',
-                    flexShrink: 0,
-                    transition: 'background 0.15s ease',
-                  }}
-                >
-                  <Send size={15} />
-                </button>
-              </div>
-              <div
+              />
+              <button
+                type="button"
+                onClick={() => handleSend()}
+                disabled={!inputMessage.trim() || isLoading}
                 style={{
+                  height: 40,
+                  width: 40,
+                  borderRadius: '8px',
+                  background: !inputMessage.trim() || isLoading ? '#94a3b8' : '#2563eb',
+                  color: 'white',
+                  border: 'none',
+                  cursor: !inputMessage.trim() || isLoading ? 'not-allowed' : 'pointer',
                   display: 'flex',
-                  justifyContent: 'space-between',
                   alignItems: 'center',
-                  marginTop: '0.4rem',
-                  fontSize: '0.7rem',
-                  color: '#94a3b8',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  transition: 'background 0.15s ease',
                 }}
+                title="Send message"
               >
-                <span>Shift+Enter for newline</span>
-                <span>Model: {selectedModel.split('-')[0] + ' ' + (selectedModel.split('-')[1] || '')}</span>
-              </div>
+                <Send size={16} />
+              </button>
             </div>
           </div>
         </div>
@@ -906,45 +947,63 @@ export function SbfpAiAgent({
 }
 
 /**
- * Lightweight Markdown renderer for formatted AI responses.
+ * Lightweight Markdown renderer supporting tables, headers, lists, code, and bold text.
  */
-function MarkdownText({ content }: { content: string }) {
+function MarkdownView({ content }: { content: string }) {
   const renderedElements = useMemo(() => {
     const lines = content.split('\n')
     const elements: React.ReactNode[] = []
     let inTable = false
     let tableRows: string[][] = []
 
-    const flushTable = (key: number) => {
+    const flushTable = (keyIdx: number) => {
       if (tableRows.length === 0) return null
-      const headers = tableRows[0]
-      const rows = tableRows.slice(1)
-
+      const [headerRow, ...bodyRows] = tableRows
       return (
-        <div key={`table-${key}`} style={{ overflowX: 'auto', margin: '0.5rem 0' }}>
+        <div key={`table-${keyIdx}`} style={{ overflowX: 'auto', margin: '0.6rem 0', maxWidth: '100%' }}>
           <table
             style={{
               width: '100%',
               borderCollapse: 'collapse',
-              fontSize: '0.78rem',
-              border: '1px solid #e2e8f0',
+              fontSize: '0.75rem',
+              border: '1px solid #cbd5e1',
+              background: '#ffffff',
             }}
           >
-            <thead>
-              <tr style={{ background: '#f8fafc', borderBottom: '1.5px solid #cbd5e1' }}>
-                {headers.map((h, i) => (
-                  <th key={i} style={{ padding: '0.35rem 0.5rem', textAlign: 'left', fontWeight: 600 }}>
-                    {formatInline(h.trim())}
-                  </th>
-                ))}
-              </tr>
-            </thead>
+            {headerRow && (
+              <thead>
+                <tr style={{ background: '#f1f5f9' }}>
+                  {headerRow.map((cell, cIdx) => (
+                    <th
+                      key={cIdx}
+                      style={{
+                        border: '1px solid #cbd5e1',
+                        padding: '4px 6px',
+                        textAlign: 'left',
+                        fontWeight: 700,
+                        color: '#0f172a',
+                        fontSize: '0.72rem',
+                      }}
+                    >
+                      {formatInline(cell)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+            )}
             <tbody>
-              {rows.map((row, rIdx) => (
-                <tr key={rIdx} style={{ borderBottom: '1px solid #f1f5f9', background: rIdx % 2 === 1 ? '#f8fafc' : 'white' }}>
+              {bodyRows.map((row, rIdx) => (
+                <tr key={rIdx} style={{ background: rIdx % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
                   {row.map((cell, cIdx) => (
-                    <td key={cIdx} style={{ padding: '0.35rem 0.5rem' }}>
-                      {formatInline(cell.trim())}
+                    <td
+                      key={cIdx}
+                      style={{
+                        border: '1px solid #cbd5e1',
+                        padding: '3px 6px',
+                        color: '#334155',
+                      }}
+                    >
+                      {formatInline(cell)}
                     </td>
                   ))}
                 </tr>
@@ -985,21 +1044,21 @@ function MarkdownText({ content }: { content: string }) {
       // Headers
       if (line.startsWith('### ')) {
         elements.push(
-          <h4 key={i} style={{ fontSize: '0.9rem', fontWeight: 700, margin: '0.6rem 0 0.25rem 0', color: '#0f172a' }}>
+          <h4 key={i} style={{ fontSize: '0.88rem', fontWeight: 700, margin: '0.55rem 0 0.2rem 0', color: '#0f172a' }}>
             {formatInline(line.replace('### ', ''))}
-          </h4>
+          </h4>,
         )
       } else if (line.startsWith('## ')) {
         elements.push(
-          <h3 key={i} style={{ fontSize: '0.95rem', fontWeight: 700, margin: '0.75rem 0 0.3rem 0', color: '#0f172a' }}>
+          <h3 key={i} style={{ fontSize: '0.95rem', fontWeight: 700, margin: '0.7rem 0 0.25rem 0', color: '#0f172a' }}>
             {formatInline(line.replace('## ', ''))}
-          </h3>
+          </h3>,
         )
       } else if (line.startsWith('# ')) {
         elements.push(
-          <h2 key={i} style={{ fontSize: '1.05rem', fontWeight: 700, margin: '0.85rem 0 0.35rem 0', color: '#0f172a' }}>
+          <h2 key={i} style={{ fontSize: '1.02rem', fontWeight: 700, margin: '0.8rem 0 0.3rem 0', color: '#0f172a' }}>
             {formatInline(line.replace('# ', ''))}
-          </h2>
+          </h2>,
         )
       }
       // Bullet list items
@@ -1008,7 +1067,7 @@ function MarkdownText({ content }: { content: string }) {
           <div key={i} style={{ display: 'flex', gap: '0.4rem', margin: '0.2rem 0', paddingLeft: '0.4rem' }}>
             <span style={{ color: '#2563eb', fontWeight: 700 }}>•</span>
             <span>{formatInline(line.trim().replace(/^[-*]\s/, ''))}</span>
-          </div>
+          </div>,
         )
       }
       // Numbered list items
@@ -1018,19 +1077,19 @@ function MarkdownText({ content }: { content: string }) {
           <div key={i} style={{ display: 'flex', gap: '0.4rem', margin: '0.2rem 0', paddingLeft: '0.4rem' }}>
             <span style={{ color: '#2563eb', fontWeight: 600, minWidth: '1.1rem' }}>{num}.</span>
             <span>{formatInline(line.trim().replace(/^\d+\.\s/, ''))}</span>
-          </div>
+          </div>,
         )
       }
       // Empty lines
       else if (!line.trim()) {
-        elements.push(<div key={i} style={{ height: '0.4rem' }} />)
+        elements.push(<div key={i} style={{ height: '0.35rem' }} />)
       }
       // Regular paragraph
       else {
         elements.push(
           <p key={i} style={{ margin: '0.25rem 0', lineHeight: 1.5 }}>
             {formatInline(line)}
-          </p>
+          </p>,
         )
       }
 
@@ -1066,7 +1125,7 @@ function formatInline(str: string): React.ReactNode {
       parts.push(
         <strong key={match.index} style={{ fontWeight: 700, color: '#0f172a' }}>
           {chunk.slice(2, -2)}
-        </strong>
+        </strong>,
       )
     } else if (chunk.startsWith('`') && chunk.endsWith('`')) {
       parts.push(
@@ -1082,7 +1141,7 @@ function formatInline(str: string): React.ReactNode {
           }}
         >
           {chunk.slice(1, -1)}
-        </code>
+        </code>,
       )
     } else if (chunk.startsWith('*') && chunk.endsWith('*')) {
       parts.push(<em key={match.index}>{chunk.slice(1, -1)}</em>)
