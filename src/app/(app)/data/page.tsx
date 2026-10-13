@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { DataFilters } from '@/components/DataFilters'
 import { DataTable } from '@/components/DataTable'
 import { ExportMfpCsvButton } from '@/components/ExportMfpCsvButton'
+import { MfpAiAgent } from '@/components/MfpAiAgent'
 import { REGIONS, PCC_CENTERS } from '@/lib/types'
 import { APP_YEAR_STRINGS, APP_YEARS, defaultReportYearString } from '@/lib/app-years'
 import { MFP_DATA_LIST_COLUMNS } from '@/lib/encoder-selects'
@@ -218,7 +219,29 @@ export default async function DataPage({
             {listYears.length > 0 ? ` · year${listYears.length > 1 ? 's' : ''} ${listYears.join(', ')}` : ''}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+          <MfpAiAgent
+            records={records ?? []}
+            centerLabel={
+              profile?.role === 'encoder' && profile?.center
+                ? profile.center
+                : params.center || null
+            }
+            yearLabel={listYear}
+            activeFilters={{
+              year: params.year,
+              funded_by: params.funded_by,
+              region: params.region,
+              center: params.center,
+              province: params.province,
+              division: params.division,
+              municipality: params.municipality,
+              milk_type: params.milk_type,
+              date_started_month: params.date_started_month,
+              date_completed_month: params.date_completed_month,
+              search: params.search,
+            }}
+          />
           <ExportMfpCsvButton
             records={records ?? []}
             centerLabel={
