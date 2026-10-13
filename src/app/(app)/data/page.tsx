@@ -81,46 +81,86 @@ export default async function DataPage({
     } else if (listYears.length > 1) {
       query = query.in('year', listYears)
     }
+    const targetYears = listYears.length > 0 ? listYears : APP_YEARS
+
     if (params.date_started_month) {
-      const m = params.date_started_month.substring(0, 2)
-      if (listYear != null && Number.isFinite(listYear)) {
-        const end = new Date(listYear, Number(m), 1).toISOString().split('T')[0]
-        query = query.gte('date_started', `${listYear}-${m}-01`).lt('date_started', end)
-      } else {
-        const years = APP_YEARS
-        const orConditions = years
-          .map(
-            y =>
-              `and(date_started.gte.${y}-${m}-01,date_started.lt.${new Date(y, Number(m), 1).toISOString().split('T')[0]})`,
+      const startedMonths = params.date_started_month
+        .split(',')
+        .map(v => v.trim().substring(0, 2))
+        .filter(m => /^\d{2}$/.test(m))
+
+      if (startedMonths.length === 1 && targetYears.length === 1) {
+        const y = targetYears[0]
+        const m = Number(startedMonths[0])
+        const start = `${y}-${String(m).padStart(2, '0')}-01`
+        const end = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`
+        query = query.gte('date_started', start).lt('date_started', end)
+      } else if (startedMonths.length > 0) {
+        const orConditions = targetYears
+          .flatMap(y =>
+            startedMonths.map(mStr => {
+              const m = Number(mStr)
+              const start = `${y}-${String(m).padStart(2, '0')}-01`
+              const end = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`
+              return `and(date_started.gte.${start},date_started.lt.${end})`
+            }),
           )
           .join(',')
-        query = query.or(orConditions)
+        if (orConditions) {
+          query = query.or(orConditions)
+        }
       }
     }
+
     if (params.date_completed_month) {
-      const m = params.date_completed_month.substring(0, 2)
-      if (listYear != null && Number.isFinite(listYear)) {
-        const end = new Date(listYear, Number(m), 1).toISOString().split('T')[0]
-        query = query.gte('date_completed', `${listYear}-${m}-01`).lt('date_completed', end)
-      } else {
-        const years = APP_YEARS
-        const orConditions = years
-          .map(
-            y =>
-              `and(date_completed.gte.${y}-${m}-01,date_completed.lt.${new Date(y, Number(m), 1).toISOString().split('T')[0]})`,
+      const completedMonths = params.date_completed_month
+        .split(',')
+        .map(v => v.trim().substring(0, 2))
+        .filter(m => /^\d{2}$/.test(m))
+
+      if (completedMonths.length === 1 && targetYears.length === 1) {
+        const y = targetYears[0]
+        const m = Number(completedMonths[0])
+        const start = `${y}-${String(m).padStart(2, '0')}-01`
+        const end = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`
+        query = query.gte('date_completed', start).lt('date_completed', end)
+      } else if (completedMonths.length > 0) {
+        const orConditions = targetYears
+          .flatMap(y =>
+            completedMonths.map(mStr => {
+              const m = Number(mStr)
+              const start = `${y}-${String(m).padStart(2, '0')}-01`
+              const end = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`
+              return `and(date_completed.gte.${start},date_completed.lt.${end})`
+            }),
           )
           .join(',')
-        query = query.or(orConditions)
+        if (orConditions) {
+          query = query.or(orConditions)
+        }
       }
     }
-    if (params.funded_by) query = query.eq('funded_by', params.funded_by)
-    if (params.region) query = query.eq('region', params.region)
-    if (params.province) query = query.eq('province', params.province)
-    if (params.division) query = query.eq('division', params.division)
-    if (params.municipality) query = query.eq('municipality', params.municipality)
-    if (params.milk_type) query = query.eq('milk_type', params.milk_type)
-    if (params.supplier) query = query.eq('supplier_id', params.supplier)
-    if (params.center && profile?.role !== 'encoder') query = query.eq('center', params.center)
+
+    const applyMulti = (col: string, val: string | undefined) => {
+      if (!val) return
+      const arr = val.split(',').map(s => s.trim()).filter(Boolean)
+      if (arr.length === 1) {
+        query = query.eq(col, arr[0])
+      } else if (arr.length > 1) {
+        query = query.in(col, arr)
+      }
+    }
+
+    applyMulti('funded_by', params.funded_by)
+    applyMulti('region', params.region)
+    applyMulti('province', params.province)
+    applyMulti('division', params.division)
+    applyMulti('municipality', params.municipality)
+    applyMulti('milk_type', params.milk_type)
+    applyMulti('supplier_id', params.supplier)
+    if (profile?.role !== 'encoder') {
+      applyMulti('center', params.center)
+    }
 
     if (params.input_month && params.input_year) {
       const startDate = new Date(parseInt(params.input_year, 10), parseInt(params.input_month, 10) - 1, 1)
@@ -139,14 +179,13 @@ export default async function DataPage({
   }
 
   // Filter dropdowns from the already-loaded list (no second 5000-row scan).
-  const getUnique = (key: string) =>
-    Array.from(
-      new Set(
-        records
-          .map(d => d[key])
-          .filter((v): v is string => typeof v === 'string' && v.trim().length > 0),
-      ),
-    ).sort()
+  const getUnique = (key: string, currentVal?: string) => {
+    const selected = currentVal ? currentVal.split(',').map(s => s.trim()).filter(Boolean) : []
+    const fromRecords = records
+      .map(d => d[key])
+      .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+    return Array.from(new Set([...fromRecords, ...selected])).sort()
+  }
 
   const filterOptions = {
     year: [...APP_YEAR_STRINGS, '__ALL_YEARS__'],
@@ -154,9 +193,9 @@ export default async function DataPage({
     center: PCC_CENTERS,
     region: REGIONS,
     milk_type: ['PM', 'SMP', 'SM', 'Karabao'],
-    province: getUnique('province'),
-    division: getUnique('division'),
-    municipality: getUnique('municipality'),
+    province: getUnique('province', params.province),
+    division: getUnique('division', params.division),
+    municipality: getUnique('municipality', params.municipality),
     supplier: [],
   }
 
@@ -164,7 +203,9 @@ export default async function DataPage({
   const syncCenter =
     profile?.role === 'encoder' && profile?.center
       ? profile.center
-      : params.center || null
+      : params.center && !params.center.includes(',')
+        ? params.center
+        : null
 
   return (
     <div>

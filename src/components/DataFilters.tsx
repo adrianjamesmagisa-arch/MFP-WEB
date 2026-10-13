@@ -16,9 +16,6 @@ type FilterOptions = {
   supplier: string[]
 }
 
-// Keys that support multi-select (comma-separated in the URL)
-const MULTI_SELECT_KEYS = new Set(['year'])
-
 export function DataFilters({ filterOptions }: { filterOptions?: FilterOptions }) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -54,84 +51,8 @@ export function DataFilters({ filterOptions }: { filterOptions?: FilterOptions }
     [searchParams],
   )
 
-  // localFilters: single-select keys store a string; multi-select keys store Set<string>
-  const [localFilters, setLocalFilters] = useState<Record<string, string | Set<string>>>({})
-
-  const togglePopover = () => {
-    if (!isOpen) {
-      const filters: Record<string, string | Set<string>> = {}
-      filterGroups.forEach(g => {
-        const val = searchParams.get(g.key)
-        if (val) {
-          if (MULTI_SELECT_KEYS.has(g.key)) {
-            filters[g.key] = new Set(val.split(',').map(v => v.trim()).filter(Boolean))
-          } else {
-            filters[g.key] = val
-          }
-        }
-      })
-      setLocalFilters(filters)
-    }
-    setIsOpen(!isOpen)
-  }
-
-  const handleLocalFilterChange = (name: string, value: string) => {
-    if (MULTI_SELECT_KEYS.has(name)) {
-      setLocalFilters(prev => {
-        const existing = prev[name]
-        const set: Set<string> = existing instanceof Set ? new Set(existing) : new Set()
-        if (set.has(value)) {
-          set.delete(value)
-        } else {
-          set.add(value)
-        }
-        const next = { ...prev }
-        if (set.size === 0) {
-          delete next[name]
-        } else {
-          next[name] = set
-        }
-        return next
-      })
-    } else {
-      setLocalFilters(prev => {
-        const newFilters = { ...prev }
-        if (newFilters[name] === value) {
-          delete newFilters[name]
-        } else {
-          newFilters[name] = value
-        }
-        return newFilters
-      })
-    }
-  }
-
-  const applyFilters = () => {
-    const params = new URLSearchParams(searchParams.toString())
-    filterGroups.forEach(g => params.delete(g.key))
-    Object.entries(localFilters).forEach(([k, v]) => {
-      if (v instanceof Set) {
-        if (v.size > 0) params.set(k, Array.from(v).join(','))
-      } else if (v) {
-        params.set(k, v)
-      }
-    })
-    router.push(`/data?${params.toString()}`)
-    setIsOpen(false)
-  }
-
-  const clearFilters = () => {
-    setLocalFilters({})
-    const params = new URLSearchParams(searchParams.toString())
-    filterGroups.forEach(g => params.delete(g.key))
-    router.push(`/data?${params.toString()}`)
-    setIsOpen(false)
-  }
-
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    router.push(`/data?${createQueryString('search', searchText)}`)
-  }
+  // localFilters: every filter stores a Set<string> for multi-select support
+  const [localFilters, setLocalFilters] = useState<Record<string, Set<string>>>({})
 
   const filterGroups = [
     { key: 'year', label: 'Year', options: filterOptions?.year || [] },
@@ -162,6 +83,87 @@ export function DataFilters({ filterOptions }: { filterOptions?: FilterOptions }
     { key: 'milk_type', label: 'Milk Type', options: filterOptions?.milk_type || [] },
   ]
 
+  const togglePopover = () => {
+    if (!isOpen) {
+      const filters: Record<string, Set<string>> = {}
+      filterGroups.forEach(g => {
+        const val = searchParams.get(g.key)
+        if (val) {
+          const items = val.split(',').map(v => v.trim()).filter(Boolean)
+          if (items.length > 0) {
+            filters[g.key] = new Set(items)
+          }
+        }
+      })
+      setLocalFilters(filters)
+    }
+    setIsOpen(!isOpen)
+  }
+
+  const handleLocalFilterChange = (name: string, value: string) => {
+    setLocalFilters(prev => {
+      const existing = prev[name]
+      const set: Set<string> = existing instanceof Set ? new Set(existing) : new Set()
+
+      if (name === 'year') {
+        if (value === '__ALL_YEARS__') {
+          if (set.has('__ALL_YEARS__')) {
+            set.delete('__ALL_YEARS__')
+          } else {
+            set.clear()
+            set.add('__ALL_YEARS__')
+          }
+        } else {
+          set.delete('__ALL_YEARS__')
+          if (set.has(value)) {
+            set.delete(value)
+          } else {
+            set.add(value)
+          }
+        }
+      } else {
+        if (set.has(value)) {
+          set.delete(value)
+        } else {
+          set.add(value)
+        }
+      }
+
+      const next = { ...prev }
+      if (set.size === 0) {
+        delete next[name]
+      } else {
+        next[name] = set
+      }
+      return next
+    })
+  }
+
+  const applyFilters = () => {
+    const params = new URLSearchParams(searchParams.toString())
+    filterGroups.forEach(g => params.delete(g.key))
+    Object.entries(localFilters).forEach(([k, v]) => {
+      if (v instanceof Set && v.size > 0) {
+        params.set(k, Array.from(v).join(','))
+      }
+    })
+    router.push(`/data?${params.toString()}`)
+    setIsOpen(false)
+  }
+
+  const clearFilters = () => {
+    setLocalFilters({})
+    const params = new URLSearchParams(searchParams.toString())
+    filterGroups.forEach(g => params.delete(g.key))
+    router.push(`/data?${params.toString()}`)
+    setIsOpen(false)
+  }
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    router.push(`/data?${createQueryString('search', searchText)}`)
+  }
+
   // Count active filters (ignoring search)
   let activeFiltersCount = 0
   filterGroups.forEach(g => {
@@ -169,17 +171,13 @@ export function DataFilters({ filterOptions }: { filterOptions?: FilterOptions }
   })
 
   // Helper: get display label for a group header
-  const getHeaderLabel = (key: string, rawValue: string | Set<string> | undefined) => {
-    if (!rawValue) return null
-    if (rawValue instanceof Set) {
-      if (rawValue.size === 0) return null
-      if (rawValue.size === 1) {
-        const v = Array.from(rawValue)[0]
-        return v === '__ALL_YEARS__' ? 'All Years' : v
-      }
-      return `${rawValue.size} selected`
+  const getHeaderLabel = (key: string, rawValue: Set<string> | undefined) => {
+    if (!rawValue || rawValue.size === 0) return null
+    if (rawValue.size === 1) {
+      const v = Array.from(rawValue)[0]
+      return v === '__ALL_YEARS__' ? 'All Years' : v
     }
-    return rawValue === '__ALL_YEARS__' ? 'All Years' : rawValue
+    return `${rawValue.size} selected`
   }
 
   return (
@@ -236,9 +234,8 @@ export function DataFilters({ filterOptions }: { filterOptions?: FilterOptions }
               {filterGroups.map(group => {
                 const isExpanded = expandedGroup === group.key
                 const activeValue = localFilters[group.key]
-                const isMulti = MULTI_SELECT_KEYS.has(group.key)
                 const headerLabel = getHeaderLabel(group.key, activeValue)
-                const hasActive = activeValue instanceof Set ? activeValue.size > 0 : !!activeValue
+                const hasActive = activeValue instanceof Set && activeValue.size > 0
 
                 return (
                   <div key={group.key} style={{ borderBottom: '1px solid #e2e8f0' }}>
@@ -273,21 +270,16 @@ export function DataFilters({ filterOptions }: { filterOptions?: FilterOptions }
                     {/* Expandable Options List */}
                     {isExpanded && (
                       <div style={{ padding: '0.5rem 1rem', background: '#f8fafc' }}>
-                        {isMulti && activeValue instanceof Set && activeValue.size > 1 && (
+                        {activeValue instanceof Set && activeValue.size > 1 && (
                           <div style={{ fontSize: '0.72rem', color: '#64748b', marginBottom: '0.4rem', fontStyle: 'italic' }}>
-                            {activeValue.size} year{activeValue.size !== 1 ? 's' : ''} selected
+                            {activeValue.size} selected
                           </div>
                         )}
                         {group.options.length === 0 ? (
                           <div style={{ fontSize: '0.75rem', color: '#94a3b8', padding: '0.25rem 0' }}>No options available</div>
                         ) : (
                           group.options.map((opt: string) => {
-                            let isSelected: boolean
-                            if (isMulti) {
-                              isSelected = activeValue instanceof Set ? activeValue.has(opt) : false
-                            } else {
-                              isSelected = activeValue === opt
-                            }
+                            const isSelected = activeValue instanceof Set ? activeValue.has(opt) : false
                             const label = opt === '__ALL_YEARS__' ? 'All Years' : opt
                             return (
                               <label
