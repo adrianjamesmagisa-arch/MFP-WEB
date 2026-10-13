@@ -16,12 +16,15 @@ type FilterOptions = {
   supplier: string[]
 }
 
+// Keys that support multi-select (comma-separated in the URL)
+const MULTI_SELECT_KEYS = new Set(['year'])
+
 export function DataFilters({ filterOptions }: { filterOptions?: FilterOptions }) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [isOpen, setIsOpen] = useState(false)
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null)
-  
+
   // Search text state
   const [searchText, setSearchText] = useState(searchParams.get('search') || '')
 
@@ -34,8 +37,8 @@ export function DataFilters({ filterOptions }: { filterOptions?: FilterOptions }
         setIsOpen(false)
       }
     }
-    document.addEventListener("mousedown", handleClickOutside)
-    return () => document.removeEventListener("mousedown", handleClickOutside)
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
   const createQueryString = useCallback(
@@ -48,18 +51,24 @@ export function DataFilters({ filterOptions }: { filterOptions?: FilterOptions }
       }
       return params.toString()
     },
-    [searchParams]
+    [searchParams],
   )
 
-  const [localFilters, setLocalFilters] = useState<Record<string, string>>({})
+  // localFilters: single-select keys store a string; multi-select keys store Set<string>
+  const [localFilters, setLocalFilters] = useState<Record<string, string | Set<string>>>({})
 
   const togglePopover = () => {
     if (!isOpen) {
-      const filters: Record<string, string> = {}
-      // Sync from URL when opening
+      const filters: Record<string, string | Set<string>> = {}
       filterGroups.forEach(g => {
         const val = searchParams.get(g.key)
-        if (val) filters[g.key] = val
+        if (val) {
+          if (MULTI_SELECT_KEYS.has(g.key)) {
+            filters[g.key] = new Set(val.split(',').map(v => v.trim()).filter(Boolean))
+          } else {
+            filters[g.key] = val
+          }
+        }
       })
       setLocalFilters(filters)
     }
@@ -67,22 +76,45 @@ export function DataFilters({ filterOptions }: { filterOptions?: FilterOptions }
   }
 
   const handleLocalFilterChange = (name: string, value: string) => {
-    setLocalFilters(prev => {
-      const newFilters = { ...prev }
-      if (newFilters[name] === value) {
-        delete newFilters[name]
-      } else {
-        newFilters[name] = value
-      }
-      return newFilters
-    })
+    if (MULTI_SELECT_KEYS.has(name)) {
+      setLocalFilters(prev => {
+        const existing = prev[name]
+        const set: Set<string> = existing instanceof Set ? new Set(existing) : new Set()
+        if (set.has(value)) {
+          set.delete(value)
+        } else {
+          set.add(value)
+        }
+        const next = { ...prev }
+        if (set.size === 0) {
+          delete next[name]
+        } else {
+          next[name] = set
+        }
+        return next
+      })
+    } else {
+      setLocalFilters(prev => {
+        const newFilters = { ...prev }
+        if (newFilters[name] === value) {
+          delete newFilters[name]
+        } else {
+          newFilters[name] = value
+        }
+        return newFilters
+      })
+    }
   }
 
   const applyFilters = () => {
     const params = new URLSearchParams(searchParams.toString())
     filterGroups.forEach(g => params.delete(g.key))
     Object.entries(localFilters).forEach(([k, v]) => {
-      params.set(k, v)
+      if (v instanceof Set) {
+        if (v.size > 0) params.set(k, Array.from(v).join(','))
+      } else if (v) {
+        params.set(k, v)
+      }
     })
     router.push(`/data?${params.toString()}`)
     setIsOpen(false)
@@ -103,16 +135,24 @@ export function DataFilters({ filterOptions }: { filterOptions?: FilterOptions }
 
   const filterGroups = [
     { key: 'year', label: 'Year', options: filterOptions?.year || [] },
-    { key: 'date_started_month', label: 'Date Started (Month)', options: [
-      '01 - January', '02 - February', '03 - March', '04 - April',
-      '05 - May', '06 - June', '07 - July', '08 - August',
-      '09 - September', '10 - October', '11 - November', '12 - December'
-    ] },
-    { key: 'date_completed_month', label: 'Date Completed (Month)', options: [
-      '01 - January', '02 - February', '03 - March', '04 - April',
-      '05 - May', '06 - June', '07 - July', '08 - August',
-      '09 - September', '10 - October', '11 - November', '12 - December'
-    ] },
+    {
+      key: 'date_started_month',
+      label: 'Date Started (Month)',
+      options: [
+        '01 - January', '02 - February', '03 - March', '04 - April',
+        '05 - May', '06 - June', '07 - July', '08 - August',
+        '09 - September', '10 - October', '11 - November', '12 - December',
+      ],
+    },
+    {
+      key: 'date_completed_month',
+      label: 'Date Completed (Month)',
+      options: [
+        '01 - January', '02 - February', '03 - March', '04 - April',
+        '05 - May', '06 - June', '07 - July', '08 - August',
+        '09 - September', '10 - October', '11 - November', '12 - December',
+      ],
+    },
     { key: 'funded_by', label: 'Funded By', options: filterOptions?.funded_by || ['DepEd', 'DSWD', 'LDS'] },
     { key: 'center', label: 'Center', options: filterOptions?.center || [] },
     { key: 'region', label: 'Region', options: filterOptions?.region || [] },
@@ -128,17 +168,31 @@ export function DataFilters({ filterOptions }: { filterOptions?: FilterOptions }
     if (searchParams.has(g.key)) activeFiltersCount++
   })
 
+  // Helper: get display label for a group header
+  const getHeaderLabel = (key: string, rawValue: string | Set<string> | undefined) => {
+    if (!rawValue) return null
+    if (rawValue instanceof Set) {
+      if (rawValue.size === 0) return null
+      if (rawValue.size === 1) {
+        const v = Array.from(rawValue)[0]
+        return v === '__ALL_YEARS__' ? 'All Years' : v
+      }
+      return `${rawValue.size} selected`
+    }
+    return rawValue === '__ALL_YEARS__' ? 'All Years' : rawValue
+  }
+
   return (
     <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.25rem', position: 'relative' }}>
-      
+
       {/* Search Bar */}
       <form onSubmit={handleSearchSubmit} style={{ position: 'relative', flex: 1, maxWidth: 400 }}>
         <div style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}>
           <Search size={18} />
         </div>
-        <input 
-          type="text" 
-          placeholder="Search by Center, Province, School..." 
+        <input
+          type="text"
+          placeholder="Search by Center, Province, School..."
           className="form-input"
           style={{ paddingLeft: '2.5rem', width: '100%', borderRadius: '0.375rem' }}
           value={searchText}
@@ -148,8 +202,8 @@ export function DataFilters({ filterOptions }: { filterOptions?: FilterOptions }
 
       {/* Filter Button */}
       <div ref={popoverRef}>
-        <button 
-          className="btn btn-outline" 
+        <button
+          className="btn btn-outline"
           onClick={togglePopover}
           style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: isOpen ? '#f8fafc' : 'white' }}
         >
@@ -167,7 +221,7 @@ export function DataFilters({ filterOptions }: { filterOptions?: FilterOptions }
           <div style={{
             position: 'absolute',
             top: '100%',
-            left: 408, // Approx position next to search bar
+            left: 408,
             marginTop: '0.5rem',
             width: 320,
             background: 'white',
@@ -176,12 +230,15 @@ export function DataFilters({ filterOptions }: { filterOptions?: FilterOptions }
             boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
             zIndex: 50,
             maxHeight: '60vh',
-            overflowY: 'auto'
+            overflowY: 'auto',
           }}>
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               {filterGroups.map(group => {
                 const isExpanded = expandedGroup === group.key
                 const activeValue = localFilters[group.key]
+                const isMulti = MULTI_SELECT_KEYS.has(group.key)
+                const headerLabel = getHeaderLabel(group.key, activeValue)
+                const hasActive = activeValue instanceof Set ? activeValue.size > 0 : !!activeValue
 
                 return (
                   <div key={group.key} style={{ borderBottom: '1px solid #e2e8f0' }}>
@@ -199,64 +256,93 @@ export function DataFilters({ filterOptions }: { filterOptions?: FilterOptions }
                         textAlign: 'left',
                         fontSize: '0.875rem',
                         fontWeight: 500,
-                        color: activeValue ? 'var(--navy)' : '#334155'
+                        color: hasActive ? 'var(--navy)' : '#334155',
                       }}
                     >
                       <span>
                         {group.label}
-                        {activeValue && (
+                        {headerLabel && (
                           <span style={{ color: '#64748b', fontWeight: 400, marginLeft: '0.5rem' }}>
-                            : {activeValue === '__ALL_YEARS__' ? 'All Years' : activeValue}
+                            : {headerLabel}
                           </span>
                         )}
                       </span>
                       {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                     </button>
-                    
+
                     {/* Expandable Options List */}
                     {isExpanded && (
                       <div style={{ padding: '0.5rem 1rem', background: '#f8fafc' }}>
+                        {isMulti && activeValue instanceof Set && activeValue.size > 1 && (
+                          <div style={{ fontSize: '0.72rem', color: '#64748b', marginBottom: '0.4rem', fontStyle: 'italic' }}>
+                            {activeValue.size} year{activeValue.size !== 1 ? 's' : ''} selected
+                          </div>
+                        )}
                         {group.options.length === 0 ? (
                           <div style={{ fontSize: '0.75rem', color: '#94a3b8', padding: '0.25rem 0' }}>No options available</div>
                         ) : (
                           group.options.map((opt: string) => {
-                            const isSelected = activeValue === opt
+                            let isSelected: boolean
+                            if (isMulti) {
+                              isSelected = activeValue instanceof Set ? activeValue.has(opt) : false
+                            } else {
+                              isSelected = activeValue === opt
+                            }
                             const label = opt === '__ALL_YEARS__' ? 'All Years' : opt
                             return (
-                              <label key={opt} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', padding: '0.25rem 0', cursor: 'pointer', fontSize: '0.875rem', color: isSelected ? 'var(--navy)' : '#475569', fontWeight: isSelected ? 500 : 400 }}>
-                                <input 
-                                  type="checkbox" 
+                              <label
+                                key={opt}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'flex-start',
+                                  gap: '0.5rem',
+                                  padding: '0.25rem 0',
+                                  cursor: 'pointer',
+                                  fontSize: '0.875rem',
+                                  color: isSelected ? 'var(--navy)' : '#475569',
+                                  fontWeight: isSelected ? 600 : 400,
+                                }}
+                              >
+                                <input
+                                  type="checkbox"
                                   checked={isSelected}
                                   onChange={() => handleLocalFilterChange(group.key, opt)}
-                                  style={{ marginTop: '0.15rem' }}
+                                  style={{ marginTop: '0.15rem', accentColor: 'var(--navy)' }}
                                 />
                                 <span style={{ lineHeight: 1.4 }}>{label}</span>
                               </label>
                             )
                           })
                         )}
-                        {activeValue && (
-                           <button 
-                             onClick={() => handleLocalFilterChange(group.key, activeValue)}
-                             style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.5rem', color: '#ef4444', fontSize: '0.75rem', border: 'none', background: 'none', cursor: 'pointer', padding: 0 }}
-                           >
-                             <X size={12} /> Clear Filter
-                           </button>
+                        {hasActive && (
+                          <button
+                            onClick={() => {
+                              setLocalFilters(prev => {
+                                const next = { ...prev }
+                                delete next[group.key]
+                                return next
+                              })
+                            }}
+                            style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.5rem', color: '#ef4444', fontSize: '0.75rem', border: 'none', background: 'none', cursor: 'pointer', padding: 0 }}
+                          >
+                            <X size={12} /> Clear Filter
+                          </button>
                         )}
                       </div>
                     )}
                   </div>
                 )
               })}
+
               {/* Action Buttons */}
               <div style={{ padding: '1rem', borderTop: '1px solid #e2e8f0', display: 'flex', gap: '0.5rem', background: '#f8fafc', borderBottomLeftRadius: '0.5rem', borderBottomRightRadius: '0.5rem' }}>
-                <button 
+                <button
                   onClick={clearFilters}
                   style={{ flex: 1, padding: '0.5rem', background: 'white', border: '1px solid #cbd5e1', borderRadius: '0.375rem', fontSize: '0.875rem', color: '#475569', cursor: 'pointer', fontWeight: 500 }}
                 >
                   Remove Filters
                 </button>
-                <button 
+                <button
                   onClick={applyFilters}
                   style={{ flex: 1, padding: '0.5rem', background: 'var(--navy)', border: '1px solid var(--navy)', borderRadius: '0.375rem', fontSize: '0.875rem', color: 'white', cursor: 'pointer', fontWeight: 500 }}
                 >

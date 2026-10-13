@@ -13,7 +13,7 @@ export default async function DataPage({
   searchParams,
 }: {
   searchParams: Promise<{
-    year?: string
+    year?: string        // single year OR comma-separated years e.g. "2025,2026"
     funded_by?: string
     region?: string
     center?: string
@@ -46,10 +46,16 @@ export default async function DataPage({
     redirect(`/data?${qs.toString()}`)
   }
 
-  const listYear =
-    params.year && params.year !== '__ALL_YEARS__'
-      ? Number(params.year)
-      : null
+  // Parse year param — may be a single value or comma-separated multi-select
+  const rawYearParam = params.year && params.year !== '__ALL_YEARS__' ? params.year : null
+  const listYears: number[] = rawYearParam
+    ? rawYearParam
+        .split(',')
+        .map(v => Number(v.trim()))
+        .filter(n => Number.isFinite(n) && n > 0)
+    : []
+  // For display / date-range helpers, use the first selected year (or null)
+  const listYear = listYears.length === 1 ? listYears[0] : null
 
   function buildListQuery() {
     let query = supabase
@@ -70,8 +76,10 @@ export default async function DataPage({
       )
     }
 
-    if (listYear != null && Number.isFinite(listYear)) {
-      query = query.eq('year', listYear)
+    if (listYears.length === 1) {
+      query = query.eq('year', listYears[0])
+    } else if (listYears.length > 1) {
+      query = query.in('year', listYears)
     }
     if (params.date_started_month) {
       const m = params.date_started_month.substring(0, 2)
@@ -166,7 +174,7 @@ export default async function DataPage({
           <p className="page-subtitle">
             {records?.length ?? 0} record(s) found
             {profile?.role === 'encoder' && profile?.center && ` · ${profile.center} only`}
-            {listYear != null && Number.isFinite(listYear) ? ` · year ${listYear}` : ''}
+            {listYears.length > 0 ? ` · year${listYears.length > 1 ? 's' : ''} ${listYears.join(', ')}` : ''}
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.75rem' }}>
