@@ -112,28 +112,56 @@ export function MfpAiAgent({ records, centerLabel, yearLabel, activeFilters }: M
   }
 
   // Precompute aggregate metrics from records to ground the AI
+  // Precompute aggregate metrics & breakdowns to ground the AI with minimal tokens
   const summaryMetrics = useMemo(() => {
     let totalPacks = 0
     let totalDelivered = 0
     let totalVolume = 0
     let totalBeneficiaries = 0
     let totalFunds = 0
-    const centersSet = new Set<string>()
+    const centersMap = new Map<string, { records: number; packs: number }>()
     const regionsSet = new Set<string>()
+    const provincesSet = new Set<string>()
     const fundedBySet = new Set<string>()
     const milkTypesSet = new Set<string>()
+    const coopsMap = new Map<string, { records: number; packs: number; delivered: number }>()
 
     for (const r of records) {
-      if (typeof r.milk_packs === 'number') totalPacks += r.milk_packs
-      if (typeof r.total_milk_packs_delivered === 'number') totalDelivered += r.total_milk_packs_delivered
+      const packs = typeof r.milk_packs === 'number' ? r.milk_packs : 0
+      const delivered = typeof r.total_milk_packs_delivered === 'number' ? r.total_milk_packs_delivered : 0
+      totalPacks += packs
+      totalDelivered += delivered
       if (typeof r.total_volume_requirements === 'number') totalVolume += r.total_volume_requirements
       if (typeof r.beneficiaries === 'number') totalBeneficiaries += r.beneficiaries
       if (typeof r.total_funds_transferred === 'number') totalFunds += r.total_funds_transferred
-      if (r.center) centersSet.add(String(r.center))
+
+      if (r.center) {
+        const cName = String(r.center)
+        const prev = centersMap.get(cName) || { records: 0, packs: 0 }
+        centersMap.set(cName, { records: prev.records + 1, packs: prev.packs + packs })
+      }
       if (r.region) regionsSet.add(String(r.region))
+      if (r.province) provincesSet.add(String(r.province))
       if (r.funded_by) fundedBySet.add(String(r.funded_by))
       if (r.milk_type) milkTypesSet.add(String(r.milk_type))
+
+      const coopName = (r.cooperatives as any)?.name || (r.supplier_id ? `Supplier #${r.supplier_id}` : null)
+      if (coopName) {
+        const prev = coopsMap.get(coopName) || { records: 0, packs: 0, delivered: 0 }
+        coopsMap.set(coopName, {
+          records: prev.records + 1,
+          packs: prev.packs + packs,
+          delivered: prev.delivered + delivered,
+        })
+      }
     }
+
+    const coopsList = Array.from(coopsMap.entries())
+      .map(([name, stat]) => `${name} (${stat.packs.toLocaleString('en-US')} packs, ${stat.records} records)`)
+      .slice(0, 30)
+
+    const centersList = Array.from(centersMap.entries())
+      .map(([name, stat]) => `${name} (${stat.records} records, ${stat.packs.toLocaleString('en-US')} packs)`)
 
     return {
       totalPacks,
@@ -141,35 +169,23 @@ export function MfpAiAgent({ records, centerLabel, yearLabel, activeFilters }: M
       totalVolume,
       totalBeneficiaries,
       totalFunds,
-      centers: Array.from(centersSet).sort(),
+      centers: centersList,
       regions: Array.from(regionsSet).sort(),
+      provinces: Array.from(provincesSet).sort(),
       fundedBy: Array.from(fundedBySet).sort(),
       milkTypes: Array.from(milkTypesSet).sort(),
+      cooperatives: coopsList,
     }
   }, [records])
 
-  // Compress records up to 150 rows for the context
-  const sampleRows = useMemo(() => {
-    return records.slice(0, 150).map(r => ({
-      year: r.year,
-      funded_by: r.funded_by,
-      region: r.region,
-      center: r.center,
-      province: r.province,
-      division: r.division,
-      municipality: r.municipality,
-      school: r.elementary_school,
-      milk_packs: r.milk_packs,
-      delivered: r.total_milk_packs_delivered,
-      vol_L: r.total_volume_requirements,
-      beneficiaries: r.beneficiaries,
-      milk_type: r.milk_type,
-      total_funds: r.total_funds_transferred,
-      coop: (r.cooperatives as any)?.name || r.supplier_id || null,
-      date_started: r.date_started,
-      date_completed: r.date_completed,
-      liquidation: r.liquidation,
-    }))
+  // Ultra-compact pipe-delimited sample rows (~15 tokens per row instead of ~120 tokens JSON)
+  const compactTable = useMemo(() => {
+    const header = 'Year|Funded|Center|Prov|Muni|Packs|Deliv|Benef|Coop'
+    const rows = records.slice(0, 40).map(r => {
+      const coop = (r.cooperatives as any)?.name || r.supplier_id || '-'
+      return `${r.year || ''}|${r.funded_by || ''}|${r.center || ''}|${r.province || ''}|${r.municipality || ''}|${r.milk_packs ?? 0}|${r.total_milk_packs_delivered ?? 0}|${r.beneficiaries ?? 0}|${coop}`
+    })
+    return [header, ...rows].join('\n')
   }, [records])
 
   // Send prompt to Groq API
@@ -198,11 +214,14 @@ export function MfpAiAgent({ records, centerLabel, yearLabel, activeFilters }: M
         headers['x-groq-api-key'] = apiKey.trim()
       }
 
+      // Send only last 4 messages to prevent token budget accumulation
+      const trimmedHistory = newMessages.slice(-4).map(m => ({ role: m.role, content: m.content }))
+
       const res = await fetch('/api/ai/chat', {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          messages: newMessages.map(m => ({ role: m.role, content: m.content })),
+          messages: trimmedHistory,
           model: selectedModel,
           context: {
             totalRecords: records.length,
@@ -212,7 +231,7 @@ export function MfpAiAgent({ records, centerLabel, yearLabel, activeFilters }: M
               yearLabel,
             },
             summaryMetrics,
-            sampleRows,
+            compactTable,
           },
         }),
       })

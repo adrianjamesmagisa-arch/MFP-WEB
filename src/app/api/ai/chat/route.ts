@@ -21,10 +21,12 @@ interface RequestBody {
       totalFunds: number
       centers: string[]
       regions: string[]
+      provinces?: string[]
       fundedBy: string[]
       milkTypes: string[]
+      cooperatives?: string[]
     }
-    sampleRows?: Array<Record<string, unknown>>
+    compactTable?: string
   }
   model?: string
 }
@@ -61,7 +63,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Messages array is required.' }, { status: 400 })
     }
 
-    // 4. Construct grounded system prompt with filtered table context
+    // 4. Construct grounded system prompt with filtered table context (token-optimized)
     const summary = context?.summaryMetrics || {
       totalPacks: 0,
       totalDelivered: 0,
@@ -70,26 +72,36 @@ export async function POST(req: Request) {
       totalFunds: 0,
       centers: [],
       regions: [],
+      provinces: [],
       fundedBy: [],
       milkTypes: [],
+      cooperatives: [],
     }
 
     const totalRecords = context?.totalRecords ?? 0
     const activeFilters = context?.activeFilters ?? {}
-    const sampleRows = context?.sampleRows ?? []
+    const compactTable = context?.compactTable ?? ''
 
     const filterEntries = Object.entries(activeFilters)
       .filter(([_, v]) => v != null && v !== '')
       .map(([k, v]) => `${k}: ${v}`)
       .join(', ')
 
-    const systemPrompt = `You are the DA-PCC MFP AI Analyst, an intelligent copilot embedded directly in the Department of Agriculture - Philippine Carabao Center (DA-PCC) Milk Feeding Program (MFP) Monitoring System.
+    const coopsText = summary.cooperatives && summary.cooperatives.length > 0
+      ? summary.cooperatives.map(c => `- ${c}`).join('\n')
+      : 'None'
 
-You have access to the exact dataset currently filtered and displayed on the user's screen (like Gemini in Google Sheets).
+    const centersText = summary.centers && summary.centers.length > 0
+      ? summary.centers.map(c => `- ${c}`).join('\n')
+      : 'All'
 
-### SCOPE & SUMMARY OF CURRENTLY FILTERED DATA:
-- Total matching records: ${totalRecords}
-- Active filters applied by user: ${filterEntries || 'None (All records in scope)'}
+    const systemPrompt = `You are the DA-PCC MFP AI Analyst, an intelligent copilot for the Department of Agriculture - Philippine Carabao Center (DA-PCC) Milk Feeding Program (MFP) Monitoring System.
+
+You have access to the exact filtered dataset currently displayed on the user's screen.
+
+### SCOPE & PRE-CALCULATED TOTALS:
+- Total records in scope: ${totalRecords}
+- Active filters applied: ${filterEntries || 'None (All records in scope)'}
 - Key Aggregates:
   * Total Milk Packs Target: ${summary.totalPacks.toLocaleString('en-US')}
   * Total Milk Packs Delivered: ${summary.totalDelivered.toLocaleString('en-US')}
@@ -97,26 +109,26 @@ You have access to the exact dataset currently filtered and displayed on the use
   * Total Volume (Liters): ${summary.totalVolume.toLocaleString('en-US')} L
   * Total Beneficiaries: ${summary.totalBeneficiaries.toLocaleString('en-US')}
   * Total Funds Transferred: ₱${summary.totalFunds.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-  * Centers involved: ${summary.centers.length > 0 ? summary.centers.join(', ') : 'All'}
-  * Regions: ${summary.regions.length > 0 ? summary.regions.join(', ') : 'All'}
-  * Funding Sources: ${summary.fundedBy.length > 0 ? summary.fundedBy.join(', ') : 'All'}
-  * Milk Types: ${summary.milkTypes.length > 0 ? summary.milkTypes.join(', ') : 'All'}
+  * Funding Sources: ${summary.fundedBy.join(', ') || 'All'}
+  * Regions: ${summary.regions.join(', ') || 'All'}
+  * Milk Types: ${summary.milkTypes.join(', ') || 'All'}
 
-### ROW-LEVEL DATA (${sampleRows.length} rows):
-\`\`\`json
-${JSON.stringify(sampleRows, null, 2)}
-\`\`\`
+### PARTICIPATING COOPERATIVES / SUPPLIERS (${summary.cooperatives?.length || 0}):
+${coopsText}
+
+### CENTERS BREAKDOWN:
+${centersText}
+
+### SAMPLE ROWS (Pipe-separated table):
+${compactTable}
 
 ### INSTRUCTIONS:
-1. Ground your answers strictly on the dataset provided above. Do NOT make up numbers or invent fictitious centers, schools, or cooperatives.
-2. If asked for totals, comparisons, or rankings, compute or reference them accurately based on the row data or pre-calculated aggregates.
-3. Currency should always use Philippine Peso ("₱") formatted with commas (e.g. ₱1,250,000.00). Quantities and counts should use comma separators (e.g. 88,240 packs).
-4. Use clear GitHub-flavored Markdown:
-   - Use bold for key numbers and entities.
-   - Use Markdown tables when comparing centers, regions, cooperatives, or programs.
-   - Use concise bulleted lists for takeaways or summaries.
-5. If the user asks about records outside the current filter scope, politely note what is visible in the current view and suggest modifying their sidebar filters.
-6. Provide helpful, professional, and directly actionable insights for DA-PCC administrators and encoders.`
+1. Base your answers strictly on the dataset and pre-calculated aggregates provided above.
+2. If asked about cooperatives, reference the participating cooperatives list or row data.
+3. If asked for totals, comparisons, or rankings, compute or reference them accurately.
+4. Currency format: "₱" with commas (e.g. ₱1,250,000.00). Quantities format: with commas (e.g. 88,240 packs).
+5. Format cleanly using GitHub-flavored Markdown (bullet lists, bold text, or markdown tables).
+6. Be concise, direct, professional, and helpful.`
 
     // 5. Call Groq API (OpenAI-compatible endpoint)
     const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
