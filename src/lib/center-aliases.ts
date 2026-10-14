@@ -10,15 +10,15 @@ export function isNizFamily(center: string | null | undefined): boolean {
   return NIZ_FAMILY.some(a => a.toUpperCase() === c)
 }
 
-/** Center values to match on mfp_data when the UI filter is NIZ / NHQGP (NIZ). */
+/** Center values to match on mfp_data when the UI filter is NIZ / NHQ / NHQGP (NIZ). */
 export function mfpCenterAliases(center: string): string[] {
-  if (isNizFamily(center)) return ['NIZ', 'NHQGP (NIZ)']
+  if (isNizFamily(center)) return ['NIZ', 'NHQ', 'NHQGP (NIZ)', 'NHQGP']
   return [center]
 }
 
 /** Center values to match on sbfp_* tables (Excel uses NHQ). */
 export function sbfpCenterAliases(center: string): string[] {
-  if (isNizFamily(center)) return ['NHQ', 'NIZ', 'NHQGP (NIZ)']
+  if (isNizFamily(center)) return ['NHQ', 'NIZ', 'NHQGP (NIZ)', 'NHQGP']
   return [center]
 }
 

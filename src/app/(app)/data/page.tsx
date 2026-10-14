@@ -9,6 +9,7 @@ import { APP_YEAR_STRINGS, APP_YEARS, defaultReportYearString } from '@/lib/app-
 import { MFP_DATA_LIST_COLUMNS } from '@/lib/encoder-selects'
 import { fetchAllRows } from '@/lib/supabase-paginate'
 import { getCurrentUser } from '@/lib/auth-session'
+import { isNizFamily, mfpCenterAliases } from '@/lib/center-aliases'
 
 export default async function DataPage({
   searchParams,
@@ -51,9 +52,9 @@ export default async function DataPage({
   const rawYearParam = params.year && params.year !== '__ALL_YEARS__' ? params.year : null
   const listYears: number[] = rawYearParam
     ? rawYearParam
-        .split(',')
-        .map(v => Number(v.trim()))
-        .filter(n => Number.isFinite(n) && n > 0)
+      .split(',')
+      .map(v => Number(v.trim()))
+      .filter(n => Number.isFinite(n) && n > 0)
     : []
   // For display / date-range helpers, use the first selected year (or null)
   const listYear = listYears.length === 1 ? listYears[0] : null
@@ -68,7 +69,9 @@ export default async function DataPage({
       .order('id', { ascending: false })
 
     if (profile?.role === 'encoder' && profile?.center) {
-      query = query.eq('center', profile.center)
+      const aliases = mfpCenterAliases(profile.center)
+      if (aliases.length === 1) query = query.eq('center', aliases[0])
+      else if (aliases.length > 1) query = query.in('center', aliases)
     }
 
     if (params.search) {
@@ -145,6 +148,15 @@ export default async function DataPage({
     const applyMulti = (col: string, val: string | undefined) => {
       if (!val) return
       const arr = val.split(',').map(s => s.trim()).filter(Boolean)
+      if (col === 'center') {
+        const expanded = Array.from(new Set(arr.flatMap(c => mfpCenterAliases(c))))
+        if (expanded.length === 1) {
+          query = query.eq(col, expanded[0])
+        } else if (expanded.length > 1) {
+          query = query.in(col, expanded)
+        }
+        return
+      }
       if (arr.length === 1) {
         query = query.eq(col, arr[0])
       } else if (arr.length > 1) {
@@ -203,9 +215,9 @@ export default async function DataPage({
   const syncYear = listYear ?? APP_YEARS[0] ?? 2026
   const syncCenter =
     profile?.role === 'encoder' && profile?.center
-      ? profile.center
+      ? (isNizFamily(profile.center) ? 'NHQ' : profile.center)
       : params.center && !params.center.includes(',')
-        ? params.center
+        ? (isNizFamily(params.center) ? 'NHQ' : params.center)
         : null
 
   return (
@@ -264,18 +276,18 @@ export default async function DataPage({
         resyncDelivery={
           syncCenter
             ? {
-                center: syncCenter,
-                year: syncYear,
-              }
+              center: syncCenter,
+              year: syncYear,
+            }
             : null
         }
         resyncProgram={
           syncCenter
             ? {
-                center: syncCenter,
-                year: syncYear,
-                program: 'dswd',
-              }
+              center: syncCenter,
+              year: syncYear,
+              program: 'dswd',
+            }
             : null
         }
       />

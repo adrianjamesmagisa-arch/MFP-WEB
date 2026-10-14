@@ -3,6 +3,7 @@
  */
 
 import { fetchAllRows } from '@/lib/supabase-paginate'
+import { mfpCenterAliases, sbfpCenterAliases } from '@/lib/center-aliases'
 
 export type CenterActivityAction = 'created' | 'updated' | 'deleted'
 
@@ -149,12 +150,14 @@ export async function loadCenterActivityLog(
   const limit = options?.limit ?? 400
   const events: CenterActivityEvent[] = []
   let logReady = true
+  const mfpAliases = mfpCenterAliases(center)
+  const sbfpAliases = sbfpCenterAliases(center)
 
   try {
     const { data, error } = await supabase
       .from('mfp_center_activity')
       .select('id,center,actor_id,action,source,source_id,summary,detail,created_at')
-      .eq('center', center)
+      .in('center', mfpAliases)
       .order('created_at', { ascending: false })
       .limit(limit)
     if (error) {
@@ -191,7 +194,7 @@ export async function loadCenterActivityLog(
       .select(
         'id,center,funded_by,elementary_school,municipality,created_at,updated_at,created_by',
       )
-      .eq('center', center)
+      .in('center', mfpAliases)
       .order('created_at', { ascending: false })
       .limit(fetchLimit)
 
@@ -236,7 +239,7 @@ export async function loadCenterActivityLog(
     const { data: sbfpRows } = await supabase
       .from('sbfp_data')
       .select('id,center,sdo,created_at,updated_at')
-      .eq('center', center)
+      .in('center', sbfpAliases)
       .order('created_at', { ascending: false })
       .limit(fetchLimit)
 
@@ -275,7 +278,7 @@ export async function loadCenterActivityLog(
     const { data: dropRows } = await supabase
       .from('sbfp_dropoff_points')
       .select('id,center,dropoff_name,sdo,created_at,updated_at')
-      .eq('center', center)
+      .in('center', sbfpAliases)
       .order('created_at', { ascending: false })
       .limit(fetchLimit)
 

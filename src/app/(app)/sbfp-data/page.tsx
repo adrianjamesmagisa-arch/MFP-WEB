@@ -6,6 +6,7 @@ import { SbfpDataFilters } from '@/components/SbfpDataFilters'
 import { SbfpDataTable } from '@/components/SbfpDataTable'
 import { REGIONS, PCC_CENTERS } from '@/lib/types'
 import { SBFP_DATA_ENCODER_COLUMNS } from '@/lib/encoder-selects'
+import { sbfpCenterAliases } from '@/lib/center-aliases'
 
 export default async function SbfpDataPage({
   searchParams
@@ -31,7 +32,9 @@ export default async function SbfpDataPage({
     .limit(300)
 
   if (profile?.role === 'encoder' && profile?.center) {
-    query = query.eq('center', profile.center)
+    const aliases = sbfpCenterAliases(profile.center)
+    if (aliases.length === 1) query = query.eq('center', aliases[0])
+    else if (aliases.length > 1) query = query.in('center', aliases)
   }
 
   // Handle Search parameter
@@ -44,10 +47,14 @@ export default async function SbfpDataPage({
   if (params.region) query = query.eq('region', params.region)
   if (params.sdo) query = query.eq('sdo', params.sdo)
   if (params.procurement_status) query = query.eq('procurement_status', params.procurement_status)
-  if (params.center && profile?.role !== 'encoder') query = query.eq('center', params.center)
+  if (params.center && profile?.role !== 'encoder') {
+    const aliases = sbfpCenterAliases(params.center)
+    if (aliases.length === 1) query = query.eq('center', aliases[0])
+    else if (aliases.length > 1) query = query.in('center', aliases)
+  }
 
   const { data: records, error } = await query
-  
+
   if (error) {
     console.error('Error fetching sbfp_data:', error)
   }
@@ -55,11 +62,13 @@ export default async function SbfpDataPage({
   // Fetch unique filter options for dynamic fields
   let filterQuery = supabase.from('sbfp_data').select('sdo').limit(5000)
   if (profile?.role === 'encoder' && profile?.center) {
-    filterQuery = filterQuery.eq('center', profile.center)
+    const aliases = sbfpCenterAliases(profile.center)
+    if (aliases.length === 1) filterQuery = filterQuery.eq('center', aliases[0])
+    else if (aliases.length > 1) filterQuery = filterQuery.in('center', aliases)
   }
   const { data: allData } = await filterQuery
 
-  const getUnique = (key: string) => 
+  const getUnique = (key: string) =>
     Array.from(new Set(allData?.map(d => d[key as keyof typeof d]).filter(Boolean) as string[])).sort()
 
   const filterOptions = {
@@ -79,10 +88,10 @@ export default async function SbfpDataPage({
             Manage data for the DepEd School-Based Feeding Program
           </p>
         </div>
-        
+
         {profile?.role !== 'viewer' && (
           <div className="flex gap-2">
-            <Link 
+            <Link
               href="/sbfp-data/new"
               className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2 gap-2"
             >
@@ -96,7 +105,7 @@ export default async function SbfpDataPage({
       <div className="rounded-lg border bg-card text-card-foreground shadow-sm p-4 w-full">
         <SbfpDataFilters filterOptions={filterOptions} />
       </div>
-      
+
       <div className="w-full">
         <SbfpDataTable records={records || []} userRole={profile?.role} />
       </div>

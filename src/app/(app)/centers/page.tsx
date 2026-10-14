@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { PCC_CENTERS } from '@/lib/types'
+import { isNizFamily } from '@/lib/center-aliases'
 import Link from 'next/link'
 import { Building2, Calendar, CheckCircle2, Clock } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
@@ -21,7 +22,7 @@ export default async function CentersPage() {
     .select('center, created_at')
     .gte('year', 2026)
     .order('created_at', { ascending: false })
-  
+
   // Aggregate to find the most recent created_at per center
   const centerStats = PCC_CENTERS.reduce((acc, center) => {
     acc[center] = { lastInput: null }
@@ -32,9 +33,10 @@ export default async function CentersPage() {
     latestInputs.forEach(row => {
       // Ignore initial seeded data (which has exactly 12:00:00 UTC timestamp on the 15th)
       const isSeededData = row.created_at.includes('T12:00:00+00:00')
-      
-      if (!isSeededData && !centerStats[row.center]?.lastInput) {
-        centerStats[row.center] = { lastInput: row.created_at }
+      const targetCenter = isNizFamily(row.center) ? 'NHQGP (NIZ)' : row.center
+
+      if (!isSeededData && centerStats[targetCenter] && !centerStats[targetCenter]?.lastInput) {
+        centerStats[targetCenter] = { lastInput: row.created_at }
       }
     })
   }
@@ -58,10 +60,10 @@ export default async function CentersPage() {
           const isActive = lastInputDate ? new Date(lastInputDate) > thirtyDaysAgo : false
 
           return (
-            <Link 
-              key={center} 
+            <Link
+              key={center}
               href={`/centers/${encodeURIComponent(center)}`}
-              className="card" 
+              className="card"
               style={{ display: 'block', textDecoration: 'none', transition: 'all 0.2s', border: '1px solid #e2e8f0', padding: '1.25rem' }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
