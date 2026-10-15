@@ -27,7 +27,15 @@ import {
   type SbfpSenateMetrics,
   type SbfpProcurementStatus,
 } from '@/lib/sbfp-report-sync'
-import { uniqueSdoCountKey } from '@/lib/sbfp-dropoff-sync'
+import {
+  uniqueSdoCountKey,
+  baseSdoName,
+  normalizeSdoName,
+  sdoLotNumber,
+  MILK_SORT,
+  normalizeSbfpMilkType,
+  inferSbfpMilkType,
+} from '@/lib/sbfp-dropoff-sync'
 import { excludeAuxSbfp, isSbfpAuxRow } from '@/lib/sbfp-aux'
 import { sbfpCenterAliases, sbfpNavCenter } from '@/lib/center-aliases'
 import { milkTypeLabel } from '@/lib/sbfp-pack-price'
@@ -194,12 +202,38 @@ export default function SbfpSpreadsheetReport() {
         setRecords([])
       } else {
         const rows = excludeAuxSbfp((data || []) as unknown as SbfpReportSourceRow[])
+
+        // Fill in missing region from sibling rows with the same base SDO in the same center
+        const sdoRegionMap = new Map<string, string>()
+        for (const r of rows) {
+          const base = baseSdoName(r.sdo || '')
+          const reg = String(r.region || '').trim()
+          if (base && reg && reg !== '—' && !/^(hiring|ppmp)$/i.test(reg)) {
+            const mapKey = `${String(r.center || '').toLowerCase()}|${normalizeSdoName(base)}`
+            if (!sdoRegionMap.has(mapKey)) sdoRegionMap.set(mapKey, reg)
+          }
+        }
+        for (const r of rows) {
+          if (!r.region || r.region === '—') {
+            const mapKey = `${String(r.center || '').toLowerCase()}|${normalizeSdoName(r.sdo || '')}`
+            const inferredReg = sdoRegionMap.get(mapKey)
+            if (inferredReg) (r as any).region = inferredReg
+          }
+        }
+
         const sorted = rows.sort((a, b) => {
           const rA = regionSortKey(a.region || ''), rB = regionSortKey(b.region || '')
           if (rA !== rB) return rA - rB
           const kA = uniqueSdoCountKey(a.sdo, a.center)
           const kB = uniqueSdoCountKey(b.sdo, b.center)
           if (kA !== kB) return kA.localeCompare(kB)
+          // Within same SDO: sort by milk type (PM, SM, CM), then lot (1, 2, 3)
+          const mA = MILK_SORT[normalizeSbfpMilkType(a.milk_type) || inferSbfpMilkType(a.sdo) || ''] || 9
+          const mB = MILK_SORT[normalizeSbfpMilkType(b.milk_type) || inferSbfpMilkType(b.sdo) || ''] || 9
+          if (mA !== mB) return mA - mB
+          const lA = sdoLotNumber(a.sdo || '')
+          const lB = sdoLotNumber(b.sdo || '')
+          if (lA !== lB) return lA - lB
           return (a.sdo || '').localeCompare(b.sdo || '')
         })
         setRecords(sorted)

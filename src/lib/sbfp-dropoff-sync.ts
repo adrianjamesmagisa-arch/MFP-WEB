@@ -8,6 +8,7 @@
 import { calcMilkFormulations } from '@/lib/mfp-formulas'
 import { fetchAllRows } from '@/lib/supabase-paginate'
 import { toDateInputValue, totalPacksDelivered, type SbfpRawMilkRow } from '@/lib/sbfp-raw-milk'
+export { inferSbfpMilkType, normalizeSbfpMilkType } from '@/lib/sbfp-pack-price'
 import { inferSbfpMilkType, normalizeSbfpMilkType } from '@/lib/sbfp-pack-price'
 
 export type SbfpDropoffRow = {
@@ -125,16 +126,21 @@ export function sdoEncoderDisplayName(value: string | null | undefined): string 
   return stripMilkTypeFromSdoName(String(value || ''))
 }
 
-function sdoLotNumber(value: string): number {
-  const m = String(value || '').match(/\blot\s*(\d+)\b/i)
-  return m ? Number(m[1]) : 0
+export function sdoLotNumber(value: string): number {
+  const s = String(value || '')
+  const mLot = s.match(/\b(?:lot|tranche|batch|part)\s*(\d+)\b/i)
+  if (mLot) return Number(mLot[1])
+  // Trailing digit before milk tag or at end: "Rizal 1 - PM", "Rizal 2", "Rizal - 3"
+  const mTrailing = s.match(/(?:^|\s+|[-–—])(\d+)(?:\s*[-–—]?\s*(?:PM|SM|SMP|CM|SPM))?$/i)
+  if (mTrailing) return Number(mTrailing[1])
+  return 0
 }
 
-const MILK_SORT: Record<string, number> = { PM: 1, SM: 2, CM: 3 }
+export const MILK_SORT: Record<string, number> = { PM: 1, SM: 2, CM: 3 }
 
 /**
- * Keep the same geographic SDO together (Lanao next to Lanao), then lot, then milk type.
- * Two PM lots of one SDO stay adjacent, larger beneficiary count first.
+ * Keep the same geographic SDO together (Lanao next to Lanao), then milk type, then lot.
+ * Multiple PM lots of one SDO stay adjacent in lot order (1, 2, 3).
  */
 export function compareSbfpEncoderRows(
   a: {
@@ -156,12 +162,15 @@ export function compareSbfpEncoderRows(
     { sensitivity: 'base' },
   )
   if (byGeo) return byGeo
-  const byLot = sdoLotNumber(a.sdo || '') - sdoLotNumber(b.sdo || '')
-  if (byLot) return byLot
+
   const ma = normalizeSbfpMilkType(a.milk_type) || inferSbfpMilkType(a.sdo) || ''
   const mb = normalizeSbfpMilkType(b.milk_type) || inferSbfpMilkType(b.sdo) || ''
   const byMilk = (MILK_SORT[ma] || 9) - (MILK_SORT[mb] || 9)
   if (byMilk) return byMilk
+
+  const byLot = sdoLotNumber(a.sdo || '') - sdoLotNumber(b.sdo || '')
+  if (byLot) return byLot
+
   const byBen = (Number(b.beneficiaries_pm) || 0) - (Number(a.beneficiaries_pm) || 0)
   if (byBen) return byBen
   const byAmt = (Number(b.amount) || 0) - (Number(a.amount) || 0)
@@ -181,17 +190,19 @@ export function sortSbfpEncoderRows<T extends {
 }
 
 /**
- * Display / count name for an SDO — strips milk-type and lot tags.
+ * Display / count name for an SDO — strips milk-type, lot tags, and trailing lot numbers.
  * "Nueva Ecija (PM)" and "Nueva Ecija (SM)" → "Nueva Ecija"
  * "Zambales - PM" → "Zambales"
  * "Cavite - CM" / "Cavite - PM" → "Cavite"
  * "Cotabato - Lot 1 PM" / "Cotabato - Lot 4 SMP" → "Cotabato"
  * "Zamboanga City lot 1" / "lot 2" → "Zamboanga City"
+ * "Rizal 1 - PM" / "Rizal 2 - PM" / "Rizal 3 - PM" / "Rizal - SM" / "Rizal - CM" → "Rizal"
  */
 export function baseSdoName(value: string): string {
   return stripMilkTypeFromSdoName(value)
-    // " - Lot 1", "Lot 2", "lot 3" (procurement lots of the same SDO)
-    .replace(/\s*[-–—]?\s*lot\s*\d+\b/gi, ' ')
+    // Procurement lots, tranches, batches, or trailing numbers:
+    // "Lot 1", "lot 2", "Tranche 1", "Batch 1", " 1", " 2", " 3", "- 1"
+    .replace(/\s*[-–—]?\s*(?:lot|tranche|batch|part|district)?\s*\d+\b/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .replace(/[-–—]+$/g, '')

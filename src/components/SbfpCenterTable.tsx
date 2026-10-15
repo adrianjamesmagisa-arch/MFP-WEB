@@ -26,7 +26,7 @@ import {
   fixedPackPriceForMilkType,
   inferSbfpMilkType,
 } from '@/lib/sbfp-pack-price'
-import { composeSdoWithMilkType, sortSbfpEncoderRows } from '@/lib/sbfp-dropoff-sync'
+import { composeSdoWithMilkType, sortSbfpEncoderRows, baseSdoName } from '@/lib/sbfp-dropoff-sync'
 import { useAsyncTask } from '@/components/loading/AsyncFeedback'
 import { logCenterActivity } from '@/lib/center-activity'
 
@@ -921,10 +921,20 @@ export function SbfpCenterTable({
         namePatch.sdo = composed
         nextRow = { ...nextRow, sdo: composed }
       }
+      if (field === 'sdo' && !nextRow.region) {
+        const targetBase = baseSdoName(nextRow.sdo || '')
+        const sibling = rows.find(
+          r => r.id !== id && baseSdoName(r.sdo || '') === targetBase && r.region,
+        )
+        if (sibling?.region) {
+          namePatch.region = sibling.region
+          nextRow = { ...nextRow, region: sibling.region }
+        }
+      }
       if (Object.keys(namePatch).length) {
         setRows(p => p.map(r => (r.id === id ? { ...r, ...namePatch } : r)))
         void supabase.from('sbfp_data').update(namePatch).eq('id', id).then(({ error }) => {
-          if (error) alert(`Could not update SDO name: ${error.message}`)
+          if (error) alert(`Could not update SDO: ${error.message}`)
         })
       }
       if (field === 'sdo' || namePatch.sdo) {
