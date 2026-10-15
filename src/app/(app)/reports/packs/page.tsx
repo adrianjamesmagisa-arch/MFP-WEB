@@ -40,10 +40,10 @@ export default async function PacksDeliveredPage(props: {
 
   rows = rows ?? []
 
-  const totalPacks   = rows.reduce((s, r) => s + (r.milk_packs || 0), 0)
-  const totalCost    = rows.reduce((s, r) => s + (r.milk_cost || 0), 0)
-  const totalFunds   = rows.reduce((s, r) => s + (r.total_funds_transferred || 0), 0)
-  const totalBene    = rows.reduce((s, r) => s + (r.beneficiaries || 0), 0)
+  const totalPacks = rows.reduce((s, r) => s + (r.milk_packs || 0), 0)
+  const totalCost = rows.reduce((s, r) => s + (r.milk_cost || 0), 0)
+  const totalFunds = rows.reduce((s, r) => s + (r.total_funds_transferred || 0), 0)
+  const totalBene = rows.reduce((s, r) => s + (r.beneficiaries || 0), 0)
   const totalRecords = rows.length
 
   // Group by milk type
@@ -51,8 +51,8 @@ export default async function PacksDeliveredPage(props: {
   rows.forEach(r => {
     const k = r.milk_type || 'Unknown'
     if (!milkTypeMap[k]) milkTypeMap[k] = { packs: 0, cost: 0, records: 0 }
-    milkTypeMap[k].packs   += r.milk_packs || 0
-    milkTypeMap[k].cost    += r.milk_cost || 0
+    milkTypeMap[k].packs += r.milk_packs || 0
+    milkTypeMap[k].cost += r.milk_cost || 0
     milkTypeMap[k].records += 1
   })
   const milkTypeRows = Object.entries(milkTypeMap)
@@ -65,9 +65,9 @@ export default async function PacksDeliveredPage(props: {
   rows.forEach(r => {
     const k = r.center || 'Unknown'
     if (!centerMap[k]) centerMap[k] = { packs: 0, cost: 0, bene: 0, records: 0 }
-    centerMap[k].packs   += r.milk_packs || 0
-    centerMap[k].cost    += r.milk_cost || 0
-    centerMap[k].bene    += r.beneficiaries || 0
+    centerMap[k].packs += r.milk_packs || 0
+    centerMap[k].cost += r.milk_cost || 0
+    centerMap[k].bene += r.beneficiaries || 0
     centerMap[k].records += 1
   })
   const centerRows = Object.entries(centerMap)
@@ -80,9 +80,9 @@ export default async function PacksDeliveredPage(props: {
   rows.forEach(r => {
     const k = r.funded_by || 'Unknown'
     if (!funderMap[k]) funderMap[k] = { packs: 0, cost: 0, bene: 0, records: 0 }
-    funderMap[k].packs   += r.milk_packs || 0
-    funderMap[k].cost    += r.milk_cost || 0
-    funderMap[k].bene    += r.beneficiaries || 0
+    funderMap[k].packs += r.milk_packs || 0
+    funderMap[k].cost += r.milk_cost || 0
+    funderMap[k].bene += r.beneficiaries || 0
     funderMap[k].records += 1
   })
   const funderRows = Object.entries(funderMap)
@@ -93,9 +93,9 @@ export default async function PacksDeliveredPage(props: {
   const totalForPie = funderRows.reduce((s, r) => s + r.packs, 0) || 1
 
   const milkTypeColors: Record<string, string> = {
-    PM:      '#0ea5e9',
-    SM:      '#2563eb',
-    SMP:     '#7c3aed',
+    PM: '#0ea5e9',
+    SM: '#2563eb',
+    SMP: '#7c3aed',
     Karabao: '#b45309',
   }
 
@@ -112,10 +112,10 @@ export default async function PacksDeliveredPage(props: {
       {/* Top KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
         {[
-          { label: 'Total Packs Delivered', value: formatNumber(totalPacks),  color: '#0369a1', icon: '📦' },
-          { label: 'Total Beneficiaries',   value: formatNumber(totalBene),   color: '#1d4ed8', icon: '👥' },
-          { label: 'Total Milk Cost (₱)',   value: formatCurrency(totalCost), color: '#15803d', icon: '💰' },
-          { label: 'Records',               value: formatNumber(totalRecords), color: '#7c3aed', icon: '📋' },
+          { label: 'Total Packs Delivered', value: formatNumber(totalPacks), color: '#0369a1', icon: '📦' },
+          { label: 'Total Beneficiaries', value: formatNumber(totalBene), color: '#1d4ed8', icon: '👥' },
+          { label: 'Total Milk Cost (₱)', value: formatCurrency(totalCost), color: '#15803d', icon: '💰' },
+          { label: 'Records', value: formatNumber(totalRecords), color: '#7c3aed', icon: '📋' },
         ].map(s => (
           <div key={s.label} className="stat-card" style={{ textAlign: 'center', padding: '1.5rem 1rem' }}>
             <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>{s.icon}</div>
@@ -133,8 +133,8 @@ export default async function PacksDeliveredPage(props: {
           </h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
             {milkTypeRows.map(r => {
-              const pct  = (r.packs / maxTypePacks) * 100
-              const col  = milkTypeColors[r.type] ?? '#64748b'
+              const pct = (r.packs / maxTypePacks) * 100
+              const col = milkTypeColors[r.type] ?? '#64748b'
               const share = Math.round((r.packs / totalPacks) * 100)
               return (
                 <div key={r.type}>
@@ -159,8 +159,8 @@ export default async function PacksDeliveredPage(props: {
           </h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
             {funderRows.map(r => {
-              const pct  = Math.round((r.packs / totalForPie) * 100)
-              const col  = funderColors[r.funder] ?? '#64748b'
+              const pct = Math.round((r.packs / totalForPie) * 100)
+              const col = funderColors[r.funder] ?? '#64748b'
               return (
                 <div key={r.funder}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.83rem', marginBottom: '0.3rem' }}>

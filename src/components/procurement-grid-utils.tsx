@@ -55,14 +55,16 @@ export function ProcEditableCell({
 
   const save = async (override?: any) => {
     const nextVal = override !== undefined ? override : val
-    if (nextVal === value) {
+    let v: any = nextVal
+    if (type === 'number') v = nextVal === '' || nextVal == null ? null : Number(nextVal)
+    if (type === 'date') v = nextVal === '' || nextVal == null ? null : nextVal
+    if (type === 'checkbox') v = Boolean(nextVal)
+    if (v === value || (v == null && (value == null || value === ''))) {
+      setVal(value)
       setEditing(false)
       return
     }
-    let v: any = nextVal
-    if (type === 'number') v = nextVal === '' || nextVal == null ? null : Number(nextVal)
-    if (type === 'checkbox') v = nextVal
-    setVal(nextVal)
+    setVal(v)
     setEditing(false)
     setSaving(true)
     onSave(id, field, value, v)
@@ -154,22 +156,52 @@ export function ProcEditableCell({
     if (type === 'date') {
       return (
         <td style={{ padding: 2, background: '#fff', ...cellStyle }}>
-          <input
-            ref={ref}
-            type="date"
-            value={toDateInputValue(val)}
-            disabled={saving}
-            onChange={e => setVal(e.target.value)}
-            onBlur={() => save()}
-            onKeyDown={e => {
-              if (e.key === 'Enter') save()
-              if (e.key === 'Escape') {
-                setVal(value)
-                setEditing(false)
-              }
-            }}
-            style={{ width: '100%', border: '1px solid #3b82f6', fontSize: 'inherit' }}
-          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <input
+              ref={ref}
+              type="date"
+              value={toDateInputValue(val)}
+              disabled={saving}
+              onChange={e => setVal(e.target.value)}
+              onBlur={e => {
+                if (e.relatedTarget && (e.relatedTarget as HTMLElement).dataset?.action === 'clear-date') return
+                save()
+              }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') save()
+                if (e.key === 'Escape') {
+                  setVal(value)
+                  setEditing(false)
+                }
+              }}
+              style={{ width: '100%', border: '1px solid #3b82f6', fontSize: 'inherit' }}
+            />
+            {val && (
+              <button
+                type="button"
+                data-action="clear-date"
+                title="Remove date"
+                onMouseDown={e => e.preventDefault()}
+                onClick={() => {
+                  setVal('')
+                  void save('')
+                }}
+                style={{
+                  border: 'none',
+                  background: '#fee2e2',
+                  color: '#dc2626',
+                  borderRadius: '3px',
+                  padding: '2px 5px',
+                  fontSize: '0.75rem',
+                  cursor: 'pointer',
+                  fontWeight: 700,
+                  lineHeight: 1,
+                }}
+              >
+                ×
+              </button>
+            )}
+          </div>
         </td>
       )
     }

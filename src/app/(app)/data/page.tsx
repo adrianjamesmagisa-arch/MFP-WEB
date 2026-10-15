@@ -11,6 +11,87 @@ import { fetchAllRows } from '@/lib/supabase-paginate'
 import { getCurrentUser } from '@/lib/auth-session'
 import { isNizFamily, mfpCenterAliases } from '@/lib/center-aliases'
 
+function parseMonthNumbers(monthParam?: string): number[] {
+  if (!monthParam) return []
+  return monthParam
+    .split(',')
+    .map(v => Number(v.trim().substring(0, 2)))
+    .filter(m => Number.isFinite(m) && m >= 1 && m <= 12)
+}
+
+function parseYearNumbers(yearParam?: string): number[] {
+  if (!yearParam) return []
+  return yearParam
+    .split(',')
+    .map(v => Number(v.trim()))
+    .filter(n => Number.isFinite(n) && n > 0)
+}
+
+function getContiguousMonthRanges(months: number[]): Array<{ startMonth: number; endMonth: number }> {
+  if (months.length === 0) return [{ startMonth: 1, endMonth: 12 }]
+  const sorted = Array.from(new Set(months)).sort((a, b) => a - b)
+  const ranges: Array<{ startMonth: number; endMonth: number }> = []
+  let curStart = sorted[0]
+  let curEnd = sorted[0]
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] === curEnd + 1) {
+      curEnd = sorted[i]
+    } else {
+      ranges.push({ startMonth: curStart, endMonth: curEnd })
+      curStart = sorted[i]
+      curEnd = sorted[i]
+    }
+  }
+  ranges.push({ startMonth: curStart, endMonth: curEnd })
+  return ranges
+}
+
+function applyDateRangeFilter(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  baseQuery: any,
+  field: 'date_started' | 'date_completed',
+  yearParam: string | undefined,
+  monthParam: string | undefined,
+  fallbackYears: number[],
+) {
+  const specificYears = parseYearNumbers(yearParam)
+  const months = parseMonthNumbers(monthParam)
+
+  if (specificYears.length === 0 && months.length === 0) {
+    return baseQuery
+  }
+
+  const activeYears = specificYears.length > 0 ? specificYears : fallbackYears
+  if (activeYears.length === 0) return baseQuery
+
+  const monthRanges = getContiguousMonthRanges(months)
+
+  const intervals = activeYears.flatMap(y =>
+    monthRanges.map(r => {
+      const start = `${y}-${String(r.startMonth).padStart(2, '0')}-01`
+      const end =
+        r.endMonth === 12
+          ? `${y + 1}-01-01`
+          : `${y}-${String(r.endMonth + 1).padStart(2, '0')}-01`
+      return { start, end }
+    }),
+  )
+
+  if (intervals.length === 0) return baseQuery
+
+  if (intervals.length === 1) {
+    return baseQuery
+      .gte(field, intervals[0].start)
+      .lt(field, intervals[0].end)
+  }
+
+  const orConditions = intervals
+    .map(iv => `and(${field}.gte.${iv.start},${field}.lt.${iv.end})`)
+    .join(',')
+
+  return baseQuery.or(orConditions)
+}
+
 export default async function DataPage({
   searchParams,
 }: {
@@ -25,7 +106,9 @@ export default async function DataPage({
     municipality?: string
     milk_type?: string
     supplier?: string
+    date_started_year?: string
     date_started_month?: string
+    date_completed_year?: string
     date_completed_month?: string
     input_month?: string
     input_year?: string
@@ -39,7 +122,12 @@ export default async function DataPage({
   const params = await searchParams
 
   // Encoders default to current operational year so /data is not a multi-year dump.
-  if (profile?.role === 'encoder' && !params.year) {
+  if (
+    profile?.role === 'encoder' &&
+    !params.year &&
+    !params.date_started_year &&
+    !params.date_completed_year
+  ) {
     const qs = new URLSearchParams()
     for (const [key, value] of Object.entries(params)) {
       if (value) qs.set(key, value)
@@ -87,63 +175,21 @@ export default async function DataPage({
     }
     const targetYears = listYears.length > 0 ? listYears : APP_YEARS
 
-    if (params.date_started_month) {
-      const startedMonths = params.date_started_month
-        .split(',')
-        .map(v => v.trim().substring(0, 2))
-        .filter(m => /^\d{2}$/.test(m))
+    query = applyDateRangeFilter(
+      query,
+      'date_started',
+      params.date_started_year,
+      params.date_started_month,
+      targetYears,
+    )
 
-      if (startedMonths.length === 1 && targetYears.length === 1) {
-        const y = targetYears[0]
-        const m = Number(startedMonths[0])
-        const start = `${y}-${String(m).padStart(2, '0')}-01`
-        const end = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`
-        query = query.gte('date_started', start).lt('date_started', end)
-      } else if (startedMonths.length > 0) {
-        const orConditions = targetYears
-          .flatMap(y =>
-            startedMonths.map(mStr => {
-              const m = Number(mStr)
-              const start = `${y}-${String(m).padStart(2, '0')}-01`
-              const end = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`
-              return `and(date_started.gte.${start},date_started.lt.${end})`
-            }),
-          )
-          .join(',')
-        if (orConditions) {
-          query = query.or(orConditions)
-        }
-      }
-    }
-
-    if (params.date_completed_month) {
-      const completedMonths = params.date_completed_month
-        .split(',')
-        .map(v => v.trim().substring(0, 2))
-        .filter(m => /^\d{2}$/.test(m))
-
-      if (completedMonths.length === 1 && targetYears.length === 1) {
-        const y = targetYears[0]
-        const m = Number(completedMonths[0])
-        const start = `${y}-${String(m).padStart(2, '0')}-01`
-        const end = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`
-        query = query.gte('date_completed', start).lt('date_completed', end)
-      } else if (completedMonths.length > 0) {
-        const orConditions = targetYears
-          .flatMap(y =>
-            completedMonths.map(mStr => {
-              const m = Number(mStr)
-              const start = `${y}-${String(m).padStart(2, '0')}-01`
-              const end = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`
-              return `and(date_completed.gte.${start},date_completed.lt.${end})`
-            }),
-          )
-          .join(',')
-        if (orConditions) {
-          query = query.or(orConditions)
-        }
-      }
-    }
+    query = applyDateRangeFilter(
+      query,
+      'date_completed',
+      params.date_completed_year,
+      params.date_completed_month,
+      targetYears,
+    )
 
     const applyMulti = (col: string, val: string | undefined) => {
       if (!val) return
@@ -249,7 +295,9 @@ export default async function DataPage({
               division: params.division,
               municipality: params.municipality,
               milk_type: params.milk_type,
+              date_started_year: params.date_started_year,
               date_started_month: params.date_started_month,
+              date_completed_year: params.date_completed_year,
               date_completed_month: params.date_completed_month,
               search: params.search,
             }}
@@ -269,7 +317,7 @@ export default async function DataPage({
       <DataFilters filterOptions={filterOptions} />
 
       <DataTable
-        key={`${params.year ?? 'all'}:${params.search ?? ''}:${params.funded_by ?? ''}:${params.center ?? ''}:${params.region ?? ''}:${params.province ?? ''}:${params.division ?? ''}:${params.municipality ?? ''}:${params.milk_type ?? ''}:${params.supplier ?? ''}:${params.date_started_month ?? ''}:${params.date_completed_month ?? ''}`}
+        key={`${params.year ?? 'all'}:${params.search ?? ''}:${params.funded_by ?? ''}:${params.center ?? ''}:${params.region ?? ''}:${params.province ?? ''}:${params.division ?? ''}:${params.municipality ?? ''}:${params.milk_type ?? ''}:${params.supplier ?? ''}:${params.date_started_year ?? ''}:${params.date_started_month ?? ''}:${params.date_completed_year ?? ''}:${params.date_completed_month ?? ''}`}
         records={records ?? []}
         readOnly={profile?.role === 'viewer'}
         userRole={profile?.role ?? 'viewer'}

@@ -5,12 +5,12 @@ import { ChevronLeft } from 'lucide-react'
 import { formatCurrency, formatNumber, formatDate } from '@/lib/utils'
 import { format } from 'date-fns'
 
-export default async function CenterMasterlistPage({ 
-  params, 
-  searchParams 
-}: { 
+export default async function CenterMasterlistPage({
+  params,
+  searchParams
+}: {
   params: Promise<{ center: string }>,
-  searchParams: Promise<{ month?: string, year?: string, data_year?: string }> 
+  searchParams: Promise<{ month?: string, year?: string, data_year?: string }>
 }) {
   const { center } = await params
   const decodedCenter = decodeURIComponent(center)
@@ -37,11 +37,11 @@ export default async function CenterMasterlistPage({
     // we use a date range: greater than or equal to first of month, less than first of next month
     const startDate = new Date(parseInt(sp.year), parseInt(sp.month) - 1, 1)
     const endDate = new Date(parseInt(sp.year), parseInt(sp.month), 1) // 1st of next month
-    
+
     query = query
       .gte('created_at', startDate.toISOString())
       .lt('created_at', endDate.toISOString())
-      
+
     listTitle = `${decodedCenter} - ${format(startDate, 'MMMM yyyy')} Inputs`
   }
 

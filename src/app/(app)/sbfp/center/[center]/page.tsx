@@ -82,7 +82,7 @@ export default async function SbfpCenterPage({
       .order('dropoff_name', { ascending: true }),
   ])
   // Lean .select(column list) — Supabase types need `unknown` bridge (non-literal select string).
-  const all = (records || []) as unknown as Array<{ milk_type?: string | null; [key: string]: unknown }>
+  const all = (records || []) as unknown as Array<{ milk_type?: string | null;[key: string]: unknown }>
   const sdoRecords = excludeAuxSbfp(all)
   const ppmpItems = all.filter(r => r.milk_type === SBFP_PPMP_TYPE).map(toPpmpRow)
   const hiringRows = all.filter(r => r.milk_type === SBFP_HIRING_TYPE).map(toHiringRow)

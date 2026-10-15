@@ -122,14 +122,19 @@ function EditableCell({
 
   const save = async (override?: any) => {
     const nextVal = override !== undefined ? override : val
-    if (nextVal === value) { setEditing(false); return }
     let v: any = nextVal
     if (type === 'number') v = nextVal === '' || nextVal == null ? null : Number(nextVal)
-    if (type === 'checkbox') v = nextVal
+    if (type === 'date') v = nextVal === '' || nextVal == null ? null : nextVal
+    if (type === 'checkbox') v = Boolean(nextVal)
     if (field === 'sdo') {
       const milk =
         inferSbfpMilkType(String(nextVal || '')) || inferSbfpMilkType(String(value || ''))
       v = composeSdoWithMilkType(String(nextVal || ''), milk) || nextVal
+    }
+    if (v === value || (v == null && (value == null || value === ''))) {
+      setVal(value)
+      setEditing(false)
+      return
     }
     // Optimistic: update parent row immediately, sync DB in background.
     setVal(v)
@@ -224,6 +229,61 @@ function EditableCell({
         </td>
       )
     }
+
+    if (type === 'date') {
+      return (
+        <td style={{ padding: 2, background: '#fff', ...cellStyle }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <input
+              ref={ref}
+              type="date"
+              value={val ?? ''}
+              disabled={saving}
+              onChange={e => setVal(e.target.value)}
+              onBlur={e => {
+                if (e.relatedTarget && (e.relatedTarget as HTMLElement).dataset?.action === 'clear-date') return
+                save()
+              }}
+              onKeyDown={onKey}
+              style={{
+                width: '100%',
+                border: '1px solid #3b82f6',
+                outline: 'none',
+                padding: '2px 4px',
+                fontSize: 'inherit',
+                boxSizing: 'border-box' as const,
+              }}
+            />
+            {val && (
+              <button
+                type="button"
+                data-action="clear-date"
+                title="Remove date"
+                onMouseDown={e => e.preventDefault()}
+                onClick={() => {
+                  setVal('')
+                  void save('')
+                }}
+                style={{
+                  border: 'none',
+                  background: '#fee2e2',
+                  color: '#dc2626',
+                  borderRadius: '3px',
+                  padding: '2px 5px',
+                  fontSize: '0.75rem',
+                  cursor: 'pointer',
+                  fontWeight: 700,
+                  lineHeight: 1,
+                }}
+              >
+                ×
+              </button>
+            )}
+          </div>
+        </td>
+      )
+    }
+
     return (
       <td style={{ padding: 2, background: '#fff', ...cellStyle }}>
         <input ref={ref} type={type} value={val ?? ''} disabled={saving}

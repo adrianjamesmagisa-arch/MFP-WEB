@@ -28,13 +28,17 @@ function EditableCell({ id, field, value, type = 'text', className, style, forma
   }, [isEditing]);
 
   const save = async () => {
-    if (val === value) {
-      setIsEditing(false);
-      return;
-    }
     let saveVal = val;
     if (type === 'number') {
-      saveVal = val === '' ? null : Number(val);
+      saveVal = val === '' || val == null ? null : Number(val);
+    }
+    if (type === 'date') {
+      saveVal = val === '' || val == null ? null : val;
+    }
+    if (saveVal === value || (saveVal == null && (value == null || value === ''))) {
+      setVal(value);
+      setIsEditing(false);
+      return;
     }
     setIsEditing(false);
     setIsSaving(true);
@@ -81,6 +85,53 @@ function EditableCell({ id, field, value, type = 'text', className, style, forma
   const stickyCol = Boolean(className?.startsWith('col-'))
 
   if (isEditing) {
+    if (type === 'date') {
+      return (
+        <td className={className} style={{ ...style, padding: '2px', background: '#fff' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <input
+              ref={inputRef as any}
+              type="date"
+              value={val ?? ''}
+              onChange={e => setVal(e.target.value)}
+              onBlur={e => {
+                if (e.relatedTarget && (e.relatedTarget as HTMLElement).dataset?.action === 'clear-date') return
+                save()
+              }}
+              onKeyDown={handleKeyDown}
+              disabled={isSaving}
+              style={{ flex: 1, minWidth: 0, height: '100%', border: '1px solid #3b82f6', outline: 'none', padding: '2px 4px', fontSize: 'inherit', boxSizing: 'border-box' }}
+            />
+            {val && (
+              <button
+                type="button"
+                data-action="clear-date"
+                title="Remove date"
+                onMouseDown={e => e.preventDefault()}
+                onClick={() => {
+                  setVal('')
+                  void save()
+                }}
+                style={{
+                  border: 'none',
+                  background: '#fee2e2',
+                  color: '#dc2626',
+                  borderRadius: '3px',
+                  padding: '2px 5px',
+                  fontSize: '0.75rem',
+                  cursor: 'pointer',
+                  fontWeight: 700,
+                  lineHeight: 1,
+                }}
+              >
+                ×
+              </button>
+            )}
+          </div>
+        </td>
+      )
+    }
+
     return (
       <td className={className} style={{ ...style, padding: '2px', background: '#fff' }}>
         <input
@@ -98,15 +149,15 @@ function EditableCell({ id, field, value, type = 'text', className, style, forma
   }
 
   return (
-    <td 
-      className={className} 
+    <td
+      className={className}
       style={{
         ...style,
         cursor: readOnly ? 'default' : 'text',
         opacity: isSaving ? 0.85 : 1,
         // Do not set position:relative on sticky cols — it breaks position:sticky from .col-*.
         ...(stickyCol ? { position: 'sticky' as const } : { position: 'relative' as const }),
-      }} 
+      }}
       onClick={() => !readOnly && !isSaving && setIsEditing(true)}
     >
       {(val === null || val === undefined || val === '') ? 'N/A' : render ? render(val) : format ? format(val) : val}
@@ -219,30 +270,30 @@ export function DataTable({
     const storageKey = `mfp-delivery-resync:${resyncDelivery.center}:${resyncDelivery.year}`
     if (typeof window !== 'undefined' && sessionStorage.getItem(storageKey)) return
     let cancelled = false
-    ;(async () => {
-      try {
-        await runTask(
-          async () => {
-            const res = await fetch('/api/sbfp/sync-dropoff', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                action: 'resync-center-delivery',
-                center: resyncDelivery.center,
-                year: resyncDelivery.year,
-              }),
-            })
-            if (!res.ok || cancelled) return
-            sessionStorage.setItem(storageKey, '1')
-            // No router.refresh() — keep encoders on the current table; next navigation picks up totals.
-          },
-          'Syncing delivery totals in background…',
-          { blocking: false },
-        )
-      } catch {
-        // ignore — table still shows best available DB values
-      }
-    })()
+      ; (async () => {
+        try {
+          await runTask(
+            async () => {
+              const res = await fetch('/api/sbfp/sync-dropoff', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  action: 'resync-center-delivery',
+                  center: resyncDelivery.center,
+                  year: resyncDelivery.year,
+                }),
+              })
+              if (!res.ok || cancelled) return
+              sessionStorage.setItem(storageKey, '1')
+              // No router.refresh() — keep encoders on the current table; next navigation picks up totals.
+            },
+            'Syncing delivery totals in background…',
+            { blocking: false },
+          )
+        } catch {
+          // ignore — table still shows best available DB values
+        }
+      })()
     return () => { cancelled = true }
   }, [resyncDelivery?.center, resyncDelivery?.year, runTask])
 
@@ -252,31 +303,31 @@ export function DataTable({
     const storageKey = `mfp-program-resync:${program}:${resyncProgram.center}:${resyncProgram.year}`
     if (typeof window !== 'undefined' && sessionStorage.getItem(storageKey)) return
     let cancelled = false
-    ;(async () => {
-      try {
-        await runTask(
-          async () => {
-            const res = await fetch('/api/monitoring/sync-dropoff', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                action: 'resync-center-program',
-                program,
-                center: resyncProgram.center,
-                year: resyncProgram.year,
-              }),
-            })
-            if (!res.ok || cancelled) return
-            sessionStorage.setItem(storageKey, '1')
-            // Quiet background sync — do not block UI or force a full RSC reload.
-          },
-          'Syncing monitoring to masterlist in background…',
-          { blocking: false },
-        )
-      } catch {
-        // ignore
-      }
-    })()
+      ; (async () => {
+        try {
+          await runTask(
+            async () => {
+              const res = await fetch('/api/monitoring/sync-dropoff', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  action: 'resync-center-program',
+                  program,
+                  center: resyncProgram.center,
+                  year: resyncProgram.year,
+                }),
+              })
+              if (!res.ok || cancelled) return
+              sessionStorage.setItem(storageKey, '1')
+              // Quiet background sync — do not block UI or force a full RSC reload.
+            },
+            'Syncing monitoring to masterlist in background…',
+            { blocking: false },
+          )
+        } catch {
+          // ignore
+        }
+      })()
     return () => { cancelled = true }
   }, [resyncProgram?.center, resyncProgram?.year, resyncProgram?.program, runTask])
 
@@ -464,146 +515,147 @@ export function DataTable({
                 {!readOnly && <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 80 }}>Actions</th>}
               </tr>
             </thead>
-                        <tbody>
+            <tbody>
               {paginatedRecords?.map((r, rIdx) => {
                 const isHistorical = Number(r.year) < 2026
                 const canEditThisRow = !readOnly && (!isHistorical || canEditHistorical)
                 return (
-                <tr
-                  key={r.id || `row-${rIdx}`}
-                  className={selectedIds.has(r.id) ? 'mfp-data-row-selected' : undefined}
-                  style={{ background: selectedIds.has(r.id) ? '#e0e7ff' : (isHistorical ? '#fcfdfd' : undefined) }}
-                >
-                  {!readOnly && (
-                    <td className="col-check" style={{ textAlign: 'center' }}>
-                      {isHistorical && !canEditHistorical ? (
-                        <input type="checkbox" disabled title="Historical archive (2019–2025) cannot be deleted or bulk-edited by non-admins" style={{ opacity: 0.25, cursor: 'not-allowed' }} />
-                      ) : (
-                        <input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => toggleRow(r.id)} style={{ cursor: 'pointer' }} />
-                      )}
-                    </td>
-                  )}
-                  <EditableCell
-                    readOnly={!canEditThisRow}
-                    onSave={handleCellSave}
-                    id={r.id}
-                    field="year"
-                    value={r.year}
-                    type="number"
-                    className="col-year"
-                    style={{ fontWeight: 700 }}
-                  />
-                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="funded_by" value={r.funded_by} className="col-funded" render={v => <span className={'badge badge-' + (v?.toLowerCase() || '')}>{v}</span>} />
-                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="region" value={r.region} className="col-region" />
-                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="center" value={r.center} className="col-center" style={{ fontWeight: 600, color: 'var(--navy)' }} />
-                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="province" value={r.province} className="col-prov" />
-                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="division" value={r.division} className="col-div" />
-                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="municipality" value={r.municipality} className="col-muni" />
-                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="elementary_school" value={r.elementary_school} className="col-school" />
-                  
-                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="milk_packs" value={r.milk_packs} type="number" format={formatNumber} />
-                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="total_volume_requirements" value={r.total_volume_requirements} type="number" format={formatNumber} />
-                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="raw_milk_liters" value={r.raw_milk_liters} type="number" format={formatNumber} />
-                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="whole_milk_kg" value={r.whole_milk_kg} type="number" format={v => v?.toFixed(2) ?? 'N/A'} />
-                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="skimmed_milk_kg" value={r.skimmed_milk_kg} type="number" format={v => v?.toFixed(2) ?? 'N/A'} />
-                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="sugar" value={r.sugar} type="number" format={v => v?.toFixed(2) ?? 'N/A'} />
-                  
-                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="feeding_days" value={r.feeding_days} type="number" />
-                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="batch" value={r.batch} />
-                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="beneficiaries" value={r.beneficiaries} type="number" format={formatNumber} style={{ fontWeight: 600 }} />
-                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="milk_type" value={r.milk_type} render={v => <span className={'badge badge-' + (v?.toLowerCase() || '')}>{v || 'N/A'}</span>} />
-                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="price" value={r.price} type="number" format={v => v ? '₱' + v.toFixed(2) : 'N/A'} />
-                  
-                  <td>{(r as any).cooperatives?.name ?? 'N/A'}</td>
-                  
-                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="milk_cost" value={r.milk_cost} type="number" format={v => v ? '₱' + formatNumber(v) : 'N/A'} />
-                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="service_fee" value={r.service_fee} type="number" format={v => v ? '₱' + formatNumber(v) : 'N/A'} />
-                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="total_funds_transferred" value={r.total_funds_transferred} type="number" format={v => v ? '₱' + formatNumber(v) : 'N/A'} style={{ fontWeight: 600 }} />
-                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="mode_of_procurement" value={r.mode_of_procurement} />
-                  
-                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="moa_signing" value={r.moa_signing} type="date" format={formatDate} />
-                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="fund_transfer" value={r.fund_transfer} type="date" format={formatDate} />
-                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="date_started" value={r.date_started} type="date" format={formatDate} />
-                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="date_completed" value={r.date_completed} type="date" format={formatDate} />
-                  <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="liquidation" value={r.liquidation} type="date" format={formatDate} />
+                  <tr
+                    key={r.id || `row-${rIdx}`}
+                    className={selectedIds.has(r.id) ? 'mfp-data-row-selected' : undefined}
+                    style={{ background: selectedIds.has(r.id) ? '#e0e7ff' : (isHistorical ? '#fcfdfd' : undefined) }}
+                  >
+                    {!readOnly && (
+                      <td className="col-check" style={{ textAlign: 'center' }}>
+                        {isHistorical && !canEditHistorical ? (
+                          <input type="checkbox" disabled title="Historical archive (2019–2025) cannot be deleted or bulk-edited by non-admins" style={{ opacity: 0.25, cursor: 'not-allowed' }} />
+                        ) : (
+                          <input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => toggleRow(r.id)} style={{ cursor: 'pointer' }} />
+                        )}
+                      </td>
+                    )}
+                    <EditableCell
+                      readOnly={!canEditThisRow}
+                      onSave={handleCellSave}
+                      id={r.id}
+                      field="year"
+                      value={r.year}
+                      type="number"
+                      className="col-year"
+                      style={{ fontWeight: 700 }}
+                    />
+                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="funded_by" value={r.funded_by} className="col-funded" render={v => <span className={'badge badge-' + (v?.toLowerCase() || '')}>{v}</span>} />
+                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="region" value={r.region} className="col-region" />
+                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="center" value={r.center} className="col-center" style={{ fontWeight: 600, color: 'var(--navy)' }} />
+                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="province" value={r.province} className="col-prov" />
+                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="division" value={r.division} className="col-div" />
+                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="municipality" value={r.municipality} className="col-muni" />
+                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="elementary_school" value={r.elementary_school} className="col-school" />
 
-                  {/* AD/AE — one merged cell per SDO (division), like Excel */}
-                  {(() => {
-                    const info = divisionRowSpan[rIdx]
-                    if (!info?.firstInGroup) return null
-                    const { rowspan, target, delivered } = info
-                    const pct = target > 0 ? Math.round((delivered / target) * 100) : null
-                    const pctColor =
-                      pct === null ? '#6b7280' : pct >= 100 ? '#16a34a' : pct >= 75 ? '#d97706' : '#dc2626'
-                    const cellStyle: React.CSSProperties = {
-                      textAlign: 'right',
-                      fontSize: '0.78rem',
-                      verticalAlign: 'middle',
-                      borderLeft: '2px solid #e2e8f0',
-                      background: rowspan > 1 ? '#f8faff' : undefined,
-                    }
-                    return (
-                      <>
-                        <td
-                          rowSpan={rowspan}
-                          title="Target milk packs for this division (from SBFP Packs to Deliver)"
-                          style={{ ...cellStyle, fontWeight: 600, color: target > 0 ? 'var(--navy)' : '#9ca3af' }}
-                        >
-                          {target > 0 ? formatNumber(target) : 'N/A'}
-                        </td>
-                        <td
-                          rowSpan={rowspan}
-                          title="Total milk packs delivered for this division (from SBFP delivery)"
-                          style={{ ...cellStyle, borderLeft: '1px solid #e2e8f0' }}
-                        >
-                          {delivered > 0 ? (
-                            <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
-                              <span style={{ fontWeight: 700, color: 'var(--navy)' }}>{formatNumber(delivered)}</span>
-                              {pct !== null && (
-                                <span style={{ fontSize: '0.68rem', fontWeight: 800, color: pctColor }}>
-                                  {pct}%
-                                </span>
-                              )}
-                            </span>
-                          ) : (
-                            <span style={{ color: '#9ca3af' }}>N/A</span>
-                          )}
-                        </td>
-                      </>
-                    )
-                  })()}
-                  
-                  {!readOnly && (
-                    <td>
-                      {canEditThisRow ? (
-                        <Link
-                          href={`/data/${r.id}/edit`}
-                          className="btn btn-outline"
-                          style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}
-                        >
-                          Edit
-                        </Link>
-                      ) : (
-                        <span
-                          className="badge"
-                          style={{
-                            fontSize: '0.7rem',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 4,
-                            background: '#f1f5f9',
-                            color: '#64748b',
-                            padding: '0.25rem 0.5rem',
-                          }}
-                          title="Archived record (2019–2025) — editable only by Admin"
-                        >
-                          <Lock size={11} /> Archived
-                        </span>
-                      )}
-                    </td>
-                  )}
-                </tr>
-              )})}
+                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="milk_packs" value={r.milk_packs} type="number" format={formatNumber} />
+                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="total_volume_requirements" value={r.total_volume_requirements} type="number" format={formatNumber} />
+                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="raw_milk_liters" value={r.raw_milk_liters} type="number" format={formatNumber} />
+                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="whole_milk_kg" value={r.whole_milk_kg} type="number" format={v => v?.toFixed(2) ?? 'N/A'} />
+                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="skimmed_milk_kg" value={r.skimmed_milk_kg} type="number" format={v => v?.toFixed(2) ?? 'N/A'} />
+                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="sugar" value={r.sugar} type="number" format={v => v?.toFixed(2) ?? 'N/A'} />
+
+                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="feeding_days" value={r.feeding_days} type="number" />
+                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="batch" value={r.batch} />
+                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="beneficiaries" value={r.beneficiaries} type="number" format={formatNumber} style={{ fontWeight: 600 }} />
+                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="milk_type" value={r.milk_type} render={v => <span className={'badge badge-' + (v?.toLowerCase() || '')}>{v || 'N/A'}</span>} />
+                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="price" value={r.price} type="number" format={v => v ? '₱' + v.toFixed(2) : 'N/A'} />
+
+                    <td>{(r as any).cooperatives?.name ?? 'N/A'}</td>
+
+                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="milk_cost" value={r.milk_cost} type="number" format={v => v ? '₱' + formatNumber(v) : 'N/A'} />
+                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="service_fee" value={r.service_fee} type="number" format={v => v ? '₱' + formatNumber(v) : 'N/A'} />
+                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="total_funds_transferred" value={r.total_funds_transferred} type="number" format={v => v ? '₱' + formatNumber(v) : 'N/A'} style={{ fontWeight: 600 }} />
+                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="mode_of_procurement" value={r.mode_of_procurement} />
+
+                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="moa_signing" value={r.moa_signing} type="date" format={formatDate} />
+                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="fund_transfer" value={r.fund_transfer} type="date" format={formatDate} />
+                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="date_started" value={r.date_started} type="date" format={formatDate} />
+                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="date_completed" value={r.date_completed} type="date" format={formatDate} />
+                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="liquidation" value={r.liquidation} type="date" format={formatDate} />
+
+                    {/* AD/AE — one merged cell per SDO (division), like Excel */}
+                    {(() => {
+                      const info = divisionRowSpan[rIdx]
+                      if (!info?.firstInGroup) return null
+                      const { rowspan, target, delivered } = info
+                      const pct = target > 0 ? Math.round((delivered / target) * 100) : null
+                      const pctColor =
+                        pct === null ? '#6b7280' : pct >= 100 ? '#16a34a' : pct >= 75 ? '#d97706' : '#dc2626'
+                      const cellStyle: React.CSSProperties = {
+                        textAlign: 'right',
+                        fontSize: '0.78rem',
+                        verticalAlign: 'middle',
+                        borderLeft: '2px solid #e2e8f0',
+                        background: rowspan > 1 ? '#f8faff' : undefined,
+                      }
+                      return (
+                        <>
+                          <td
+                            rowSpan={rowspan}
+                            title="Target milk packs for this division (from SBFP Packs to Deliver)"
+                            style={{ ...cellStyle, fontWeight: 600, color: target > 0 ? 'var(--navy)' : '#9ca3af' }}
+                          >
+                            {target > 0 ? formatNumber(target) : 'N/A'}
+                          </td>
+                          <td
+                            rowSpan={rowspan}
+                            title="Total milk packs delivered for this division (from SBFP delivery)"
+                            style={{ ...cellStyle, borderLeft: '1px solid #e2e8f0' }}
+                          >
+                            {delivered > 0 ? (
+                              <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
+                                <span style={{ fontWeight: 700, color: 'var(--navy)' }}>{formatNumber(delivered)}</span>
+                                {pct !== null && (
+                                  <span style={{ fontSize: '0.68rem', fontWeight: 800, color: pctColor }}>
+                                    {pct}%
+                                  </span>
+                                )}
+                              </span>
+                            ) : (
+                              <span style={{ color: '#9ca3af' }}>N/A</span>
+                            )}
+                          </td>
+                        </>
+                      )
+                    })()}
+
+                    {!readOnly && (
+                      <td>
+                        {canEditThisRow ? (
+                          <Link
+                            href={`/data/${r.id}/edit`}
+                            className="btn btn-outline"
+                            style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}
+                          >
+                            Edit
+                          </Link>
+                        ) : (
+                          <span
+                            className="badge"
+                            style={{
+                              fontSize: '0.7rem',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              background: '#f1f5f9',
+                              color: '#64748b',
+                              padding: '0.25rem 0.5rem',
+                            }}
+                            title="Archived record (2019–2025) — editable only by Admin"
+                          >
+                            <Lock size={11} /> Archived
+                          </span>
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -714,7 +766,7 @@ export function DataTable({
           )}
         </div>
       </div>
-      
+
       {/* Floating Bulk Action Bar */}
       {selectedIds.size > 0 && (
         <div style={{

@@ -10,31 +10,31 @@ import { Save, X, AlertCircle, CheckCircle2, RotateCcw, PenLine, Lock } from 'lu
 // ─── Formula defaults ───────────────────────────────────────────────────────────
 const DEFAULT_FORMULAS = {
   total_volume_factor: 0.18,
-  raw_milk_factor:     0.20,
-  whole_milk_factor:   0.268,
-  skim_milk_factor:    0.274,
-  sugar_factor:        0.02,
+  raw_milk_factor: 0.20,
+  whole_milk_factor: 0.268,
+  skim_milk_factor: 0.274,
+  sugar_factor: 0.02,
 }
 type FormulaKey = keyof typeof DEFAULT_FORMULAS
 
 // ─── Calc column definitions ────────────────────────────────────────────────────
 type CalcDef = { letter: string; label: string; formulaKey?: FormulaKey; formulaStr: string; currency?: boolean }
 const CALC_DEFS: Record<string, CalcDef> = {
-  milk_packs:                { letter: 'I', label: 'Milk Packs',        formulaStr: '= Beneficiaries × Feeding Days' },
-  total_volume_requirements: { letter: 'J', label: 'Total Vol. Req',    formulaKey: 'total_volume_factor', formulaStr: '= Milk Packs × [FACTOR]' },
-  raw_milk_liters:           { letter: 'K', label: 'Raw Milk (L)',      formulaKey: 'raw_milk_factor',     formulaStr: '= Total Vol. Req × [FACTOR]' },
-  whole_milk_kg:             { letter: 'L', label: 'Whole Milk (kg)',   formulaKey: 'whole_milk_factor',   formulaStr: '= Raw Milk × [FACTOR]' },
-  skimmed_milk_kg:           { letter: 'M', label: 'Skimmed Milk (kg)', formulaKey: 'skim_milk_factor',    formulaStr: '= Raw Milk × [FACTOR]' },
-  sugar:                     { letter: 'N', label: 'Sugar (kg)',         formulaKey: 'sugar_factor',       formulaStr: '= Total Vol. Req × [FACTOR]' },
-  milk_cost:                 { letter: 'U', label: 'Milk Cost',          formulaStr: '= Milk Packs × Price', currency: true },
-  total_funds_transferred:   { letter: 'W', label: 'Total Funds',       formulaStr: '= Milk Cost + Service Fee', currency: true },
+  milk_packs: { letter: 'I', label: 'Milk Packs', formulaStr: '= Beneficiaries × Feeding Days' },
+  total_volume_requirements: { letter: 'J', label: 'Total Vol. Req', formulaKey: 'total_volume_factor', formulaStr: '= Milk Packs × [FACTOR]' },
+  raw_milk_liters: { letter: 'K', label: 'Raw Milk (L)', formulaKey: 'raw_milk_factor', formulaStr: '= Total Vol. Req × [FACTOR]' },
+  whole_milk_kg: { letter: 'L', label: 'Whole Milk (kg)', formulaKey: 'whole_milk_factor', formulaStr: '= Raw Milk × [FACTOR]' },
+  skimmed_milk_kg: { letter: 'M', label: 'Skimmed Milk (kg)', formulaKey: 'skim_milk_factor', formulaStr: '= Raw Milk × [FACTOR]' },
+  sugar: { letter: 'N', label: 'Sugar (kg)', formulaKey: 'sugar_factor', formulaStr: '= Total Vol. Req × [FACTOR]' },
+  milk_cost: { letter: 'U', label: 'Milk Cost', formulaStr: '= Milk Packs × Price', currency: true },
+  total_funds_transferred: { letter: 'W', label: 'Total Funds', formulaStr: '= Milk Cost + Service Fee', currency: true },
 }
 
 const USER_INPUT_FIELDS = [
-  'funded_by','region','center','province','division','municipality',
-  'elementary_school','feeding_days','batch','beneficiaries',
-  'milk_type','price','supplier_id','mode_of_procurement',
-  'moa_signing','fund_transfer','date_started','date_completed','liquidation',
+  'funded_by', 'region', 'center', 'province', 'division', 'municipality',
+  'elementary_school', 'feeding_days', 'batch', 'beneficiaries',
+  'milk_type', 'price', 'supplier_id', 'mode_of_procurement',
+  'moa_signing', 'fund_transfer', 'date_started', 'date_completed', 'liquidation',
 ] as const
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
@@ -68,68 +68,68 @@ const emptyForm = (center = ''): FormState => ({
 })
 
 const PROVINCES_BY_REGION: Record<string, string[]> = {
-  CAR:   ['Abra','Apayao','Benguet','Ifugao','Kalinga','Mountain Province'],
-  I:     ['Ilocos Norte','Ilocos Sur','La Union','Pangasinan'],
-  II:    ['Batanes','Cagayan','Isabela','Nueva Vizcaya','Quirino'],
-  III:   ['Aurora','Bataan','Bulacan','Nueva Ecija','Pampanga','Tarlac Province','Zambales'],
-  IVA:   ['Batangas','Cavite','Laguna','Quezon Province','Rizal'],
-  IVB:   ['Marinduque','Occidental Mindoro','Oriental Mindoro','Palawan','Romblon'],
-  V:     ['Albay','Camarines Norte','Camarines Sur','Catanduanes','Masbate Province','Sorsogon'],
-  NCR:   ['Metro Manila'],
-  VI:    ['Aklan','Antique','Capiz','Guimaras','Iloilo Province','Negros Occidental'],
-  VII:   ['Bohol Province','Cebu','Negros Oriental','Siquijor'],
-  NIR:   ['Negros Occidental','Negros Oriental'],
-  VIII:  ['Biliran','Eastern Samar','Leyte','Northern Samar','Samar','Southern Leyte'],
-  IX:    ['Zamboanga del Norte','Zamboanga del Sur','Zamboanga Sibugay'],
-  X:     ['Bukidnon','Camiguin','Lanao Del Norte','Misamis Occidental','Misamis Oriental'],
-  XI:    ['Davao de Oro','Davao del Norte','Davao del Sur','Davao Occidental','Davao Oriental'],
-  XII:   ['Cotabato Province','North Cotabato','Sarangani','South Cotabato','Sultan Kudarat'],
-  CARAGA:['Agusan del Norte','Agusan del Sur','Dinagat Islands','Surigao del Norte','Surigao del Sur'],
-  BARMM: ['Basilan','Lanao del Sur','Maguindanao','Sulu','Tawi-Tawi'],
+  CAR: ['Abra', 'Apayao', 'Benguet', 'Ifugao', 'Kalinga', 'Mountain Province'],
+  I: ['Ilocos Norte', 'Ilocos Sur', 'La Union', 'Pangasinan'],
+  II: ['Batanes', 'Cagayan', 'Isabela', 'Nueva Vizcaya', 'Quirino'],
+  III: ['Aurora', 'Bataan', 'Bulacan', 'Nueva Ecija', 'Pampanga', 'Tarlac Province', 'Zambales'],
+  IVA: ['Batangas', 'Cavite', 'Laguna', 'Quezon Province', 'Rizal'],
+  IVB: ['Marinduque', 'Occidental Mindoro', 'Oriental Mindoro', 'Palawan', 'Romblon'],
+  V: ['Albay', 'Camarines Norte', 'Camarines Sur', 'Catanduanes', 'Masbate Province', 'Sorsogon'],
+  NCR: ['Metro Manila'],
+  VI: ['Aklan', 'Antique', 'Capiz', 'Guimaras', 'Iloilo Province', 'Negros Occidental'],
+  VII: ['Bohol Province', 'Cebu', 'Negros Oriental', 'Siquijor'],
+  NIR: ['Negros Occidental', 'Negros Oriental'],
+  VIII: ['Biliran', 'Eastern Samar', 'Leyte', 'Northern Samar', 'Samar', 'Southern Leyte'],
+  IX: ['Zamboanga del Norte', 'Zamboanga del Sur', 'Zamboanga Sibugay'],
+  X: ['Bukidnon', 'Camiguin', 'Lanao Del Norte', 'Misamis Occidental', 'Misamis Oriental'],
+  XI: ['Davao de Oro', 'Davao del Norte', 'Davao del Sur', 'Davao Occidental', 'Davao Oriental'],
+  XII: ['Cotabato Province', 'North Cotabato', 'Sarangani', 'South Cotabato', 'Sultan Kudarat'],
+  CARAGA: ['Agusan del Norte', 'Agusan del Sur', 'Dinagat Islands', 'Surigao del Norte', 'Surigao del Sur'],
+  BARMM: ['Basilan', 'Lanao del Sur', 'Maguindanao', 'Sulu', 'Tawi-Tawi'],
 }
-const FEEDING_DAYS_OPTIONS = ['15','20','30','60','90','100','120','180']
-const BATCH_OPTIONS = ['1','2','3','1 & 2','1, 2 & 3','2 & 3']
+const FEEDING_DAYS_OPTIONS = ['15', '20', '30', '60', '90', '100', '120', '180']
+const BATCH_OPTIONS = ['1', '2', '3', '1 & 2', '1, 2 & 3', '2 & 3']
 const YEARS = APP_YEAR_STRINGS
 
 // ─── Calculations ───────────────────────────────────────────────────────────────
 function calcAll(bene: number, days: number, price: number, svc: number, f: typeof DEFAULT_FORMULAS) {
-  const milkPacks  = bene * days
-  const totalVol   = milkPacks * f.total_volume_factor
-  const rawMilk    = totalVol * f.raw_milk_factor
-  const wholeMilk  = rawMilk * f.whole_milk_factor
-  const skimMilk   = rawMilk * f.skim_milk_factor
-  const sugar      = totalVol * f.sugar_factor
-  const milkCost   = milkPacks * price
+  const milkPacks = bene * days
+  const totalVol = milkPacks * f.total_volume_factor
+  const rawMilk = totalVol * f.raw_milk_factor
+  const wholeMilk = rawMilk * f.whole_milk_factor
+  const skimMilk = rawMilk * f.skim_milk_factor
+  const sugar = totalVol * f.sugar_factor
+  const milkCost = milkPacks * price
   const totalFunds = milkCost + svc
   return { milkPacks, totalVol, rawMilk, wholeMilk, skimMilk, sugar, milkCost, totalFunds }
 }
 
 // colOverrides: Set of field names where formula is disabled for the ENTIRE column
 function recalculateRow(row: FormState, colOverrides: Set<string>, fml: typeof DEFAULT_FORMULAS): FormState {
-  const bene  = parseFloat(row.beneficiaries) || 0
-  const days  = parseFloat(row.feeding_days)  || 0
-  const price = parseFloat(row.price)         || 0
-  const svc   = parseFloat(row.service_fee)   || 0
+  const bene = parseFloat(row.beneficiaries) || 0
+  const days = parseFloat(row.feeding_days) || 0
+  const price = parseFloat(row.price) || 0
+  const svc = parseFloat(row.service_fee) || 0
   const r = { ...row }
   if (bene > 0 && days > 0) {
     const c = calcAll(bene, days, price, svc, fml)
-    if (!colOverrides.has('milk_packs'))                r.milk_packs                = c.milkPacks.toString()
+    if (!colOverrides.has('milk_packs')) r.milk_packs = c.milkPacks.toString()
     if (!colOverrides.has('total_volume_requirements')) r.total_volume_requirements = c.totalVol.toFixed(4)
-    if (!colOverrides.has('raw_milk_liters'))           r.raw_milk_liters           = c.rawMilk.toFixed(4)
-    if (!colOverrides.has('whole_milk_kg'))             r.whole_milk_kg             = c.wholeMilk.toFixed(4)
-    if (!colOverrides.has('skimmed_milk_kg'))           r.skimmed_milk_kg           = c.skimMilk.toFixed(4)
-    if (!colOverrides.has('sugar'))                     r.sugar                     = c.sugar.toFixed(4)
-    if (!colOverrides.has('milk_cost'))                 r.milk_cost                 = c.milkCost.toFixed(2)
-    if (!colOverrides.has('total_funds_transferred'))   r.total_funds_transferred   = c.totalFunds.toFixed(2)
+    if (!colOverrides.has('raw_milk_liters')) r.raw_milk_liters = c.rawMilk.toFixed(4)
+    if (!colOverrides.has('whole_milk_kg')) r.whole_milk_kg = c.wholeMilk.toFixed(4)
+    if (!colOverrides.has('skimmed_milk_kg')) r.skimmed_milk_kg = c.skimMilk.toFixed(4)
+    if (!colOverrides.has('sugar')) r.sugar = c.sugar.toFixed(4)
+    if (!colOverrides.has('milk_cost')) r.milk_cost = c.milkCost.toFixed(2)
+    if (!colOverrides.has('total_funds_transferred')) r.total_funds_transferred = c.totalFunds.toFixed(2)
   } else {
-    if (!colOverrides.has('milk_packs'))                r.milk_packs                = ''
+    if (!colOverrides.has('milk_packs')) r.milk_packs = ''
     if (!colOverrides.has('total_volume_requirements')) r.total_volume_requirements = ''
-    if (!colOverrides.has('raw_milk_liters'))           r.raw_milk_liters           = ''
-    if (!colOverrides.has('whole_milk_kg'))             r.whole_milk_kg             = ''
-    if (!colOverrides.has('skimmed_milk_kg'))           r.skimmed_milk_kg           = ''
-    if (!colOverrides.has('sugar'))                     r.sugar                     = ''
-    if (!colOverrides.has('milk_cost'))                 r.milk_cost                 = ''
-    if (!colOverrides.has('total_funds_transferred'))   r.total_funds_transferred   = ''
+    if (!colOverrides.has('raw_milk_liters')) r.raw_milk_liters = ''
+    if (!colOverrides.has('whole_milk_kg')) r.whole_milk_kg = ''
+    if (!colOverrides.has('skimmed_milk_kg')) r.skimmed_milk_kg = ''
+    if (!colOverrides.has('sugar')) r.sugar = ''
+    if (!colOverrides.has('milk_cost')) r.milk_cost = ''
+    if (!colOverrides.has('total_funds_transferred')) r.total_funds_transferred = ''
   }
   return r
 }
@@ -142,18 +142,18 @@ function countUserFilled(row: FormState): number {
 function isRowValid(r: FormState): boolean {
   if (parseInt(r.beneficiaries || '0') <= 0) return false
   if (parseFloat(r.price || '0') <= 0) return false
-  
+
   if (r.funded_by === 'DepEd') {
     if (!r.division?.trim()) return false
     if (!r.elementary_school?.trim()) return false
   }
-  
+
   return true
 }
 
 function isDuplicate(r: FormState, existing: any[], currentId: string): boolean {
   if (!r.beneficiaries || !r.feeding_days || !r.milk_cost) return false;
-  return existing.some(ex => 
+  return existing.some(ex =>
     String(ex.id) !== String(currentId) &&
     String(ex.beneficiaries) === String(r.beneficiaries) &&
     String(ex.feeding_days) === String(r.feeding_days) &&
@@ -167,7 +167,7 @@ function isDuplicate(r: FormState, existing: any[], currentId: string): boolean 
 
 function isDuplicateInForm(r: FormState, rowIdx: number, rows: FormState[]): boolean {
   if (!r.beneficiaries || !r.feeding_days || !r.milk_cost) return false;
-  return rows.some((other, idx) => 
+  return rows.some((other, idx) =>
     idx !== rowIdx &&
     other.beneficiaries === r.beneficiaries &&
     other.feeding_days === r.feeding_days &&
@@ -215,11 +215,11 @@ const cInput: React.CSSProperties = {
 }
 const cSelect: React.CSSProperties = { ...cInput, cursor: 'pointer' }
 // Sticky cols
-const sRn: React.CSSProperties = { position: 'sticky', left: 0,   zIndex: 6, width: 36,  minWidth: 36,  maxWidth: 36 }
-const sA:  React.CSSProperties = { position: 'sticky', left: 36,  zIndex: 6, width: 85,  minWidth: 85,  maxWidth: 85 }
-const sB:  React.CSSProperties = { position: 'sticky', left: 121, zIndex: 6, width: 135, minWidth: 135, maxWidth: 135 }
-const sC:  React.CSSProperties = { position: 'sticky', left: 256, zIndex: 6, width: 110, minWidth: 110, maxWidth: 110 }
-const sD:  React.CSSProperties = { position: 'sticky', left: 366, zIndex: 6, width: 160, minWidth: 160, maxWidth: 160, boxShadow: '3px 0 6px -2px rgba(0,0,0,0.18)' }
+const sRn: React.CSSProperties = { position: 'sticky', left: 0, zIndex: 6, width: 36, minWidth: 36, maxWidth: 36 }
+const sA: React.CSSProperties = { position: 'sticky', left: 36, zIndex: 6, width: 85, minWidth: 85, maxWidth: 85 }
+const sB: React.CSSProperties = { position: 'sticky', left: 121, zIndex: 6, width: 135, minWidth: 135, maxWidth: 135 }
+const sC: React.CSSProperties = { position: 'sticky', left: 256, zIndex: 6, width: 110, minWidth: 110, maxWidth: 110 }
+const sD: React.CSSProperties = { position: 'sticky', left: 366, zIndex: 6, width: 160, minWidth: 160, maxWidth: 160, boxShadow: '3px 0 6px -2px rgba(0,0,0,0.18)' }
 const dividerBorder = '2px solid #94a3b8'
 
 // Prevent Enter from submitting the form inside any text/number input
@@ -230,23 +230,23 @@ const noEnter = (e: React.KeyboardEvent) => { if (e.key === 'Enter') e.preventDe
 
 export default function EditRecordPage() {
   const params = useParams() as { id: string }
-  const [rows, setRows]           = useState<FormState[]>([emptyForm()])
+  const [rows, setRows] = useState<FormState[]>([emptyForm()])
   // colOverrides: column fields where formula is DISABLED for all rows
   const [colOverrides, setColOverrides] = useState<Set<string>>(new Set(Object.keys(CALC_DEFS)))
-  const [cooperatives, setCoop]   = useState<Cooperative[]>([])
-  const [profile, setProfile]     = useState<UserProfile | null>(null)
-  const [formulas, setFormulas]   = useState({ ...DEFAULT_FORMULAS })
+  const [cooperatives, setCoop] = useState<Cooperative[]>([])
+  const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [formulas, setFormulas] = useState({ ...DEFAULT_FORMULAS })
   const [activeCell, setActiveCell] = useState<ActiveCell | null>(null)
   const [formulasSaved, setFormulasSaved] = useState(false)
-  const [loading, setLoading]     = useState(false)
+  const [loading, setLoading] = useState(false)
   const [savedCount, setSavedCount] = useState(0)
-  const [error, setError]         = useState('')
-  const [success, setSuccess]     = useState(false)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState(false)
   const [existingRecords, setExistingRecords] = useState<any[]>([])
-  const saveTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const factorInputRef = useRef<HTMLInputElement>(null)
   const supabase = createClient()
-  const router   = useRouter()
+  const router = useRouter()
 
   // ── Load data ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -412,8 +412,8 @@ export default function EditRecordPage() {
           <span>{title}</span>
           <button type="button" onClick={() => toggleColOverride(field, !isManual)}
             title={isManual ? "Manual Override ON - Click to disable" : "Manual Override OFF - Click to enable"}
-            style={{ 
-              background: isManual ? '#ea580c' : '#fcd34d', color: isManual ? 'white' : '#92400e', 
+            style={{
+              background: isManual ? '#ea580c' : '#fcd34d', color: isManual ? 'white' : '#92400e',
               border: 'none', borderRadius: 4, width: 16, height: 16, fontSize: '0.55rem', fontWeight: 700, cursor: 'pointer'
             }}>M</button>
         </div>
@@ -427,7 +427,7 @@ export default function EditRecordPage() {
               style={{ width: 44, padding: '1px 2px', border: '1px solid #fbbf24', borderRadius: 2, background: isManual ? '#f8fafc' : 'white', textAlign: 'center', fontSize: '0.65rem', outline: 'none', color: '#92400e' }}
             />
           )}
-          {factorKey && isModified(factorKey) && <span style={{fontSize: '0.6rem'}}>✎</span>}
+          {factorKey && isModified(factorKey) && <span style={{ fontSize: '0.6rem' }}>✎</span>}
         </div>
       </td>
     )
@@ -448,9 +448,9 @@ export default function EditRecordPage() {
   function renderCalcCell(rowIdx: number, field: keyof FormState) {
     const def = CALC_DEFS[field]
     if (!def) return null
-    const isManual   = colOverrides.has(field)
-    const val        = rows[rowIdx][field]
-    const modified   = def.formulaKey ? isModified(def.formulaKey) : false
+    const isManual = colOverrides.has(field)
+    const val = rows[rowIdx][field]
+    const modified = def.formulaKey ? isModified(def.formulaKey) : false
     const cellActive = activeCell?.rowIdx === rowIdx && activeCell?.letter === def.letter
 
     const onCellClick = () => setActiveCell({ rowIdx, letter: def.letter, label: def.label, field, formulaKey: def.formulaKey, formulaStr: def.formulaStr })
@@ -471,10 +471,12 @@ export default function EditRecordPage() {
 
     return (
       <td key={field} onClick={onCellClick}
-        style={{ ...iCell, background: modified ? '#dbeafe' : '#fffbeb', cursor: 'pointer',
+        style={{
+          ...iCell, background: modified ? '#dbeafe' : '#fffbeb', cursor: 'pointer',
           textAlign: 'right', padding: '0 10px', fontWeight: 600,
           color: modified ? '#1d4ed8' : '#78350f', fontVariantNumeric: 'tabular-nums',
-          ...(cellActive ? { boxShadow: 'inset 0 0 0 2px #2563eb' } : {}) }}>
+          ...(cellActive ? { boxShadow: 'inset 0 0 0 2px #2563eb' } : {})
+        }}>
         {fmtNum(val, !!def.currency)}
       </td>
     )
@@ -482,13 +484,13 @@ export default function EditRecordPage() {
 
   // ── Render a data row ─────────────────────────────────────────────────────────
   function renderDataRow(rowIdx: number) {
-    const row     = rows[rowIdx]
-    const prov    = PROVINCES_BY_REGION[row.region] ?? []
+    const row = rows[rowIdx]
+    const prov = PROVINCES_BY_REGION[row.region] ?? []
     const isValid = isRowValid(row)
-    const filled  = countUserFilled(row)
+    const filled = countUserFilled(row)
     const opacity = filled === 0 && rowIdx >= 2 ? 0.5 : 1
     const isDeped = row.funded_by === 'DepEd'
-    const isDup   = isDuplicate(row, existingRecords, params.id) || isDuplicateInForm(row, rowIdx, rows)
+    const isDup = isDuplicate(row, existingRecords, params.id) || isDuplicateInForm(row, rowIdx, rows)
 
     const hc = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       updateRow(rowIdx, e.target.name as keyof FormState, e.target.value)
@@ -563,7 +565,7 @@ export default function EditRecordPage() {
         </td>
 
         {/* I-N: Calc */}
-        {(['milk_packs','total_volume_requirements','raw_milk_liters','whole_milk_kg','skimmed_milk_kg','sugar'] as const).map(f => renderCalcCell(rowIdx, f))}
+        {(['milk_packs', 'total_volume_requirements', 'raw_milk_liters', 'whole_milk_kg', 'skimmed_milk_kg', 'sugar'] as const).map(f => renderCalcCell(rowIdx, f))}
 
         {/* O: Feeding Days */}
         <td style={{ ...kCell, width: 118, ...activeBorder(rowIdx, 'O') }}>
@@ -629,8 +631,8 @@ export default function EditRecordPage() {
         </td>
 
         {/* Y-AC: Dates */}
-        {(['moa_signing','fund_transfer','date_started','date_completed','liquidation'] as const).map((field, idx) => {
-          const ltr = ['Y','Z','AA','AB','AC'][idx]
+        {(['moa_signing', 'fund_transfer', 'date_started', 'date_completed', 'liquidation'] as const).map((field, idx) => {
+          const ltr = ['Y', 'Z', 'AA', 'AB', 'AC'][idx]
           return (
             <td key={field} style={{ ...iCell, width: 138, ...activeBorder(rowIdx, ltr) }}>
               <input type="date" name={field} style={{ ...cInput, cursor: 'pointer', fontSize: '0.79rem' }} value={row[field]} onChange={hc} onFocus={fc(ltr, field)} onKeyDown={noEnter} />
@@ -688,10 +690,10 @@ export default function EditRecordPage() {
                 {/* Column letters */}
                 <tr>
                   <th style={{ ...lTh, ...sRn, zIndex: 14 }} />
-                  <th style={{ ...lTh, ...sA,  zIndex: 14 }}>A</th>
-                  <th style={{ ...lTh, ...sB,  zIndex: 14 }}>B</th>
-                  <th style={{ ...lTh, ...sC,  zIndex: 14 }}>C</th>
-                  <th style={{ ...lTh, ...sD,  zIndex: 14, borderRight: dividerBorder }}>D</th>
+                  <th style={{ ...lTh, ...sA, zIndex: 14 }}>A</th>
+                  <th style={{ ...lTh, ...sB, zIndex: 14 }}>B</th>
+                  <th style={{ ...lTh, ...sC, zIndex: 14 }}>C</th>
+                  <th style={{ ...lTh, ...sD, zIndex: 14, borderRight: dividerBorder }}>D</th>
                   <th style={{ ...lTh, width: 180, minWidth: 180 }}>E</th>
                   <th style={{ ...lTh, width: 180, minWidth: 180 }}>F</th>
                   <th style={{ ...lTh, width: 180, minWidth: 180 }}>G</th>
