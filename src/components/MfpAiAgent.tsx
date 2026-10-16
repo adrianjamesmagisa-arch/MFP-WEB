@@ -114,62 +114,206 @@ export function MfpAiAgent({ records, centerLabel, yearLabel, activeFilters }: M
   // Precompute aggregate metrics from records to ground the AI
   // Precompute aggregate metrics & breakdowns to ground the AI with minimal tokens
   const summaryMetrics = useMemo(() => {
-    let totalPacks = 0
-    let totalDelivered = 0
-    let totalVolume = 0
-    let totalBeneficiaries = 0
-    let totalFunds = 0
-    const centersMap = new Map<string, { records: number; packs: number }>()
+    const toNum = (v: unknown): number => {
+      if (typeof v === 'number') return Number.isFinite(v) ? v : 0
+      if (typeof v === 'string' && v.trim() !== '') {
+        const parsed = Number(v.replace(/,/g, ''))
+        return Number.isFinite(parsed) ? parsed : 0
+      }
+      return 0
+    }
+
+    let totalPacks = 0 // Column I: milk_packs
+    let totalVolume = 0 // Column J: total_volume_requirements
+    let totalRawMilkLiters = 0 // Column K: raw_milk_liters
+    let totalWholeMilkKg = 0 // Column L: whole_milk_kg
+    let totalSkimmedMilkKg = 0 // Column M: skimmed_milk_kg
+    let totalSugarKg = 0 // Column N: sugar
+    let totalBeneficiaries = 0 // Column Q: beneficiaries
+    let totalMilkCost = 0 // Column U: milk_cost
+    let totalServiceFee = 0 // Column V: service_fee
+    let totalFunds = 0 // Column W: total_funds_transferred
+    let totalTargetPacksToDeliver = 0 // Column AD: target_milk_packs_to_deliver
+    let totalDelivered = 0 // Column AE: total_milk_packs_delivered
+
+    let zeroFundsWithMilkCostRows = 0
+    let zeroFundsWithMilkCostSubtotal = 0
+
+    interface GroupAgg {
+      records: number
+      packs: number
+      volume: number
+      rawMilk: number
+      beneficiaries: number
+      milkCost: number
+      serviceFee: number
+      totalFunds: number
+      delivered: number
+    }
+
+    const emptyAgg = (): GroupAgg => ({
+      records: 0,
+      packs: 0,
+      volume: 0,
+      rawMilk: 0,
+      beneficiaries: 0,
+      milkCost: 0,
+      serviceFee: 0,
+      totalFunds: 0,
+      delivered: 0,
+    })
+
+    const addAgg = (
+      map: Map<string, GroupAgg>,
+      key: string,
+      rowVals: Omit<GroupAgg, 'records'>,
+    ) => {
+      const prev = map.get(key) || emptyAgg()
+      prev.records += 1
+      prev.packs += rowVals.packs
+      prev.volume += rowVals.volume
+      prev.rawMilk += rowVals.rawMilk
+      prev.beneficiaries += rowVals.beneficiaries
+      prev.milkCost += rowVals.milkCost
+      prev.serviceFee += rowVals.serviceFee
+      prev.totalFunds += rowVals.totalFunds
+      prev.delivered += rowVals.delivered
+      map.set(key, prev)
+    }
+
+    const centersMap = new Map<string, GroupAgg>()
+    const regionsMap = new Map<string, GroupAgg>()
+    const provincesMap = new Map<string, GroupAgg>()
+    const fundedByMap = new Map<string, GroupAgg>()
+    const coopsMap = new Map<string, GroupAgg>()
+    const zeroFundsByProvinceMap = new Map<string, { records: number; milkCost: number; center: string }>()
+
     const regionsSet = new Set<string>()
     const provincesSet = new Set<string>()
     const fundedBySet = new Set<string>()
     const milkTypesSet = new Set<string>()
-    const coopsMap = new Map<string, { records: number; packs: number; delivered: number }>()
 
     for (const r of records) {
-      const packs = typeof r.milk_packs === 'number' ? r.milk_packs : 0
-      const delivered = typeof r.total_milk_packs_delivered === 'number' ? r.total_milk_packs_delivered : 0
+      const packs = toNum(r.milk_packs)
+      const volume = toNum(r.total_volume_requirements)
+      const rawMilk = toNum(r.raw_milk_liters)
+      const wholeMilk = toNum(r.whole_milk_kg)
+      const skimmedMilk = toNum(r.skimmed_milk_kg)
+      const sugar = toNum(r.sugar)
+      const beneficiaries = toNum(r.beneficiaries)
+      const milkCost = toNum(r.milk_cost)
+      const serviceFee = toNum(r.service_fee)
+      const funds = toNum(r.total_funds_transferred)
+      const targetDeliver = toNum(r.target_milk_packs_to_deliver)
+      const delivered = toNum(r.total_milk_packs_delivered)
+
       totalPacks += packs
+      totalVolume += volume
+      totalRawMilkLiters += rawMilk
+      totalWholeMilkKg += wholeMilk
+      totalSkimmedMilkKg += skimmedMilk
+      totalSugarKg += sugar
+      totalBeneficiaries += beneficiaries
+      totalMilkCost += milkCost
+      totalServiceFee += serviceFee
+      totalFunds += funds
+      totalTargetPacksToDeliver += targetDeliver
       totalDelivered += delivered
-      if (typeof r.total_volume_requirements === 'number') totalVolume += r.total_volume_requirements
-      if (typeof r.beneficiaries === 'number') totalBeneficiaries += r.beneficiaries
-      if (typeof r.total_funds_transferred === 'number') totalFunds += r.total_funds_transferred
+
+      if (milkCost > 0 && funds === 0) {
+        zeroFundsWithMilkCostRows += 1
+        zeroFundsWithMilkCostSubtotal += milkCost
+        const provKey = String(r.province || 'Unspecified')
+        const prevZ = zeroFundsByProvinceMap.get(provKey) || {
+          records: 0,
+          milkCost: 0,
+          center: String(r.center || ''),
+        }
+        prevZ.records += 1
+        prevZ.milkCost += milkCost
+        zeroFundsByProvinceMap.set(provKey, prevZ)
+      }
+
+      const rowVals = {
+        packs,
+        volume,
+        rawMilk,
+        beneficiaries,
+        milkCost,
+        serviceFee,
+        totalFunds: funds,
+        delivered,
+      }
 
       if (r.center) {
-        const cName = String(r.center)
-        const prev = centersMap.get(cName) || { records: 0, packs: 0 }
-        centersMap.set(cName, { records: prev.records + 1, packs: prev.packs + packs })
+        addAgg(centersMap, String(r.center), rowVals)
       }
-      if (r.region) regionsSet.add(String(r.region))
-      if (r.province) provincesSet.add(String(r.province))
-      if (r.funded_by) fundedBySet.add(String(r.funded_by))
-      if (r.milk_type) milkTypesSet.add(String(r.milk_type))
+      if (r.region) {
+        const reg = String(r.region)
+        regionsSet.add(reg)
+        addAgg(regionsMap, reg, rowVals)
+      }
+      if (r.province) {
+        const prov = String(r.province)
+        provincesSet.add(prov)
+        addAgg(provincesMap, prov, rowVals)
+      }
+      if (r.funded_by) {
+        const fb = String(r.funded_by)
+        fundedBySet.add(fb)
+        addAgg(fundedByMap, fb, rowVals)
+      }
+      if (r.milk_type) {
+        milkTypesSet.add(String(r.milk_type))
+      }
 
       const coopName = (r.cooperatives as any)?.name || (r.supplier_id ? `Supplier #${r.supplier_id}` : null)
       if (coopName) {
-        const prev = coopsMap.get(coopName) || { records: 0, packs: 0, delivered: 0 }
-        coopsMap.set(coopName, {
-          records: prev.records + 1,
-          packs: prev.packs + packs,
-          delivered: prev.delivered + delivered,
-        })
+        addAgg(coopsMap, String(coopName), rowVals)
       }
     }
 
-    const coopsList = Array.from(coopsMap.entries())
-      .map(([name, stat]) => `${name} (${stat.packs.toLocaleString('en-US')} packs, ${stat.records} records)`)
-      .slice(0, 30)
+    const fmtMoney = (n: number) =>
+      `₱${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
-    const centersList = Array.from(centersMap.entries())
-      .map(([name, stat]) => `${name} (${stat.records} records, ${stat.packs.toLocaleString('en-US')} packs)`)
+    const formatAggLine = (name: string, stat: GroupAgg) =>
+      `${name}: ${stat.records} rows | Col I Packs: ${stat.packs.toLocaleString('en-US')} | Col J Vol: ${stat.volume.toLocaleString('en-US')} L | Col K Raw Milk: ${stat.rawMilk.toLocaleString('en-US')} L | Col Q Benef: ${stat.beneficiaries.toLocaleString('en-US')} | Col U Milk Cost: ${fmtMoney(stat.milkCost)} | Col V Service Fee: ${fmtMoney(stat.serviceFee)} | Col W Total Funds: ${fmtMoney(stat.totalFunds)}`
+
+    const coopsList = Array.from(coopsMap.entries())
+      .map(([name, stat]) => formatAggLine(name, stat))
+      .slice(0, 40)
+
+    const centersList = Array.from(centersMap.entries()).map(([name, stat]) => formatAggLine(name, stat))
+    const regionsBreakdown = Array.from(regionsMap.entries()).map(([name, stat]) => formatAggLine(`Region ${name}`, stat))
+    const provincesBreakdown = Array.from(provincesMap.entries())
+      .map(([name, stat]) => formatAggLine(name, stat))
+      .slice(0, 60)
+    const fundedByBreakdown = Array.from(fundedByMap.entries()).map(([name, stat]) => formatAggLine(name, stat))
+    const zeroFundsDetails = Array.from(zeroFundsByProvinceMap.entries()).map(
+      ([prov, info]) =>
+        `${prov}${info.center ? ` (${info.center})` : ''}: ${info.records} rows, Col U Milk Cost = ${fmtMoney(info.milkCost)}, Col W Total Funds = ₱0.00`,
+    )
 
     return {
       totalPacks,
       totalDelivered,
+      totalTargetPacksToDeliver,
       totalVolume,
+      totalRawMilkLiters,
+      totalWholeMilkKg,
+      totalSkimmedMilkKg,
+      totalSugarKg,
       totalBeneficiaries,
+      totalMilkCost,
+      totalServiceFee,
       totalFunds,
+      zeroFundsWithMilkCostRows,
+      zeroFundsWithMilkCostSubtotal,
+      zeroFundsDetails,
       centers: centersList,
+      regionsBreakdown,
+      provincesBreakdown,
+      fundedByBreakdown,
       regions: Array.from(regionsSet).sort(),
       provinces: Array.from(provincesSet).sort(),
       fundedBy: Array.from(fundedBySet).sort(),
@@ -178,12 +322,13 @@ export function MfpAiAgent({ records, centerLabel, yearLabel, activeFilters }: M
     }
   }, [records])
 
-  // Ultra-compact pipe-delimited sample rows (~15 tokens per row instead of ~120 tokens JSON)
+  // Ultra-compact pipe-delimited sample rows including financial & volume columns
   const compactTable = useMemo(() => {
-    const header = 'Year|Funded|Center|Prov|Muni|Packs|Deliv|Benef|Coop'
+    const header =
+      'Year(A)|Funded(B)|Reg(C)|Center(D)|Prov(E)|Muni(G)|Packs(I)|VolL(J)|RawL(K)|Benef(Q)|MilkCost(U)|SvcFee(V)|TotalFunds(W)|Deliv(AE)|Coop(T)'
     const rows = records.slice(0, 40).map(r => {
       const coop = (r.cooperatives as any)?.name || r.supplier_id || '-'
-      return `${r.year || ''}|${r.funded_by || ''}|${r.center || ''}|${r.province || ''}|${r.municipality || ''}|${r.milk_packs ?? 0}|${r.total_milk_packs_delivered ?? 0}|${r.beneficiaries ?? 0}|${coop}`
+      return `${r.year || ''}|${r.funded_by || ''}|${r.region || ''}|${r.center || ''}|${r.province || ''}|${r.municipality || ''}|${r.milk_packs ?? 0}|${r.total_volume_requirements ?? 0}|${r.raw_milk_liters ?? 0}|${r.beneficiaries ?? 0}|${r.milk_cost ?? 0}|${r.service_fee ?? 0}|${r.total_funds_transferred ?? 0}|${r.total_milk_packs_delivered ?? 0}|${coop}`
     })
     return [header, ...rows].join('\n')
   }, [records])
@@ -472,6 +617,7 @@ export function MfpAiAgent({ records, centerLabel, yearLabel, activeFilters }: M
                 justifyContent: 'space-between',
                 fontSize: '0.75rem',
                 color: '#64748b',
+                gap: '0.5rem',
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -484,9 +630,18 @@ export function MfpAiAgent({ records, centerLabel, yearLabel, activeFilters }: M
                   {summaryMetrics.regions.length > 0 && ` · Region ${summaryMetrics.regions.join(', ')}`}
                 </span>
               </div>
-              <span style={{ fontWeight: 600, color: '#2563eb' }}>
-                ₱{summaryMetrics.totalFunds > 0 ? (summaryMetrics.totalFunds / 1e6).toFixed(1) + 'M' : '0'}
-              </span>
+              <div
+                style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexShrink: 0 }}
+                title={`Col U Milk Cost: ₱${summaryMetrics.totalMilkCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} | Col V Service Fee: ₱${summaryMetrics.totalServiceFee.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} | Col W Total Funds: ₱${summaryMetrics.totalFunds.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+              >
+                <span style={{ fontWeight: 600, color: '#0f766e' }}>
+                  Col U: ₱{summaryMetrics.totalMilkCost > 0 ? (summaryMetrics.totalMilkCost / 1e6).toFixed(1) + 'M' : '0'}
+                </span>
+                <span style={{ color: '#cbd5e1' }}>·</span>
+                <span style={{ fontWeight: 600, color: '#2563eb' }}>
+                  Col W: ₱{summaryMetrics.totalFunds > 0 ? (summaryMetrics.totalFunds / 1e6).toFixed(1) + 'M' : '0'}
+                </span>
+              </div>
             </div>
 
             {/* Collapsible Groq Settings Bar */}
