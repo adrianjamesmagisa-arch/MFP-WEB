@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback, type CSSProperties } from 'react'
+import { useState, useEffect, useMemo, useCallback, Fragment, type CSSProperties } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Printer, Download, Filter, Search, RotateCcw, Table, BarChart2, Layers, Building2, FileSpreadsheet, CircleDollarSign, ClipboardList, MapPinned, FileDown } from 'lucide-react'
 import { SBFP_DATA_ENCODER_COLUMNS } from '@/lib/encoder-selects'
@@ -41,6 +41,18 @@ import { sbfpCenterAliases, sbfpNavCenter } from '@/lib/center-aliases'
 import { milkTypeLabel } from '@/lib/sbfp-pack-price'
 import { rawMilkUtilizedLiters, packsForMonth } from '@/lib/sbfp-raw-milk'
 import { SbfpAiAgent } from '@/components/SbfpAiAgent'
+import {
+  MAJOR_INDICATORS,
+  HISTORICAL_SCHOOL_YEARS,
+  HISTORICAL_ACCOMPLISHMENTS,
+  FIRST_LIVE_DB_YEAR,
+  computeLiveMajorAccomplishments,
+  formatMajorValue,
+  resolveTarget,
+  schoolYearLabel,
+  type MajorIndicatorKey,
+  type MajorTargetsBySchoolYear,
+} from '@/lib/sbfp-major-accomplishments'
 
 // Philippine regional display order
 const REGION_ORDER: Record<string, number> = {
@@ -73,6 +85,7 @@ type ReportTab =
   | 'senate_delivery'
   | 'milk_procurement'
   | 'monthly_cummulated'
+  | 'major_accomplishments'
 
 const th: CSSProperties = { border: '1px solid #cbd5e1', padding: '8px 8px', textAlign: 'right', whiteSpace: 'normal', lineHeight: 1.2 }
 const thC: CSSProperties = { ...th, textAlign: 'center' }
@@ -154,6 +167,122 @@ export default function SbfpSpreadsheetReport() {
   const [lockedCenter, setLockedCenter]     = useState<string | null>(null)
 
   const supabase = createClient()
+
+  // ── Tab 8: Major Accomplishments ──
+  const todayIso = () => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }
+  const [majorAsOf, setMajorAsOf] = useState<string>(todayIso())
+  const [majorRecords, setMajorRecords] = useState<any[]>([])
+  const [majorLoading, setMajorLoading] = useState(false)
+  const [majorTargets, setMajorTargets] = useState<MajorTargetsBySchoolYear>({})
+  const [showHistTargets, setShowHistTargets] = useState(false)
+  const [editingCell, setEditingCell] = useState<{ sy: string; key: MajorIndicatorKey } | null>(null)
+  const [editingValue, setEditingValue] = useState('')
+  const [savingCell, setSavingCell] = useState<string | null>(null)
+
+  /** Live SYs: 2026-2027 plus any later active SY. */
+  const liveDbYears = useMemo(() => {
+    const ys = new Set<number>([FIRST_LIVE_DB_YEAR])
+    for (const sy of schoolYearOptions) {
+      const y = schoolYearToDbYear(sy)
+      if (Number.isFinite(y) && y >= FIRST_LIVE_DB_YEAR) ys.add(y)
+    }
+    return Array.from(ys).sort((a, b) => a - b)
+  }, [schoolYearOptions])
+
+  useEffect(() => {
+    if (activeTab !== 'major_accomplishments') return
+    setMajorLoading(true)
+    let q = supabase.from('sbfp_data').select(SBFP_DATA_ENCODER_COLUMNS).in('year', liveDbYears)
+    if (lockedCenter) {
+      const aliases = sbfpCenterAliases(lockedCenter)
+      if (aliases.length === 1) q = q.eq('center', aliases[0])
+      else if (aliases.length > 1) q = q.in('center', aliases)
+    }
+    q.then(({ data, error }) => {
+      if (error) console.error('Error fetching Major Accomplishments data:', error)
+      setMajorRecords(excludeAuxSbfp((data || []) as any[]))
+      setMajorLoading(false)
+    })
+  }, [activeTab, liveDbYears, lockedCenter])
+
+  useEffect(() => {
+    fetch('/api/sbfp/major-targets')
+      .then(r => (r.ok ? r.json() : null))
+      .then(j => { if (j?.targets) setMajorTargets(j.targets) })
+      .catch(() => {})
+  }, [])
+
+  const liveMajor = useMemo(() => {
+    const out: Record<string, ReturnType<typeof computeLiveMajorAccomplishments>> = {}
+    for (const y of liveDbYears) {
+      out[schoolYearLabel(y)] = computeLiveMajorAccomplishments(majorRecords as SbfpReportSourceRow[], y, majorAsOf)
+    }
+    return out
+  }, [majorRecords, liveDbYears, majorAsOf])
+
+  const liveSchoolYears = liveDbYears.map(schoolYearLabel)
+
+  const saveMajorTarget = async (sy: string, key: MajorIndicatorKey, raw: string | null) => {
+    const cleaned = raw == null ? null : raw.replace(/[,\s]/g, '')
+    const value = cleaned == null || cleaned === '' ? null : Number(cleaned)
+    if (value != null && !Number.isFinite(value)) { alert('Please enter a valid number.'); return }
+    const cellId = `${sy}|${key}`
+    setSavingCell(cellId)
+    const prev = majorTargets
+    setMajorTargets(t => {
+      const next = { ...t, [sy]: { ...(t[sy] || {}) } }
+      if (value == null) delete (next[sy] as any)[key]
+      else (next[sy] as any)[key] = value
+      return next
+    })
+    try {
+      const res = await fetch('/api/sbfp/major-targets', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ schoolYear: sy, key, value }),
+      })
+      const j = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(j?.error || 'Save failed')
+      if (j?.targets) setMajorTargets(j.targets)
+    } catch (e: any) {
+      setMajorTargets(prev)
+      alert(`Failed to save target: ${e?.message || e}`)
+    } finally {
+      setSavingCell(null)
+    }
+  }
+
+  const majorAsOfLabel = (() => {
+    const d = new Date(majorAsOf + 'T12:00:00')
+    return Number.isNaN(d.getTime()) ? majorAsOf : d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+  })()
+
+  /** Flat export table for Tab 8. */
+  const buildMajorExport = () => {
+    const headers: string[] = ['Performance Indicator']
+    for (const sy of HISTORICAL_SCHOOL_YEARS) {
+      if (showHistTargets) headers.push(`S.Y ${sy} Target`)
+      headers.push(`S.Y ${sy} Accomplishment`)
+    }
+    for (const sy of liveSchoolYears) {
+      headers.push(`S.Y ${sy} Target`, `S.Y ${sy} Accomplishment (as of ${majorAsOfLabel})`)
+    }
+    const rows: Array<Array<string | number>> = MAJOR_INDICATORS.map(ind => {
+      const row: Array<string | number> = [ind.label]
+      for (const sy of HISTORICAL_SCHOOL_YEARS) {
+        if (showHistTargets) row.push(resolveTarget(majorTargets, sy, ind.key) ?? '')
+        row.push(HISTORICAL_ACCOMPLISHMENTS[sy][ind.key])
+      }
+      for (const sy of liveSchoolYears) {
+        row.push(resolveTarget(majorTargets, sy, ind.key) ?? '', liveMajor[sy]?.[ind.key] ?? 0)
+      }
+      return row
+    })
+    return { headers, rows }
+  }
 
   useEffect(() => {
     void (async () => {
@@ -695,6 +824,11 @@ export default function SbfpSpreadsheetReport() {
   }
 
   const exportToCSV = () => {
+    if (activeTab === 'major_accomplishments') {
+      const { headers, rows } = buildMajorExport()
+      downloadCsv(`sbfp_major_accomplishments_as_of_${majorAsOf}.csv`, headers, rows)
+      return
+    }
     if (filteredRecords.length === 0) {
       alert('No data to export.')
       return
@@ -1142,7 +1276,14 @@ export default function SbfpSpreadsheetReport() {
     let rows: Array<Array<string | number>> = []
     let colTypes: ColType[] = []
 
-    if (targetTab === 'master') {
+    if (targetTab === 'major_accomplishments') {
+      sheetName = 'Major Accomplishments'
+      filename = `sbfp_major_accomplishments_as_of_${majorAsOf}.xlsx`
+      const m = buildMajorExport()
+      headers = m.headers
+      rows = m.rows
+      colTypes = ['text', ...m.headers.slice(1).map(() => 'dec' as ColType)]
+    } else if (targetTab === 'master') {
       sheetName = 'SDO Masterlist'
       filename = `sbfp_sdo_masterlist_${year}_${dateStr}.xlsx`
       headers = [
@@ -1344,7 +1485,7 @@ export default function SbfpSpreadsheetReport() {
 
   /** Export the currently active tab to a single-sheet styled Excel (.xlsx) file. */
   const exportToExcel = async (targetTab?: ReportTab) => {
-    if (filteredRecords.length === 0) {
+    if (filteredRecords.length === 0 && (targetTab || activeTab) !== 'major_accomplishments') {
       alert('No data to export.')
       return
     }
@@ -1375,6 +1516,7 @@ export default function SbfpSpreadsheetReport() {
       'senate_delivery',
       'milk_procurement',
       'monthly_cummulated',
+      'major_accomplishments',
     ]
     const dateStr = new Date().toISOString().split('T')[0]
     const wb = XLSX.utils.book_new()
@@ -1685,6 +1827,7 @@ export default function SbfpSpreadsheetReport() {
               ['senate_delivery', '5. Contract & Delivery Details', CircleDollarSign],
               ['milk_procurement', '6. Milk Procurement Status', FileSpreadsheet],
               ['monthly_cummulated', '7. CDP Report', BarChart2],
+              ['major_accomplishments', '8. Major Accomplishments', Layers],
             ] as const).map(([id, label, Icon]) => (
               <button
                 key={id}
@@ -2701,6 +2844,146 @@ export default function SbfpSpreadsheetReport() {
               )
             })()}
 
+            {/* VIEW 8: Major Accomplishments */}
+            {activeTab === 'major_accomplishments' && (() => {
+              const NAVY = '#002654'
+              const GOLD = '#facc15'
+              const hdr: CSSProperties = { background: NAVY, color: GOLD, border: '1.5px solid #0f172a', padding: '10px 8px', textAlign: 'center', fontWeight: 800, fontFamily: "'Oswald', 'Arial Narrow', Arial, sans-serif", letterSpacing: '0.01em', fontSize: '0.95rem' }
+              const cell: CSSProperties = { border: '1.5px solid #0f172a', padding: '14px 10px', textAlign: 'center', fontWeight: 700, color: '#0f172a', fontSize: '0.95rem', background: '#fff' }
+
+              const renderTarget = (sy: string, key: MajorIndicatorKey) => {
+                const cellId = `${sy}|${key}`
+                const isEditing = editingCell?.sy === sy && editingCell.key === key
+                const val = resolveTarget(majorTargets, sy, key)
+                const overridden = majorTargets[sy]?.[key] != null
+                if (isEditing) {
+                  return (
+                    <td style={{ ...cell, padding: 4, background: '#fefce8' }}>
+                      <input
+                        autoFocus
+                        value={editingValue}
+                        onChange={e => setEditingValue(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') { setEditingCell(null); void saveMajorTarget(sy, key, editingValue) }
+                          if (e.key === 'Escape') setEditingCell(null)
+                        }}
+                        onBlur={() => { setEditingCell(null); void saveMajorTarget(sy, key, editingValue) }}
+                        style={{ width: '100%', minWidth: 110, padding: '6px', border: `2px solid ${NAVY}`, borderRadius: 4, textAlign: 'center', fontWeight: 700, fontSize: '0.9rem' }}
+                      />
+                    </td>
+                  )
+                }
+                return (
+                  <td
+                    style={{ ...cell, cursor: 'pointer', position: 'relative' }}
+                    title="Click to edit target"
+                    onClick={() => { setEditingCell({ sy, key }); setEditingValue(val != null ? String(val) : '') }}
+                    className="major-target-cell"
+                  >
+                    {savingCell === cellId ? <span style={{ color: '#64748b', fontSize: '0.8rem' }}>Saving…</span> : (formatMajorValue(key, val) || <span className="no-print" style={{ color: '#cbd5e1' }}>—</span>)}
+                    {overridden && savingCell !== cellId && (
+                      <button
+                        className="no-print"
+                        title="Reset to default"
+                        onClick={e => { e.stopPropagation(); void saveMajorTarget(sy, key, null) }}
+                        style={{ position: 'absolute', top: 2, right: 2, border: 'none', background: 'transparent', color: '#94a3b8', cursor: 'pointer', padding: 0, lineHeight: 0 }}
+                      >
+                        <RotateCcw size={11} />
+                      </button>
+                    )}
+                  </td>
+                )
+              }
+
+              return (
+                <div className="major-acc" style={{ background: '#fff', borderRadius: 12, border: '1px solid #cbd5e1', overflow: 'hidden', boxShadow: '0 4px 16px rgba(0,38,84,0.08)' }}>
+                  <div className="no-print" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                    <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569' }}>Accomplishment As Of:</label>
+                    <input
+                      id="major-as-of-date"
+                      type="date"
+                      value={majorAsOf}
+                      onChange={e => e.target.value && setMajorAsOf(e.target.value)}
+                      style={{ height: 32, padding: '0 0.5rem', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                    />
+                    <button
+                      id="major-as-of-today"
+                      onClick={() => setMajorAsOf(todayIso())}
+                      style={{ height: 32, padding: '0 0.75rem', borderRadius: 6, border: '1px solid #cbd5e1', background: '#fff', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                    >
+                      <RotateCcw size={13} /> Latest / Today
+                    </button>
+                    <label style={{ marginLeft: 8, display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', color: '#475569', cursor: 'pointer' }}>
+                      <input id="major-show-hist-targets" type="checkbox" checked={showHistTargets} onChange={e => setShowHistTargets(e.target.checked)} />
+                      Show / edit Target columns for S.Y 2023–2026
+                    </label>
+                    <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: '#64748b' }}>
+                      {majorLoading ? 'Loading live SBFP data…' : 'Click any Target cell to edit · saved for all users'}
+                    </span>
+                  </div>
+
+                  <div style={{ padding: '1.5rem 1.5rem 0.75rem', textAlign: 'center' }}>
+                    <h2 style={{ margin: 0, fontFamily: "'Oswald', 'Arial Narrow', Impact, sans-serif", fontWeight: 900, fontSize: '2.6rem', letterSpacing: '0.02em', color: '#1e3a6e', textTransform: 'uppercase', lineHeight: 1 }}>
+                      Major Accomplishments
+                    </h2>
+                    <div style={{ marginTop: 6, fontFamily: "'Oswald', 'Arial Narrow', Impact, sans-serif", fontWeight: 800, fontSize: '1.35rem', color: '#1e3a6e', textTransform: 'uppercase' }}>
+                      School Based Feeding Program – Milk Proponent S.Y{' '}
+                      <span style={{ color: '#eab308' }}>{HISTORICAL_SCHOOL_YEARS[0].slice(0, 4)}-{liveDbYears[liveDbYears.length - 1] + 1}</span>
+                    </div>
+                    <div style={{ marginTop: 4, fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>
+                      Live accomplishment as of {majorAsOfLabel}
+                    </div>
+                  </div>
+
+                  <div style={{ overflowX: 'auto', padding: '0.5rem 1.5rem 1.5rem' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Arial, sans-serif' }}>
+                      <thead>
+                        <tr>
+                          <th rowSpan={2} style={{ ...hdr, minWidth: 200 }}>Performance Indicator</th>
+                          {HISTORICAL_SCHOOL_YEARS.map(sy => (
+                            <th key={sy} colSpan={showHistTargets ? 2 : 1} style={hdr}>S.Y {sy.replace('-', ' - ')}</th>
+                          ))}
+                          {liveSchoolYears.map(sy => (
+                            <th key={sy} colSpan={2} style={hdr}>S.Y {sy.replace('-', ' - ')}</th>
+                          ))}
+                        </tr>
+                        <tr>
+                          {HISTORICAL_SCHOOL_YEARS.flatMap(sy => [
+                            ...(showHistTargets ? [<th key={`${sy}-t`} style={hdr}>Target</th>] : []),
+                            <th key={`${sy}-a`} style={hdr}>Accomplishment</th>,
+                          ])}
+                          {liveSchoolYears.flatMap(sy => [
+                            <th key={`${sy}-t`} style={hdr}>Target</th>,
+                            <th key={`${sy}-a`} style={hdr}>Accomplishment</th>,
+                          ])}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {MAJOR_INDICATORS.map(ind => (
+                          <tr key={ind.key}>
+                            <td style={{ ...cell, textAlign: 'left', fontWeight: 800 }}>{ind.label}</td>
+                            {HISTORICAL_SCHOOL_YEARS.flatMap(sy => [
+                              ...(showHistTargets ? [<Fragment key={`${sy}-t`}>{renderTarget(sy, ind.key)}</Fragment>] : []),
+                              <td key={`${sy}-a`} style={cell}>{formatMajorValue(ind.key, HISTORICAL_ACCOMPLISHMENTS[sy][ind.key])}</td>,
+                            ])}
+                            {liveSchoolYears.flatMap(sy => [
+                              <Fragment key={`${sy}-t`}>{renderTarget(sy, ind.key)}</Fragment>,
+                              <td key={`${sy}-a`} style={{ ...cell, background: '#f0f9ff' }}>
+                                {majorLoading ? '…' : formatMajorValue(ind.key, liveMajor[sy]?.[ind.key] ?? 0)}
+                              </td>,
+                            ])}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <div style={{ marginTop: 8, fontSize: '0.72rem', color: '#64748b' }}>
+                      S.Y 2023–2026 accomplishments are official historical figures. S.Y {liveSchoolYears.join(', ')} accomplishments are computed live from SBFP deliveries (non-failed, In-Report rows) cumulative through {majorAsOfLabel}.
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
+
           </>
         )}
       </div>
@@ -2784,6 +3067,17 @@ export default function SbfpSpreadsheetReport() {
 
           tr {
             page-break-inside: avoid !important;
+          }
+
+          .major-acc thead th {
+            background-color: #002654 !important;
+            color: #facc15 !important;
+            font-size: 9pt !important;
+          }
+          .major-acc td {
+            font-size: 9pt !important;
+            padding: 8px 6px !important;
+            border: 1.5px solid #0f172a !important;
           }
         }
       `}</style>

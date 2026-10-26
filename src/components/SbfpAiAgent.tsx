@@ -101,6 +101,7 @@ const TAB_LABELS: Record<string, string> = {
   senate_delivery: '5. Contract & Delivery Details',
   milk_procurement: '6. Milk Procurement Status',
   monthly_cummulated: '7. CDP Report',
+  major_accomplishments: '8. Major Accomplishments',
 }
 
 export function SbfpAiAgent({

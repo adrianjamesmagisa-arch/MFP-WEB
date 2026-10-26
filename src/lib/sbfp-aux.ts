@@ -1,9 +1,11 @@
 export const SBFP_PPMP_TYPE = '__PPMP__'
 export const SBFP_HIRING_TYPE = '__HIRING__'
+/** Fallback storage row for Tab 8 (Major Accomplishments) editable targets. */
+export const SBFP_MAJOR_TARGETS_TYPE = '__MAJOR_TARGETS__'
 
 export function isSbfpAuxRow(row: { milk_type?: string | null }): boolean {
   const t = row?.milk_type || ''
-  return t === SBFP_PPMP_TYPE || t === SBFP_HIRING_TYPE
+  return t === SBFP_PPMP_TYPE || t === SBFP_HIRING_TYPE || t === SBFP_MAJOR_TARGETS_TYPE
 }
 
 export function excludeAuxSbfp<T extends { milk_type?: string | null }>(rows: T[] | null | undefined): T[] {
