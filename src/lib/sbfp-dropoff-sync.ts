@@ -138,9 +138,22 @@ export function sdoLotNumber(value: string): number {
 
 export const MILK_SORT: Record<string, number> = { PM: 1, SM: 2, CM: 3 }
 
+/** True for newly created placeholder SDO labels ("New SDO", "New SDO - PM", "New SDO 2 - SM", etc.). */
+export function isPlaceholderSdoName(value: string | null | undefined): boolean {
+  const stripped = stripMilkTypeFromSdoName(String(value || '')).trim()
+  return !stripped || /^new sdo(?:\s+\d+)?$/i.test(stripped)
+}
+
+/** True for newly created placeholder drop-off school names ("New school", "New school 2", etc.). */
+export function isPlaceholderDropoffName(value: string | null | undefined): boolean {
+  const trimmed = String(value || '').trim()
+  return !trimmed || /^new school(?:\s+\d+)?$/i.test(trimmed)
+}
+
 /**
  * Keep the same geographic SDO together (Lanao next to Lanao), then milk type, then lot.
  * Multiple PM lots of one SDO stay adjacent in lot order (1, 2, 3).
+ * Newly added placeholder SDOs ("New SDO") sort to the end so encoders see them at the bottom.
  */
 export function compareSbfpEncoderRows(
   a: {
@@ -156,6 +169,10 @@ export function compareSbfpEncoderRows(
     amount?: number | null
   },
 ): number {
+  const aPlaceholder = isPlaceholderSdoName(a.sdo)
+  const bPlaceholder = isPlaceholderSdoName(b.sdo)
+  if (aPlaceholder !== bPlaceholder) return aPlaceholder ? 1 : -1
+
   const byGeo = normalizeSdoName(a.sdo || '').localeCompare(
     normalizeSdoName(b.sdo || ''),
     'en',

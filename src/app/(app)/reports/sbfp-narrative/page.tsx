@@ -13,6 +13,7 @@ import {
   rowHasDeliveryInMonth,
   rowMatchesReportCenterFilter,
   rowMatchesSbfpStatusFilter,
+  buildSdoHierarchyStatusMap,
   resolveDeliveredPacksForReport,
   sbfpRowVisibleInReportDefault,
   sbfpStatusBucket,
@@ -410,15 +411,26 @@ export default function SbfpSpreadsheetReport() {
     return { from: deliveredFrom, to }
   }, [dbYearNum, deliveredDateFilterEnabled, deliveredFrom, deliveredTo])
 
-  // Filter records
-  const filteredRecords = useMemo(() => {
+  // Whole-SDO hierarchy status (For Preparation → Ongoing Procurement → Ongoing (For Award) →
+  // Awarded (For Delivery) → Awarded (Ongoing Delivery) → Completed → Failed).
+  // Computed across all visible SDO rows before row-level filters so an SDO like Cagayan
+  // (PM/CM = For Preparation, SM = Completed) keeps its whole-SDO status ("For Preparation")
+  // and is excluded when filtering by "Completed".
+  const sdoHierarchyStatusMap = useMemo(() => {
+    const visibleRows = (records as SbfpReportSourceRow[]).filter(
+      r => includeExcluded || sbfpRowVisibleInReportDefault(r),
+    )
+    return buildSdoHierarchyStatusMap(visibleRows)
+  }, [records, includeExcluded])
+
+  // Apply all filters except Procurement Status so dropdown counts reflect current Center/Region/Search/Date filters
+  const preStatusFilteredRecords = useMemo(() => {
     const { from: rangeFrom, to: rangeTo } = effectiveDeliveredRange
     return records.filter(r => {
       // In Report rows + Failed (so status filter/counts work). Checkbox still shows all excluded.
       if (!includeExcluded && !sbfpRowVisibleInReportDefault(r as SbfpReportSourceRow)) return false
       if (filterRegion !== 'ALL' && r.region !== filterRegion) return false
       if (!rowMatchesReportCenterFilter(r as SbfpReportSourceRow, filterCenter)) return false
-      if (!rowMatchesSbfpStatusFilter(r.procurement_status, filterStatus)) return false
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim()
         const matchSdo = (r.sdo || '').toLowerCase().includes(q)
@@ -458,7 +470,6 @@ export default function SbfpSpreadsheetReport() {
     records,
     filterRegion,
     filterCenter,
-    filterStatus,
     searchQuery,
     filterMonth,
     year,
@@ -467,6 +478,34 @@ export default function SbfpSpreadsheetReport() {
     effectiveDeliveredRange,
     dbYearNum,
   ])
+
+  const statusHierarchyCounts = useMemo(() => {
+    const byStatus = Object.fromEntries(
+      SBFP_PROCUREMENT_STATUSES.map(status => [status, 0]),
+    ) as Record<SbfpProcurementStatus, number>
+    const seenSdoKeys = new Set<string>()
+    for (const r of preStatusFilteredRecords) {
+      const sdoKey = uniqueSdoCountKey(r.sdo, r.center) || String(r.id || '')
+      if (!sdoKey || seenSdoKeys.has(sdoKey)) continue
+      seenSdoKeys.add(sdoKey)
+      const assignedStatus =
+        sdoHierarchyStatusMap.get(sdoKey) || officialSbfpStatusLabel(r.procurement_status)
+      byStatus[assignedStatus] = (byStatus[assignedStatus] ?? 0) + 1
+    }
+    return { total: seenSdoKeys.size, byStatus }
+  }, [preStatusFilteredRecords, sdoHierarchyStatusMap])
+
+  // Filter records using whole-SDO hierarchy status
+  const filteredRecords = useMemo(() => {
+    if (!filterStatus || filterStatus === 'ALL') return preStatusFilteredRecords
+    return preStatusFilteredRecords.filter(r => {
+      const sdoKey = uniqueSdoCountKey(r.sdo, r.center) || String(r.id || '')
+      const effectiveSdoStatus =
+        (sdoKey ? sdoHierarchyStatusMap.get(sdoKey) : undefined) ||
+        officialSbfpStatusLabel(r.procurement_status)
+      return rowMatchesSbfpStatusFilter(effectiveSdoStatus, filterStatus)
+    })
+  }, [preStatusFilteredRecords, filterStatus, sdoHierarchyStatusMap])
 
   const viewRows = useMemo(() => {
     const dbY = Number.isFinite(dbYearNum) ? dbYearNum : undefined
@@ -726,36 +765,20 @@ export default function SbfpSpreadsheetReport() {
       remarks: string
     }> = []
 
-    // Track which status each unique SDO belongs to (use the highest priority status)
-    const sdoToStatus = new Map<string, SbfpProcurementStatus>()
-    filteredRecords.forEach(r => {
-      const sdoKey = uniqueSdoCountKey(r.sdo, r.center) || String(r.id || '')
-      if (!sdoKey) return
-      const status = officialSbfpStatusLabel(r.procurement_status)
-      const existingStatus = sdoToStatus.get(sdoKey)
-      if (!existingStatus) {
-        sdoToStatus.set(sdoKey, status)
-      } else {
-        // If SDO has multiple statuses, use the one with highest priority
-        const existingIdx = SBFP_PROCUREMENT_STATUSES.indexOf(existingStatus)
-        const newIdx = SBFP_PROCUREMENT_STATUSES.indexOf(status)
-        if (newIdx < existingIdx) {
-          sdoToStatus.set(sdoKey, status)
-        }
-      }
-    })
-
     filteredRecords.forEach(r => {
       const m = rowSenate(r)
       const status = officialSbfpStatusLabel(r.procurement_status)
       const entry = buckets[status]
       Object.assign(entry, addSbfpSenateMetrics(entry, m))
       
-      // Only count SDO in this status bucket if this is its assigned status
+      // Count each unique SDO once in its whole-SDO hierarchy status bucket
       const sdoKey = uniqueSdoCountKey(r.sdo, r.center) || String(r.id || '')
-      if (sdoKey && sdoToStatus.get(sdoKey) === status && !entry.sdoKeys.has(sdoKey)) {
-        entry.sdoKeys.add(sdoKey)
-        entry.sdoCount++
+      const assignedStatus =
+        (sdoKey ? sdoHierarchyStatusMap.get(sdoKey) : undefined) || status
+      const sdoBucket = buckets[assignedStatus]
+      if (sdoKey && !sdoBucket.sdoKeys.has(sdoKey)) {
+        sdoBucket.sdoKeys.add(sdoKey)
+        sdoBucket.sdoCount++
       }
       
       reasons.push({
@@ -777,7 +800,7 @@ export default function SbfpSpreadsheetReport() {
       return b.remainingContract - a.remainingContract
     })
     return { buckets, reasons }
-  }, [filteredRecords, rowSenate])
+  }, [filteredRecords, rowSenate, sdoHierarchyStatusMap])
 
   /** # column: one number per unique SDO (PM/SM/lots / Pangasinan I Dist 2+3 share a cell). */
   const sdoIndexMeta = useMemo(() => {
@@ -1631,9 +1654,11 @@ export default function SbfpSpreadsheetReport() {
               <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>Procurement Status</div>
               <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
                 style={{ height: 34, padding: '0 0.75rem', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: '0.85rem', background: '#fff' }}>
-                <option value="ALL">All Statuses</option>
+                <option value="ALL">All Statuses ({statusHierarchyCounts.total})</option>
                 {distinctStatuses.map(s => (
-                  <option key={s.value} value={s.value}>{s.label}</option>
+                  <option key={s.value} value={s.value}>
+                    {s.label} ({statusHierarchyCounts.byStatus[s.value as SbfpProcurementStatus] ?? 0})
+                  </option>
                 ))}
               </select>
             </div>

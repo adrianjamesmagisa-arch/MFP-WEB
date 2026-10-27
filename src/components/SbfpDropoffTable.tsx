@@ -9,6 +9,7 @@ import {
   parseFeedingDaysFromText,
   composeSdoWithMilkType,
   compareSbfpEncoderRows,
+  isPlaceholderDropoffName,
 } from '@/lib/sbfp-dropoff-sync'
 import { calcMilkFormulations, litersPerPackForMilkType } from '@/lib/mfp-formulas'
 import { inferSbfpMilkType, normalizeSbfpMilkType } from '@/lib/sbfp-pack-price'
@@ -215,10 +216,48 @@ export function SbfpDropoffTable({
   const [adding, setAdding] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const scopeKey = `${center}:${year}`
+  /** Row IDs added (or edited from placeholder) in this session — kept at the end so they stay visible while encoding. */
+  const [sessionAdded, setSessionAdded] = useState<{ scope: string; ids: string[] }>({
+    scope: scopeKey,
+    ids: [],
+  })
+  const sessionAddedIds = useMemo(
+    () => (sessionAdded.scope === scopeKey ? sessionAdded.ids : []),
+    [sessionAdded, scopeKey],
+  )
+  const appendSessionAddedId = (id: string) => {
+    setSessionAdded(prev => {
+      const base = prev.scope === scopeKey ? prev.ids : []
+      return base.includes(id) ? { scope: scopeKey, ids: base } : { scope: scopeKey, ids: [...base, id] }
+    })
+  }
+  const removeSessionAddedIds = (idsToRemove: Iterable<string>) => {
+    const removeSet = new Set(idsToRemove)
+    setSessionAdded(prev => {
+      if (prev.scope !== scopeKey) return prev
+      return { scope: scopeKey, ids: prev.ids.filter(id => !removeSet.has(id)) }
+    })
+  }
+  const [highlightRow, setHighlightRow] = useState<{ scope: string; id: string | null }>({
+    scope: scopeKey,
+    id: null,
+  })
+  const highlightRowId = highlightRow.scope === scopeKey ? highlightRow.id : null
+  const tableScrollRef = useRef<HTMLDivElement>(null)
+  const pendingScrollRowIdRef = useRef<string | null>(null)
   /** Names reserved while insert is in flight (rapid Add clicks). */
   const reservedDropoffNamesRef = useRef(new Set<string>())
 
   useEffect(() => { setRows(initialRows || []) }, [initialRows])
+
+  useEffect(() => {
+    if (!highlightRowId) return
+    const timer = window.setTimeout(() => {
+      setHighlightRow(curr => (curr.id === highlightRowId ? { scope: scopeKey, id: null } : curr))
+    }, 4000)
+    return () => window.clearTimeout(timer)
+  }, [highlightRowId, scopeKey])
 
   useEffect(() => {
     if (!pruneSbfpDataId) return
@@ -243,8 +282,52 @@ export function SbfpDropoffTable({
       filterSdo === 'ALL'
         ? rows
         : rows.filter(r => r.sbfp_data_id === filterSdo)
-    return [...filtered].sort((a, b) => compareSbfpEncoderRows(a, b) || (a.dropoff_name || '').localeCompare(b.dropoff_name || ''))
-  }, [rows, filterSdo])
+    const sessionOrder = new Map(sessionAddedIds.map((id, idx) => [id, idx]))
+    return [...filtered].sort((a, b) => {
+      const ai = sessionOrder.get(a.id)
+      const bi = sessionOrder.get(b.id)
+      if (ai !== undefined && bi !== undefined) return ai - bi
+      if (ai !== undefined) return 1
+      if (bi !== undefined) return -1
+
+      const aPlaceholder = isPlaceholderDropoffName(a.dropoff_name)
+      const bPlaceholder = isPlaceholderDropoffName(b.dropoff_name)
+      if (aPlaceholder !== bPlaceholder) return aPlaceholder ? 1 : -1
+
+      return (
+        compareSbfpEncoderRows(a, b) ||
+        (a.dropoff_name || '').localeCompare(b.dropoff_name || '', undefined, { numeric: true })
+      )
+    })
+  }, [rows, filterSdo, sessionAddedIds])
+
+  useEffect(() => {
+    const targetId = pendingScrollRowIdRef.current
+    if (!targetId) return
+    if (!visible.some(r => r.id === targetId)) return
+    pendingScrollRowIdRef.current = null
+
+    requestAnimationFrame(() => {
+      const scroller = tableScrollRef.current
+      if (!scroller) return
+      scroller.scrollTop = scroller.scrollHeight
+      scroller.scrollLeft = 0
+      const safeId = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(targetId) : targetId
+      const rowEl = scroller.querySelector<HTMLElement>(`tr[data-row-id="${safeId}"]`)
+      const targetRect = (rowEl || scroller).getBoundingClientRect()
+      if (targetRect.bottom > window.innerHeight - 16) {
+        window.scrollBy({
+          top: targetRect.bottom - window.innerHeight + 32,
+          behavior: 'smooth',
+        })
+      } else if (targetRect.top < 80) {
+        window.scrollBy({
+          top: targetRect.top - 100,
+          behavior: 'smooth',
+        })
+      }
+    })
+  }, [visible])
 
   const syncRow = (row: DropoffRow) => {
     // Background sync — do not block the encoder
@@ -256,6 +339,9 @@ export function SbfpDropoffTable({
   const updateField = async (id: string, field: keyof DropoffRow, value: any) => {
     const prev = rows.find(r => r.id === id)
     if (!prev) return
+    if (isPlaceholderDropoffName(prev.dropoff_name)) {
+      appendSessionAddedId(id)
+    }
 
     let patch: Partial<DropoffRow> = { [field]: value }
     if (field === 'sbfp_data_id') {
@@ -342,8 +428,12 @@ export function SbfpDropoffTable({
       return
     }
     if (data) {
-      setRows(p => [...p, data as DropoffRow])
-      syncRow(data as DropoffRow)
+      const added = data as DropoffRow
+      pendingScrollRowIdRef.current = added.id
+      appendSessionAddedId(added.id)
+      setHighlightRow({ scope: scopeKey, id: added.id })
+      setRows(p => [...p, added])
+      syncRow(added)
     }
   }
 
@@ -355,6 +445,7 @@ export function SbfpDropoffTable({
     if (error) setMsg(error.message)
     else {
       setRows(p => p.filter(r => r.id !== id))
+      removeSessionAddedIds([id])
       setSelected(p => { const n = new Set(p); n.delete(id); return n })
     }
   }
@@ -368,6 +459,7 @@ export function SbfpDropoffTable({
       await supabase.from('sbfp_dropoff_points').delete().eq('id', id)
     }
     setRows(p => p.filter(r => !selected.has(r.id)))
+    removeSessionAddedIds(selected)
     setSelected(new Set())
   }
 
@@ -443,7 +535,7 @@ export function SbfpDropoffTable({
       </div>
 
       <div className="card" style={{ overflow: 'hidden' }}>
-        <div style={{ overflow: 'auto', maxHeight: 'calc(100vh - 320px)' }}>
+        <div ref={tableScrollRef} style={{ overflow: 'auto', maxHeight: 'calc(100vh - 320px)' }}>
           <table className="data-table" style={{ minWidth: 1600, fontSize: '0.78rem', borderCollapse: 'separate', borderSpacing: 0 }}>
             <thead>
               <tr>
@@ -511,7 +603,7 @@ export function SbfpDropoffTable({
                 </tr>
               )}
               {visible.map(r => {
-                const bg = selected.has(r.id) ? '#e0e7ff' : '#fff'
+                const bg = selected.has(r.id) ? '#e0e7ff' : r.id === highlightRowId ? '#fef9c3' : '#fff'
                 const parentOpt = sdoSelectOptions.find(o => o.id === r.sbfp_data_id)
                 const selectValue = parentOpt?.id || ''
                 const milkType =
@@ -531,7 +623,7 @@ export function SbfpDropoffTable({
                     : composeSdoWithMilkType(r.sdo, milkType) || r.sdo) || '—'
                 const volFactor = litersPerPackForMilkType(milkType)
                 return (
-                  <tr key={r.id} style={{ background: bg }}>
+                  <tr key={r.id} data-row-id={r.id} style={{ background: bg }}>
                     <td style={{ textAlign: 'center', ...stickyTd(SL.check, SW.check, bg) }}>
                       <input
                         type="checkbox"

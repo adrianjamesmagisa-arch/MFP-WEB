@@ -4,6 +4,7 @@
  */
 
 import { centerDisplayLabel, sbfpCenterAliases } from '@/lib/center-aliases'
+import { uniqueSdoCountKey } from '@/lib/sbfp-dropoff-sync'
 import { packsFromAmount, milkTypeLabel, finishedMilkLiters } from '@/lib/sbfp-pack-price'
 import {
   packsForMonth,
@@ -89,15 +90,39 @@ export function officialSbfpStatusLabel(procurement_status?: string | null): Sbf
   return 'Ongoing Procurement'
 }
 
-export const SBFP_STATUS_FILTER_OPTIONS: { value: SbfpStatusBucket | 'ALL'; label: string }[] = [
+export const SBFP_STATUS_FILTER_OPTIONS: { value: SbfpProcurementStatus | 'ALL'; label: string }[] = [
   { value: 'ALL', label: 'All Statuses' },
-  { value: 'prep', label: 'For Preparation' },
-  { value: 'ongoing', label: 'Ongoing' },
-  { value: 'awarded_delivery', label: 'Awarded (For Delivery)' },
-  { value: 'awarded_ongoing', label: 'Awarded (Ongoing Delivery)' },
-  { value: 'completed', label: 'Completed' },
-  { value: 'failed', label: 'Failed' },
+  ...SBFP_PROCUREMENT_STATUSES.map(status => ({ value: status, label: status })),
 ]
+
+/**
+ * Assigns each unique SDO (center + normalized SDO name) a single hierarchy status
+ * following SBFP_PROCUREMENT_STATUSES order (For Preparation → Ongoing Procurement →
+ * Ongoing (For Award) → Awarded (For Delivery) → Awarded (Ongoing Delivery) →
+ * Completed → Failed). For example, if Cagayan has SM = Completed while PM/CM = For Preparation,
+ * Cagayan's whole-SDO status is "For Preparation" (so filtering "Completed" excludes Cagayan).
+ */
+export function buildSdoHierarchyStatusMap(
+  rows: ReadonlyArray<Pick<SbfpReportSourceRow, 'id' | 'sdo' | 'center' | 'procurement_status'>>,
+): Map<string, SbfpProcurementStatus> {
+  const sdoToStatus = new Map<string, SbfpProcurementStatus>()
+  for (const r of rows) {
+    const sdoKey = uniqueSdoCountKey(r.sdo, r.center) || String(r.id || '')
+    if (!sdoKey) continue
+    const status = officialSbfpStatusLabel(r.procurement_status)
+    const existingStatus = sdoToStatus.get(sdoKey)
+    if (!existingStatus) {
+      sdoToStatus.set(sdoKey, status)
+    } else {
+      const existingIdx = SBFP_PROCUREMENT_STATUSES.indexOf(existingStatus)
+      const newIdx = SBFP_PROCUREMENT_STATUSES.indexOf(status)
+      if (newIdx < existingIdx) {
+        sdoToStatus.set(sdoKey, status)
+      }
+    }
+  }
+  return sdoToStatus
+}
 
 export function sbfpStatusBucket(procurement_status?: string | null): SbfpStatusBucket {
   const st = String(procurement_status || '').trim().toLowerCase()
@@ -110,22 +135,25 @@ export function sbfpStatusBucket(procurement_status?: string | null): SbfpStatus
   return 'other'
 }
 
-/** True when row matches the report Procurement Status filter (bucket or exact label). */
+/** True when status (row or whole-SDO hierarchy status) matches the Procurement Status filter. */
 export function rowMatchesSbfpStatusFilter(
   procurement_status: string | null | undefined,
   filterStatus: string,
 ): boolean {
   if (!filterStatus || filterStatus === 'ALL') return true
+  const canonicalRowStatus = officialSbfpStatusLabel(procurement_status)
+  if ((SBFP_PROCUREMENT_STATUSES as readonly string[]).includes(filterStatus)) {
+    return canonicalRowStatus === filterStatus
+  }
   const bucket = sbfpStatusBucket(procurement_status)
   if (filterStatus === bucket) return true
   // Legacy exact / label match (older bookmarks or hardcoded option values)
   const want = filterStatus.trim().toLowerCase()
+  if (canonicalRowStatus.toLowerCase() === want) return true
   const got = String(procurement_status || '').trim().toLowerCase()
   if (got === want) return true
   if (want === 'for preparation' && bucket === 'prep') return true
-  if ((want === 'ongoing' || want.includes('ongoing procurement') || want.includes('ongoing (for award)')) && bucket === 'ongoing') {
-    return true
-  }
+  if (want === 'ongoing' && bucket === 'ongoing') return true
   if (want.includes('awarded') && want.includes('ongoing') && bucket === 'awarded_ongoing') return true
   if (want.includes('awarded') && bucket === 'awarded_delivery') return true
   if ((want === 'completed' || want === 'done') && bucket === 'completed') return true
