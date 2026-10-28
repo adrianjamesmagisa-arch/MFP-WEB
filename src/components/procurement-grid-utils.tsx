@@ -234,6 +234,7 @@ export function ProcEditableCell({
         <input
           ref={ref}
           type={type}
+          step={type === 'number' ? 'any' : undefined}
           value={val ?? ''}
           disabled={saving}
           onChange={e => setVal(e.target.value)}

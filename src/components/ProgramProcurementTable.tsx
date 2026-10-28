@@ -33,6 +33,7 @@ import {
   inferSbfpMilkType,
   normalizeSbfpMilkType,
   packsFromAmount,
+  programUsesCustomPackPrice,
   resolvePackUnitPrice,
   SBFP_MILK_TYPE_VALUES,
 } from '@/lib/sbfp-pack-price'
@@ -73,6 +74,7 @@ const CASCADE_FIELDS = new Set([
   'delivery_start',
   'delivery_end',
   'milk_type',
+  'pack_unit_price',
   'amount',
   'mode_of_procurement',
   'delivery_snapshots',
@@ -157,6 +159,7 @@ export function ProgramProcurementTable({
   const addPayRef = useRef<HTMLInputElement>(null)
   const reservedLabelsRef = useRef<Set<string>>(new Set())
   const dbYear = year
+  const customPriceOnly = programUsesCustomPackPrice(programId)
 
   useEffect(() => {
     setRows(initialRows)
@@ -184,13 +187,12 @@ export function ProgramProcurementTable({
   }
 
   const handleSave = async (id: string, field: string, oldV: unknown, newV: unknown) => {
-    let nextRow: ProgramProcurementRow | null = null
+    const currentRow = rows.find(r => r.id === id) || null
+    let nextRow: ProgramProcurementRow | null = currentRow
+      ? ({ ...currentRow, [field]: newV } as ProgramProcurementRow)
+      : null
     setRows(p =>
-      p.map(r => {
-        if (r.id !== id) return r
-        nextRow = { ...r, [field]: newV } as ProgramProcurementRow
-        return nextRow
-      }),
+      p.map(r => (r.id === id ? ({ ...r, [field]: newV } as ProgramProcurementRow) : r)),
     )
 
     if (
@@ -214,15 +216,24 @@ export function ProgramProcurementTable({
       const milk = normalizeSbfpMilkType(nextRow.milk_type) || String(nextRow.milk_type || '').toUpperCase()
       let packPrice: number | null | undefined = nextRow.pack_unit_price
       const patch: Record<string, unknown> = {}
-      if (milk === 'PM' || milk === 'SM') {
+      if (!customPriceOnly && (milk === 'PM' || milk === 'SM')) {
         packPrice = fixedPackPriceForMilkType(milk)
         if (nextRow.pack_unit_price != null) {
           patch.pack_unit_price = null
           nextRow = { ...nextRow, pack_unit_price: null }
         }
       }
-      const derived = packsFromAmount(nextRow.amount, milk, packPrice)
-      const nextPacks = derived != null ? derived : milk === 'CM' ? 0 : null
+      const derived = packsFromAmount(nextRow.amount, milk, packPrice, { customPriceOnly })
+      const nextPacks =
+        derived != null
+          ? derived
+          : !customPriceOnly
+            ? milk === 'CM'
+              ? 0
+              : null
+            : !(Number(nextRow.amount) > 0) || (field === 'pack_unit_price' && !(Number(packPrice) > 0))
+              ? 0
+              : null
       if (nextPacks != null && nextPacks !== (Number(nextRow.packs_to_deliver) || 0)) {
         patch.packs_to_deliver = nextPacks
         nextRow = { ...nextRow, packs_to_deliver: nextPacks }
@@ -231,7 +242,7 @@ export function ProgramProcurementTable({
         setRows(p => p.map(r => (r.id === id ? { ...r, ...patch } : r)))
         void supabase.from(PROC_TABLE).update(patch).eq('id', id)
       }
-      if ((milk === 'PM' || milk === 'SM') && !(Number(nextRow.amount) > 0)) {
+      if (!customPriceOnly && (milk === 'PM' || milk === 'SM') && !(Number(nextRow.amount) > 0)) {
         alert('Enter Amount (₱) first — Target packs = Amount ÷ Pack ₱')
       }
     }
@@ -253,8 +264,10 @@ export function ProgramProcurementTable({
         namePatch.milk_type = inferred
         nextRow = { ...nextRow, milk_type: inferred }
         const price =
-          inferred === 'CM' ? nextRow.pack_unit_price : fixedPackPriceForMilkType(inferred)
-        const derived = packsFromAmount(nextRow.amount, inferred, price)
+          customPriceOnly || inferred === 'CM'
+            ? nextRow.pack_unit_price
+            : fixedPackPriceForMilkType(inferred)
+        const derived = packsFromAmount(nextRow.amount, inferred, price, { customPriceOnly })
         if (derived != null && derived !== (Number(nextRow.packs_to_deliver) || 0)) {
           namePatch.packs_to_deliver = derived
           nextRow = { ...nextRow, packs_to_deliver: derived }
@@ -632,14 +645,22 @@ export function ProgramProcurementTable({
               <th
                 rowSpan={2}
                 style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 90 }}
-                title="PM → packs = Amount÷25 · SM → Amount÷30 · CM → Amount÷Pack ₱"
+                title={
+                  customPriceOnly
+                    ? 'Milk type (PM / SM / CM) — Target packs = Amount ÷ Pack ₱'
+                    : 'PM → packs = Amount÷25 · SM → Amount÷30 · CM → Amount÷Pack ₱'
+                }
               >
                 Milk type
               </th>
               <th
                 rowSpan={2}
                 style={{ whiteSpace: 'normal', lineHeight: 1.2, textAlign: 'right', minWidth: 90 }}
-                title="₱ per pack"
+                title={
+                  customPriceOnly
+                    ? 'Click a cell to enter ₱ per pack (Target packs = Amount ÷ Pack ₱)'
+                    : '₱ per pack'
+                }
               >
                 Pack ₱
               </th>
@@ -810,8 +831,8 @@ export function ProgramProcurementTable({
                   )}
                   {(() => {
                     const milk = normalizeSbfpMilkType(r.milk_type) || r.milk_type
-                    const shown = resolvePackUnitPrice(r)
-                    if (milk === 'CM' && editable) {
+                    const shown = resolvePackUnitPrice(r, { customPriceOnly })
+                    if ((customPriceOnly || milk === 'CM') && editable) {
                       return (
                         <ProcEditableCell
                           table={PROC_TABLE}
@@ -820,6 +841,7 @@ export function ProgramProcurementTable({
                           value={r.pack_unit_price}
                           type="number"
                           align="right"
+                          title="Click to enter ₱ per pack (Target packs = Amount ÷ Pack ₱)"
                           format={v => (v != null && v !== '' ? `₱${Number(v).toLocaleString()}` : '—')}
                           onSave={handleSave}
                         />

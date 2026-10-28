@@ -41,19 +41,31 @@ export function fixedPackPriceForMilkType(milkType: unknown): number | null {
   return null
 }
 
+/** LGU and DSWD let encoders set Pack ₱ freely for PM/SM/CM (like CM milk), never fixed ₱25/₱30. */
+export function programUsesCustomPackPrice(programId?: string | null): boolean {
+  return programId === 'lgu' || programId === 'dswd'
+}
+
 /**
  * Effective ₱/pack for Amount ÷ price.
- * CM uses encoder pack_unit_price; PM/SM use fixed rates.
+ * CM (and all milk types when customPriceOnly is set) uses encoder pack_unit_price; PM/SM otherwise use fixed rates.
  */
-export function resolvePackUnitPrice(row: {
-  milk_type?: unknown
-  pack_unit_price?: number | null
-}): number | null {
+export function resolvePackUnitPrice(
+  row: {
+    milk_type?: unknown
+    pack_unit_price?: number | null
+  },
+  opts?: { customPriceOnly?: boolean },
+): number | null {
+  if (opts?.customPriceOnly) {
+    const custom = Number(row.pack_unit_price)
+    return Number.isFinite(custom) && custom > 0 ? custom : null
+  }
   const t = normalizeSbfpMilkType(row.milk_type)
   if (!t) return null
   if (t === 'CM') {
     const custom = Number(row.pack_unit_price)
-    return custom > 0 ? custom : null
+    return Number.isFinite(custom) && custom > 0 ? custom : null
   }
   return fixedPackPriceForMilkType(t)
 }
@@ -63,10 +75,14 @@ export function packsFromAmount(
   amount: unknown,
   milkType: unknown,
   packUnitPrice?: number | null,
+  opts?: { customPriceOnly?: boolean },
 ): number | null {
   const amt = Number(amount)
   if (!Number.isFinite(amt) || amt <= 0) return null
-  const price = resolvePackUnitPrice({ milk_type: milkType, pack_unit_price: packUnitPrice ?? null })
+  const price = resolvePackUnitPrice(
+    { milk_type: milkType, pack_unit_price: packUnitPrice ?? null },
+    opts,
+  )
   if (!price || price <= 0) return null
   return Math.round(amt / price)
 }

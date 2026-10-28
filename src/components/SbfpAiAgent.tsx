@@ -67,6 +67,8 @@ export interface SbfpAiAgentProps {
     buckets: Record<string, any>
     [key: string]: any
   }
+  programLabel?: string
+  entityPluralLabel?: string
 }
 
 interface Message {
@@ -81,15 +83,6 @@ const GROQ_MODELS = [
   { id: 'openai/gpt-oss-120b', name: 'GPT-OSS 120B (High Intelligence · Recommended)' },
   { id: 'qwen/qwen3.8-27b', name: 'Qwen 3.8 27B (Fast & Accurate)' },
   { id: 'openai/gpt-oss-20b', name: 'GPT-OSS 20B (Compact)' },
-]
-
-const QUICK_PROMPTS = [
-  'Summarize the overall SBFP procurement & delivery accomplishment',
-  'Which SDOs and Centers have completed their milk deliveries?',
-  'List SDOs that are still "For Preparation" or delayed',
-  'Break down delivered packs & completion rate by Region',
-  'Which cooperatives are participating and what are their assigned SDOs?',
-  'Compare packs to deliver vs delivered packs across PCC Centers',
 ]
 
 const TAB_LABELS: Record<string, string> = {
@@ -119,7 +112,20 @@ export function SbfpAiAgent({
   regionalSummary = [],
   centerSummary = [],
   implSummary,
+  programLabel = 'SBFP',
+  entityPluralLabel = 'SDOs',
 }: SbfpAiAgentProps) {
+  const quickPrompts = useMemo(
+    () => [
+      `Summarize the overall ${programLabel} procurement & delivery accomplishment`,
+      `Which ${entityPluralLabel} and Centers have completed their milk deliveries?`,
+      `List ${entityPluralLabel} that are still "For Preparation" or delayed`,
+      'Break down delivered packs & completion rate by Region',
+      `Which cooperatives are participating and what are their assigned ${entityPluralLabel}?`,
+      'Compare packs to deliver vs delivered packs across PCC Centers',
+    ],
+    [programLabel, entityPluralLabel],
+  )
   const [isOpen, setIsOpen] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [apiKey, setApiKey] = useState('')
@@ -479,7 +485,7 @@ export function SbfpAiAgent({
                 </div>
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                    <h2 style={{ fontSize: '1rem', fontWeight: 700, margin: 0, color: 'white' }}>SBFP AI Agent</h2>
+                    <h2 style={{ fontSize: '1rem', fontWeight: 700, margin: 0, color: 'white' }}>{programLabel} AI Agent</h2>
                     <span
                       style={{
                         fontSize: '0.65rem',
@@ -496,7 +502,7 @@ export function SbfpAiAgent({
                     </span>
                   </div>
                   <p style={{ fontSize: '0.75rem', color: '#cbd5e1', margin: '0.1rem 0 0 0' }}>
-                    {stats.count} SDO{stats.count !== 1 ? 's' : ''} · {filteredRecords.length} records in scope
+                    {stats.count} {entityPluralLabel} · {filteredRecords.length} records in scope
                   </p>
                 </div>
               </div>
@@ -586,7 +592,9 @@ export function SbfpAiAgent({
                 <span>
                   {yearLabel} · {filterCenter === 'ALL' ? 'All Centers' : filterCenter} ·{' '}
                   {filterRegion === 'ALL' ? 'All Regions' : `Region ${filterRegion}`} ·{' '}
-                  {TAB_LABELS[activeTab] || activeTab}
+                  {activeTab === 'master'
+                    ? (programLabel === 'SBFP' ? 'SDO Masterlist' : `${programLabel} Masterlist`)
+                    : (TAB_LABELS[activeTab] || activeTab)}
                 </span>
               </div>
               <span style={{ fontWeight: 700, color: '#059669' }}>
@@ -738,10 +746,10 @@ export function SbfpAiAgent({
                     <Bot size={26} color="#2563eb" />
                   </div>
                   <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: '0 0 0.35rem', color: '#0f172a' }}>
-                    SBFP Intelligence Copilot
+                    {programLabel} Intelligence Copilot
                   </h3>
                   <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '0 0 1.25rem', lineHeight: 1.4 }}>
-                    Ask questions grounded on the <strong>{stats.count} SDOs</strong> and live monitoring metrics visible
+                    Ask questions grounded on the <strong>{stats.count} {entityPluralLabel}</strong> and live monitoring metrics visible
                     on your screen.
                   </p>
 
@@ -759,7 +767,7 @@ export function SbfpAiAgent({
                     >
                       Suggested Prompts:
                     </div>
-                    {QUICK_PROMPTS.map((qp, idx) => (
+                    {quickPrompts.map((qp, idx) => (
                       <button
                         key={idx}
                         type="button"

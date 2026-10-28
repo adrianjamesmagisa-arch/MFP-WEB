@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Building, ChevronRight, BarChart3 } from 'lucide-react'
+import { Building, ChevronRight, BarChart3, FileText } from 'lucide-react'
 import {
   MONITORING_PROGRAMS,
   monitoringBasePath,
@@ -31,6 +31,17 @@ export function MonitoringSubSidebar({
   const navMain = encoderCenter
     ? []
     : [{ href: `${base}/overall`, icon: BarChart3, label: 'Dashboard' }]
+
+  const navReports =
+    !encoderCenter && (programId === 'dswd' || programId === 'lgu')
+      ? [
+          {
+            href: programId === 'dswd' ? '/reports/dswd-narrative' : '/reports/lgu-narrative',
+            icon: FileText,
+            label: `${program.shortLabel} Report`,
+          },
+        ]
+      : []
 
   return (
     <aside
@@ -88,6 +99,54 @@ export function MonitoringSubSidebar({
           )
         })}
       </nav>
+
+      {navReports.length > 0 && (
+        <>
+          <div
+            style={{
+              padding: '0.5rem 1rem',
+              fontSize: '0.62rem',
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              color: '#475569',
+              borderTop: '1px solid rgba(255,255,255,0.06)',
+              marginTop: '0.25rem',
+              paddingTop: '0.75rem',
+            }}
+          >
+            Reports
+          </div>
+          <nav style={{ padding: '0.125rem 0 0.25rem' }}>
+            {navReports.map(item => {
+              const Icon = item.icon
+              const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    padding: '0.35rem 1rem 0.35rem 1.25rem',
+                    fontSize: '0.74rem',
+                    fontWeight: isActive ? 600 : 400,
+                    color: isActive ? program.accent : '#94a3b8',
+                    background: isActive ? 'rgba(255,255,255,0.06)' : 'transparent',
+                    borderLeft: isActive ? `2px solid ${program.accent}` : '2px solid transparent',
+                    textDecoration: 'none',
+                  }}
+                >
+                  <Icon size={11} />
+                  <span>{item.label}</span>
+                  {isActive && <ChevronRight size={11} style={{ marginLeft: 'auto', opacity: 0.5 }} />}
+                </Link>
+              )
+            })}
+          </nav>
+        </>
+      )}
 
       {!encoderCenter && (
         <>

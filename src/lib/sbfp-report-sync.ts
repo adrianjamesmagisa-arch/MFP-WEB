@@ -189,10 +189,13 @@ export function rowMatchesReportCenterFilter(
 }
 
 /** Same target packs logic as center table (stored value, else Amount ÷ pack price). */
-export function effectivePacksToDeliver(row: SbfpReportSourceRow): number {
+export function effectivePacksToDeliver(
+  row: SbfpReportSourceRow,
+  opts?: { customPriceOnly?: boolean },
+): number {
   const stored = Number(row.packs_to_deliver)
   if (Number.isFinite(stored) && stored > 0) return stored
-  const computed = packsFromAmount(row.amount, row.milk_type, row.pack_unit_price)
+  const computed = packsFromAmount(row.amount, row.milk_type, row.pack_unit_price, opts)
   return computed ?? 0
 }
 
@@ -334,6 +337,15 @@ export function defaultDeliveredPackRange(dbYear: number): { from: string; to: s
   return { from: `${y}-08-01`, to }
 }
 
+/** Calendar-year delivered pack range (Jan 1 – today for current year, else Jan 1 – Dec 31) for LGU / DSWD reports. */
+export function defaultCalendarYearDeliveredPackRange(dbYear: number): { from: string; to: string } {
+  const now = new Date()
+  const y = Number.isFinite(dbYear) ? Math.floor(dbYear) : now.getFullYear()
+  const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  const to = y === now.getFullYear() ? todayIso : `${y}-12-31`
+  return { from: `${y}-01-01`, to }
+}
+
 /** SDO had packs completed in this calendar month (encoder snapshots / monthly map). */
 export function rowHasDeliveryInMonth(
   row: SbfpReportSourceRow,
@@ -406,6 +418,7 @@ export function mapSbfpRowToReportView(
     deliveredFromIso: string
     deliveredToIso: string
     dbYear?: number
+    customPriceOnly?: boolean
   },
 ): SbfpReportViewRow {
   return {
@@ -427,7 +440,9 @@ export function mapSbfpRowToReportView(
     contract_amount: Number(row.contract_amount) || 0,
     delivery_start: formatReportDate(row.delivery_start),
     delivery_end: formatReportDate(row.delivery_end),
-    packs_to_deliver: effectivePacksToDeliver(row),
+    packs_to_deliver: effectivePacksToDeliver(row, {
+      customPriceOnly: deliveredOpts.customPriceOnly,
+    }),
     delivered_packs: resolveDeliveredPacksForReport(row, {
       deliveredFromIso: deliveredOpts.deliveredFromIso,
       deliveredToIso: deliveredOpts.deliveredToIso,

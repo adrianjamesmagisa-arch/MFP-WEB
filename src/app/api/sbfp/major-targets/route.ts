@@ -53,7 +53,7 @@ export async function PUT(req: Request) {
     | null
   const sy = String(body?.schoolYear || '')
   const key = String(body?.key || '')
-  if (!/^\d{4}-\d{4}$/.test(sy) || !MAJOR_INDICATORS.some(i => i.key === key)) {
+  if (!/^(?:\d{4}-\d{4}|(?:lgu|dswd):\d{4})$/.test(sy) || !MAJOR_INDICATORS.some(i => i.key === key)) {
     return NextResponse.json({ error: 'Invalid body' }, { status: 400 })
   }
   const value = body?.value == null || !Number.isFinite(Number(body.value)) ? null : Number(body.value)
@@ -90,7 +90,7 @@ export async function PUT(req: Request) {
   }
 
   if (tblErr && fbErr) {
-    return NextResponse.json({ error: String((tblErr as any).message || tblErr) }, { status: 500 })
+    return NextResponse.json({ error: String((tblErr as { message?: string }).message || tblErr) }, { status: 500 })
   }
   return NextResponse.json({ targets: { ...all, [sy]: syTargets } })
 }

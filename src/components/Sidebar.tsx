@@ -29,11 +29,13 @@ const monitoringNavItems: { program: MonitoringProgramId; icon: typeof HeartHand
 ]
 
 const reportItems = [
-  { href: '/reports/pimd',         icon: BarChart3,      label: 'Factsheet' },
-  { href: '/reports/sbfp-narrative',icon: FileBarChart2, label: 'SBFP Report' },
-  { href: '/reports/summary-deped',icon: BookOpenCheck,  label: 'Summary DepEd' },
-  { href: '/reports/summary-lds',  icon: Church,         label: 'Summary LDS' },
-  { href: '/reports/summary-dswd', icon: HeartHandshake, label: 'Summary DSWD' },
+  { href: '/reports/pimd',           icon: BarChart3,      label: 'Factsheet' },
+  { href: '/reports/sbfp-narrative', icon: FileBarChart2,  label: 'SBFP Report' },
+  { href: '/reports/dswd-narrative', icon: FileBarChart2,  label: 'DSWD Report' },
+  { href: '/reports/lgu-narrative',  icon: FileBarChart2,  label: 'LGU Report' },
+  { href: '/reports/summary-deped',  icon: BookOpenCheck,  label: 'Summary DepEd' },
+  { href: '/reports/summary-lds',    icon: Church,         label: 'Summary LDS' },
+  { href: '/reports/summary-dswd',   icon: HeartHandshake, label: 'Summary DSWD' },
 ]
 
 export default function Sidebar({ userRole, userCenter, userName }: {
