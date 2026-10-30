@@ -239,7 +239,7 @@ export function SbfpCenterWorkspace({
       <section className="flex flex-col gap-2">
         <SbfpExcelPpmpTable
           title="FIXTURES TOTAL FUND IN PPMP"
-          itemLabel="ICT Supplies"
+          itemLabel="Furniture and Fixtures Supplies"
           category="fixtures"
           center={center}
           year={year}

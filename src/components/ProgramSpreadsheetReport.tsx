@@ -34,7 +34,10 @@ import {
   senateMetricsForRow,
   addSbfpSenateMetrics,
   emptySbfpSenateMetrics,
-  officialSbfpStatusLabel,
+  effectiveSbfpRowStatus,
+  isRowCompletedOnOrBefore,
+  cumulativeDeliveredPacksOnOrBefore,
+  resolveCompletionCutoffIso,
   SBFP_PROCUREMENT_STATUSES,
   SBFP_STATUS_FILTER_OPTIONS,
   type SbfpReportSourceRow,
@@ -333,11 +336,30 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
     return { from: deliveredFrom, to }
   }, [dbYearNum, deliveredDateFilterEnabled, deliveredFrom, deliveredTo])
 
-  // Whole-area hierarchy status (same hierarchy order as SBFP Report)
+  const completionCutoffIso = useMemo(
+    () =>
+      resolveCompletionCutoffIso({
+        deliveredDateFilterEnabled,
+        deliveredToIso: effectiveDeliveredRange.to,
+        filterMonth,
+        dbYear: dbYearNum,
+      }),
+    [deliveredDateFilterEnabled, effectiveDeliveredRange.to, filterMonth, dbYearNum],
+  )
+
+  const statusCutoffOpts = useMemo(
+    () => ({
+      completionCutoffIso,
+      dbYear: Number.isFinite(dbYearNum) ? dbYearNum : undefined,
+    }),
+    [completionCutoffIso, dbYearNum],
+  )
+
+  // Whole-area hierarchy status (same hierarchy order & completion-cutoff logic as SBFP Report)
   const sdoHierarchyStatusMap = useMemo(() => {
     const visibleRows = records.filter(r => includeExcluded || sbfpRowVisibleInReportDefault(r))
-    return buildSdoHierarchyStatusMap(visibleRows)
-  }, [records, includeExcluded])
+    return buildSdoHierarchyStatusMap(visibleRows, statusCutoffOpts)
+  }, [records, includeExcluded, statusCutoffOpts])
 
   const preStatusFilteredRecords = useMemo(() => {
     const { from: rangeFrom, to: rangeTo } = effectiveDeliveredRange
@@ -354,6 +376,16 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
         const matchPr = (r.pr_number || '').toLowerCase().includes(q)
         if (!matchArea && !matchCenter && !matchRegion && !matchPo && !matchPr) return false
       }
+
+      const key = uniqueSdoCountKey(r.sdo, r.center) || String(r.id || '')
+      const effectiveStatus =
+        (key ? sdoHierarchyStatusMap.get(key) : undefined) ||
+        effectiveSbfpRowStatus(r, statusCutoffOpts)
+
+      if (completionCutoffIso && effectiveStatus === 'Completed' && Number.isFinite(dbYearNum)) {
+        return cumulativeDeliveredPacksOnOrBefore(r, completionCutoffIso, dbYearNum) > 0
+      }
+
       if (filterMonth) {
         const month = parseInt(filterMonth, 10)
         if (
@@ -384,6 +416,9 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
     deliveredDateFilterEnabled,
     effectiveDeliveredRange,
     dbYearNum,
+    completionCutoffIso,
+    sdoHierarchyStatusMap,
+    statusCutoffOpts,
   ])
 
   const statusHierarchyCounts = useMemo(() => {
@@ -396,11 +431,11 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
       if (!key || seenKeys.has(key)) continue
       seenKeys.add(key)
       const assignedStatus =
-        sdoHierarchyStatusMap.get(key) || officialSbfpStatusLabel(r.procurement_status)
+        sdoHierarchyStatusMap.get(key) || effectiveSbfpRowStatus(r, statusCutoffOpts)
       byStatus[assignedStatus] = (byStatus[assignedStatus] ?? 0) + 1
     }
     return { total: seenKeys.size, byStatus }
-  }, [preStatusFilteredRecords, sdoHierarchyStatusMap])
+  }, [preStatusFilteredRecords, sdoHierarchyStatusMap, statusCutoffOpts])
 
   const filteredRecords = useMemo(() => {
     if (!filterStatus || filterStatus === 'ALL') return preStatusFilteredRecords
@@ -408,23 +443,38 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
       const key = uniqueSdoCountKey(r.sdo, r.center) || String(r.id || '')
       const effectiveStatus =
         (key ? sdoHierarchyStatusMap.get(key) : undefined) ||
-        officialSbfpStatusLabel(r.procurement_status)
+        effectiveSbfpRowStatus(r, statusCutoffOpts)
       return rowMatchesSbfpStatusFilter(effectiveStatus, filterStatus)
     })
-  }, [preStatusFilteredRecords, filterStatus, sdoHierarchyStatusMap])
+  }, [preStatusFilteredRecords, filterStatus, sdoHierarchyStatusMap, statusCutoffOpts])
 
   const viewRows = useMemo(() => {
     const dbY = Number.isFinite(dbYearNum) ? dbYearNum : undefined
     const { from, to } = effectiveDeliveredRange
-    return records.map(r =>
-      mapSbfpRowToReportView(r, {
+    return records.map(r => {
+      const key = uniqueSdoCountKey(r.sdo, r.center) || String(r.id || '')
+      const effectiveStatus =
+        (key ? sdoHierarchyStatusMap.get(key) : undefined) ||
+        effectiveSbfpRowStatus(r, statusCutoffOpts)
+      const cumulativeThroughCutoff =
+        Boolean(completionCutoffIso) && effectiveStatus === 'Completed' && dbY != null
+      return mapSbfpRowToReportView(r, {
         deliveredFromIso: from,
         deliveredToIso: to,
         dbYear: dbY,
         customPriceOnly: true,
-      }),
-    )
-  }, [records, effectiveDeliveredRange, dbYearNum])
+        completionCutoffIso,
+        cumulativeThroughCutoff,
+      })
+    })
+  }, [
+    records,
+    effectiveDeliveredRange,
+    dbYearNum,
+    completionCutoffIso,
+    sdoHierarchyStatusMap,
+    statusCutoffOpts,
+  ])
 
   const viewById = useMemo(() => {
     const m = new Map<string, ReturnType<typeof mapSbfpRowToReportView>>()
@@ -470,7 +520,8 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
         (Number(r.beneficiaries_pm) || 0) +
         (Number(r.beneficiaries_sm) || 0) +
         (Number(r.beneficiaries_cm) || 0)
-      const bucket = sbfpStatusBucket(r.procurement_status)
+      const effStatus = effectiveSbfpRowStatus(r, statusCutoffOpts)
+      const bucket = sbfpStatusBucket(effStatus)
       statusCounts[bucket] = (statusCounts[bucket] || 0) + 1
       statusMetrics[bucket] = addSbfpSenateMetrics(
         statusMetrics[bucket] || emptySbfpSenateMetrics(),
@@ -507,7 +558,7 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
       statusCounts,
       statusMetrics,
     }
-  }, [filteredRecords, rowSenate])
+  }, [filteredRecords, rowSenate, statusCutoffOpts])
 
   type InternalGroupAgg = SbfpSenateMetrics & {
     sdoCount: number
@@ -589,7 +640,12 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
         const m = rowSenate(r)
         const contractValue = Number(r.contract_amount) || Number(r.amount) || 0
         const deliveryRate = m.pctDelivered
-        const isCompleted = r.procurement_status === 'Completed' || deliveryRate >= 100
+        const effProcStatus = effectiveSbfpRowStatus(r, statusCutoffOpts)
+        const isCompleted =
+          effProcStatus === 'Completed' ||
+          (deliveryRate >= 100 &&
+            (!completionCutoffIso ||
+              isRowCompletedOnOrBefore(r, completionCutoffIso, statusCutoffOpts.dbYear)))
         return {
           id: String(r.id || `${r.sdo}-${r.region}`),
           sdoKey: uniqueSdoCountKey(r.sdo, r.center),
@@ -602,7 +658,7 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
           amountPaid: m.paidAmt,
           deliveryRate,
           status: isCompleted ? 'Completed' : 'Ongoing',
-          procurementStatus: officialSbfpStatusLabel(r.procurement_status),
+          procurementStatus: effProcStatus,
           number: 0,
           sdoSpan: 0,
         }
@@ -634,7 +690,7 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
       i += span
     }
     return mapped
-  }, [filteredRecords, rowSenate])
+  }, [filteredRecords, rowSenate, statusCutoffOpts, completionCutoffIso])
 
   const implSummary = useMemo<ProgramImplSummary>(() => {
     const emptyEntry = () => ({
@@ -649,7 +705,7 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
 
     for (const r of filteredRecords) {
       const m = rowSenate(r)
-      const status = officialSbfpStatusLabel(r.procurement_status)
+      const status = effectiveSbfpRowStatus(r, statusCutoffOpts)
       const entry = buckets[status]
       Object.assign(entry, addSbfpSenateMetrics(entry, m))
 
@@ -680,7 +736,7 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
       return b.remainingContract - a.remainingContract
     })
     return { buckets, reasons }
-  }, [filteredRecords, rowSenate, sdoHierarchyStatusMap])
+  }, [filteredRecords, rowSenate, sdoHierarchyStatusMap, statusCutoffOpts])
 
   const sdoIndexMeta = useMemo(() => {
     const out: Array<{ number: number; rowSpan: number }> = []
@@ -961,7 +1017,7 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
           idxMeta?.rowSpan && idxMeta.rowSpan > 0 ? idxMeta.number : '',
           r.region || '',
           r.sdo || '',
-          officialSbfpStatusLabel(r.procurement_status),
+          effectiveSbfpRowStatus(r, statusCutoffOpts),
           packsToDeliver,
           milkTypeStr,
           deliveredPacks,
@@ -1713,7 +1769,13 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
                 type="date"
                 value={deliveredFrom}
                 disabled={!deliveredDateFilterEnabled}
-                onChange={e => setDeliveredFrom(e.target.value)}
+                onChange={e => {
+                  const nextFrom = e.target.value
+                  setDeliveredFrom(nextFrom)
+                  if (nextFrom && deliveredTo && nextFrom > deliveredTo) {
+                    setDeliveredTo(nextFrom)
+                  }
+                }}
                 style={{
                   height: 28,
                   padding: '0 0.5rem',
@@ -1734,9 +1796,14 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
               <input
                 type="date"
                 value={deliveredTo}
-                min={deliveredFrom}
                 disabled={!deliveredDateFilterEnabled}
-                onChange={e => setDeliveredTo(e.target.value)}
+                onChange={e => {
+                  const nextTo = e.target.value
+                  setDeliveredTo(nextTo)
+                  if (nextTo && deliveredFrom && nextTo < deliveredFrom) {
+                    setDeliveredFrom(nextTo)
+                  }
+                }}
                 style={{
                   height: 28,
                   padding: '0 0.5rem',

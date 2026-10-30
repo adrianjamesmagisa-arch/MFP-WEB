@@ -9,6 +9,7 @@ import { packsFromAmount, milkTypeLabel, finishedMilkLiters } from '@/lib/sbfp-p
 import {
   packsForMonth,
   parseSnapshotDate,
+  readMonthlyMap,
   rowHasDeliverySnapshotPacks,
   totalPacksDelivered,
   type SbfpRawMilkRow,
@@ -95,21 +96,183 @@ export const SBFP_STATUS_FILTER_OPTIONS: { value: SbfpProcurementStatus | 'ALL';
   ...SBFP_PROCUREMENT_STATUSES.map(status => ({ value: status, label: status })),
 ]
 
+export type SbfpStatusCutoffOpts = {
+  completionCutoffIso?: string | null
+  dbYear?: number
+}
+
+/**
+ * Computes the active completion cutoff ISO date (`yyyy-mm-dd`) when a delivery
+ * date filter (`Delivered date range` and/or `Delivery Month`) is active.
+ * Returns `null` when neither date filter is active.
+ */
+export function resolveCompletionCutoffIso(opts: {
+  deliveredDateFilterEnabled: boolean
+  deliveredToIso?: string | null
+  filterMonth?: string | null
+  dbYear?: number
+}): string | null {
+  const candidates: string[] = []
+  if (opts.deliveredDateFilterEnabled && opts.deliveredToIso) {
+    const parsed = parseSnapshotDate(opts.deliveredToIso)
+    if (parsed) {
+      const y = parsed.getFullYear()
+      const m = String(parsed.getMonth() + 1).padStart(2, '0')
+      const d = String(parsed.getDate()).padStart(2, '0')
+      candidates.push(`${y}-${m}-${d}`)
+    }
+  }
+  if (opts.filterMonth && opts.dbYear != null && Number.isFinite(opts.dbYear)) {
+    const month = parseInt(opts.filterMonth, 10)
+    if (Number.isFinite(month) && month >= 1 && month <= 12) {
+      const y = Math.floor(opts.dbYear)
+      const lastDay = new Date(y, month, 0).getDate()
+      candidates.push(`${y}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`)
+    }
+  }
+  if (candidates.length === 0) return null
+  return candidates.sort()[0]
+}
+
+/**
+ * Returns true when all recorded deliveries on `row` occurred on or before
+ * `cutoffIso` (`yyyy-mm-dd`).
+ *
+ * - When dated `"Delivered as of"` snapshots (`packs > 0`) exist, actual delivery
+ *   completion is determined strictly from those snapshot dates (contract schedule
+ *   `delivery_start` / `delivery_end` does not override actual snapshot dates).
+ * - Otherwise falls back to `monthly_packs_delivered` and `delivery_end` / `delivery_start`.
+ */
+export function isRowCompletedOnOrBefore(
+  row: SbfpReportSourceRow,
+  cutoffIso: string,
+  dbYear?: number,
+): boolean {
+  const cutoff = parseSnapshotDate(cutoffIso)
+  if (!cutoff) return true
+  const cutoffMs = startOfDay(cutoff).getTime()
+
+  const snaps = Array.isArray(row.delivery_snapshots) ? row.delivery_snapshots : []
+  const positiveDatedSnaps = snaps
+    .map(s => ({ date: parseSnapshotDate(s?.date), packs: Number(s?.packs) || 0 }))
+    .filter((s): s is { date: Date; packs: number } => s.date != null && s.packs > 0)
+
+  if (positiveDatedSnaps.length > 0) {
+    return positiveDatedSnaps.every(s => startOfDay(s.date).getTime() <= cutoffMs)
+  }
+
+  if (dbYear != null && Number.isFinite(dbYear)) {
+    const monthly = readMonthlyMap(row.monthly_packs_delivered)
+    const y = Math.floor(dbYear)
+    let hasPositiveMonth = false
+    for (const [k, val] of Object.entries(monthly)) {
+      if ((Number(val) || 0) <= 0) continue
+      const m = parseInt(k, 10)
+      if (!Number.isFinite(m) || m < 1 || m > 12) continue
+      hasPositiveMonth = true
+      const monthFirstDayMs = new Date(y, m - 1, 1).getTime()
+      if (monthFirstDayMs > cutoffMs) {
+        return false
+      }
+    }
+    if (hasPositiveMonth) {
+      const endDate = parseSnapshotDate(row.delivery_end)
+      if (endDate && startOfDay(endDate).getTime() > cutoffMs) {
+        return false
+      }
+      return true
+    }
+  }
+
+  const endDate = parseSnapshotDate(row.delivery_end)
+  if (endDate && startOfDay(endDate).getTime() > cutoffMs) {
+    return false
+  }
+
+  const startDate = parseSnapshotDate(row.delivery_start)
+  if (startDate && startOfDay(startDate).getTime() > cutoffMs) {
+    return false
+  }
+
+  return true
+}
+
+/**
+ * Cumulative packs delivered from the start of `dbYear` through `cutoffIso` (inclusive),
+ * used so SDOs that completed all deliveries on or before the cutoff retain their full
+ * completed pack count even when `From` is set to a narrower date (e.g. Oct 26 – Oct 26).
+ */
+export function cumulativeDeliveredPacksOnOrBefore(
+  row: SbfpReportSourceRow,
+  cutoffIso: string,
+  dbYear: number,
+): number {
+  if (!Number.isFinite(dbYear)) return 0
+  const y = Math.floor(dbYear)
+  const inRange = deliveredPacksInDateRange(row, `${y}-01-01`, cutoffIso, y)
+  if (inRange > 0) return inRange
+  if (
+    !rowHasDeliverySnapshotPacks(row) &&
+    Object.keys(readMonthlyMap(row.monthly_packs_delivered)).length === 0 &&
+    isRowCompletedOnOrBefore(row, cutoffIso, y)
+  ) {
+    return Math.max(0, Number(row.packs_delivered) || 0)
+  }
+  return 0
+}
+
+/**
+ * Row procurement status, adjusted for an active delivery date/month cutoff:
+ * a row marked `Completed` in the DB only counts as `Completed` when all of its
+ * deliveries finished on or before `completionCutoffIso`. Otherwise (e.g. cutoff
+ * is Oct 26 while final delivery was Oct 27), its effective status as of the cutoff
+ * is `Awarded (Ongoing Delivery)` (or `Awarded (For Delivery)` if not yet started).
+ */
+export function effectiveSbfpRowStatus(
+  row: SbfpReportSourceRow,
+  opts?: SbfpStatusCutoffOpts,
+): SbfpProcurementStatus {
+  const base = officialSbfpStatusLabel(row.procurement_status)
+  const cutoffIso = opts?.completionCutoffIso
+  if (base !== 'Completed' || !cutoffIso) return base
+  if (isRowCompletedOnOrBefore(row, cutoffIso, opts?.dbYear)) {
+    return 'Completed'
+  }
+  const cutoff = parseSnapshotDate(cutoffIso)
+  if (cutoff) {
+    const cutoffMs = startOfDay(cutoff).getTime()
+    const startDate = parseSnapshotDate(row.delivery_start)
+    if (startDate && startOfDay(startDate).getTime() <= cutoffMs) {
+      return 'Awarded (Ongoing Delivery)'
+    }
+    const y =
+      opts?.dbYear != null && Number.isFinite(opts.dbYear)
+        ? Math.floor(opts.dbYear)
+        : cutoff.getFullYear()
+    if (deliveredPacksInDateRange(row, `${y}-01-01`, cutoffIso, y) > 0) {
+      return 'Awarded (Ongoing Delivery)'
+    }
+    return 'Awarded (For Delivery)'
+  }
+  return 'Awarded (Ongoing Delivery)'
+}
+
 /**
  * Assigns each unique SDO (center + normalized SDO name) a single hierarchy status
  * following SBFP_PROCUREMENT_STATUSES order (For Preparation → Ongoing Procurement →
  * Ongoing (For Award) → Awarded (For Delivery) → Awarded (Ongoing Delivery) →
- * Completed → Failed). For example, if Cagayan has SM = Completed while PM/CM = For Preparation,
- * Cagayan's whole-SDO status is "For Preparation" (so filtering "Completed" excludes Cagayan).
+ * Completed → Failed). When `opts.completionCutoffIso` is active, an SDO is only
+ * `Completed` if all of its visible rows completed all deliveries on or before the cutoff.
  */
 export function buildSdoHierarchyStatusMap(
-  rows: ReadonlyArray<Pick<SbfpReportSourceRow, 'id' | 'sdo' | 'center' | 'procurement_status'>>,
+  rows: ReadonlyArray<SbfpReportSourceRow>,
+  opts?: SbfpStatusCutoffOpts,
 ): Map<string, SbfpProcurementStatus> {
   const sdoToStatus = new Map<string, SbfpProcurementStatus>()
   for (const r of rows) {
     const sdoKey = uniqueSdoCountKey(r.sdo, r.center) || String(r.id || '')
     if (!sdoKey) continue
-    const status = officialSbfpStatusLabel(r.procurement_status)
+    const status = effectiveSbfpRowStatus(r, opts)
     const existingStatus = sdoToStatus.get(sdoKey)
     if (!existingStatus) {
       sdoToStatus.set(sdoKey, status)
@@ -318,6 +481,11 @@ export function deliveredPacksInDateRange(
       .reduce((sum, s) => sum + Math.max(0, s.packs), 0)
   }
 
+  const startBound = parseSnapshotDate(row.delivery_start)
+  if (startBound && startOfDay(startBound).getTime() > toMs) return 0
+  const endBound = parseSnapshotDate(row.delivery_end)
+  if (endBound && startOfDay(endBound).getTime() < fromMs) return 0
+
   const monthOpts = reportPacksMonthOpts(row, dbYear)
   let sum = 0
   for (let m = 1; m <= 12; m++) {
@@ -419,15 +587,40 @@ export function mapSbfpRowToReportView(
     deliveredToIso: string
     dbYear?: number
     customPriceOnly?: boolean
+    completionCutoffIso?: string | null
+    cumulativeThroughCutoff?: boolean
   },
 ): SbfpReportViewRow {
+  const rawStatus = row.procurement_status?.trim() || 'For Preparation'
+  const effectiveStatus =
+    deliveredOpts.completionCutoffIso && officialSbfpStatusLabel(rawStatus) === 'Completed'
+      ? effectiveSbfpRowStatus(row, {
+          completionCutoffIso: deliveredOpts.completionCutoffIso,
+          dbYear: deliveredOpts.dbYear,
+        })
+      : rawStatus
+  const deliveredPacks =
+    deliveredOpts.cumulativeThroughCutoff &&
+    deliveredOpts.completionCutoffIso &&
+    deliveredOpts.dbYear != null &&
+    Number.isFinite(deliveredOpts.dbYear)
+      ? cumulativeDeliveredPacksOnOrBefore(
+          row,
+          deliveredOpts.completionCutoffIso,
+          deliveredOpts.dbYear,
+        )
+      : resolveDeliveredPacksForReport(row, {
+          deliveredFromIso: deliveredOpts.deliveredFromIso,
+          deliveredToIso: deliveredOpts.deliveredToIso,
+          dbYear: deliveredOpts.dbYear,
+        })
   return {
     source: row,
     region: row.region?.trim() || '—',
     sdo: row.sdo?.trim() || '—',
     center: reportCenterLabel(row.center),
     coop_name: row.cooperatives?.name?.trim() || '—',
-    procurement_status: row.procurement_status?.trim() || 'For Preparation',
+    procurement_status: effectiveStatus,
     milk_type: formatReportMilkType(row.milk_type),
     amount: Number(row.amount) || 0,
     mode_of_procurement: row.mode_of_procurement?.trim() || '—',
@@ -443,11 +636,7 @@ export function mapSbfpRowToReportView(
     packs_to_deliver: effectivePacksToDeliver(row, {
       customPriceOnly: deliveredOpts.customPriceOnly,
     }),
-    delivered_packs: resolveDeliveredPacksForReport(row, {
-      deliveredFromIso: deliveredOpts.deliveredFromIso,
-      deliveredToIso: deliveredOpts.deliveredToIso,
-      dbYear: deliveredOpts.dbYear,
-    }),
+    delivered_packs: deliveredPacks,
     status_of_payment: row.status_of_payment?.trim() || '—',
     remarks: row.remarks?.trim() || '—',
   }

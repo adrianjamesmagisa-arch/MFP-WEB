@@ -21,6 +21,10 @@ import {
   addSbfpSenateMetrics,
   emptySbfpSenateMetrics,
   officialSbfpStatusLabel,
+  effectiveSbfpRowStatus,
+  isRowCompletedOnOrBefore,
+  cumulativeDeliveredPacksOnOrBefore,
+  resolveCompletionCutoffIso,
   SBFP_PROCUREMENT_STATUSES,
   SBFP_STATUS_FILTER_OPTIONS,
   effectivePacksToDeliver,
@@ -411,17 +415,38 @@ export default function SbfpSpreadsheetReport() {
     return { from: deliveredFrom, to }
   }, [dbYearNum, deliveredDateFilterEnabled, deliveredFrom, deliveredTo])
 
+  const completionCutoffIso = useMemo(
+    () =>
+      resolveCompletionCutoffIso({
+        deliveredDateFilterEnabled,
+        deliveredToIso: effectiveDeliveredRange.to,
+        filterMonth,
+        dbYear: dbYearNum,
+      }),
+    [deliveredDateFilterEnabled, effectiveDeliveredRange.to, filterMonth, dbYearNum],
+  )
+
+  const statusCutoffOpts = useMemo(
+    () => ({
+      completionCutoffIso,
+      dbYear: Number.isFinite(dbYearNum) ? dbYearNum : undefined,
+    }),
+    [completionCutoffIso, dbYearNum],
+  )
+
   // Whole-SDO hierarchy status (For Preparation → Ongoing Procurement → Ongoing (For Award) →
   // Awarded (For Delivery) → Awarded (Ongoing Delivery) → Completed → Failed).
   // Computed across all visible SDO rows before row-level filters so an SDO like Cagayan
   // (PM/CM = For Preparation, SM = Completed) keeps its whole-SDO status ("For Preparation")
-  // and is excluded when filtering by "Completed".
+  // and is excluded when filtering by "Completed". Also respects any active delivery date/month
+  // cutoff so an SDO whose last delivery was after the cutoff (e.g. Oct 27 vs Oct 26) is not
+  // counted as "Completed".
   const sdoHierarchyStatusMap = useMemo(() => {
     const visibleRows = (records as SbfpReportSourceRow[]).filter(
       r => includeExcluded || sbfpRowVisibleInReportDefault(r),
     )
-    return buildSdoHierarchyStatusMap(visibleRows)
-  }, [records, includeExcluded])
+    return buildSdoHierarchyStatusMap(visibleRows, statusCutoffOpts)
+  }, [records, includeExcluded, statusCutoffOpts])
 
   // Apply all filters except Procurement Status so dropdown counts reflect current Center/Region/Search/Date filters
   const preStatusFilteredRecords = useMemo(() => {
@@ -440,6 +465,25 @@ export default function SbfpSpreadsheetReport() {
         const matchPr = (r.pr_number || '').toLowerCase().includes(q)
         if (!matchSdo && !matchCenter && !matchRegion && !matchPo && !matchPr) return false
       }
+
+      const sdoKey = uniqueSdoCountKey(r.sdo, r.center) || String(r.id || '')
+      const effectiveSdoStatus =
+        (sdoKey ? sdoHierarchyStatusMap.get(sdoKey) : undefined) ||
+        effectiveSbfpRowStatus(r as SbfpReportSourceRow, statusCutoffOpts)
+
+      // When a delivery date/month cutoff is active, any SDO that completed all of its
+      // deliveries on or before the cutoff (e.g. Candon completed Oct 15 <= Oct 26 cutoff)
+      // stays included even if `From` or `Delivery Month` starts after its completion date.
+      if (completionCutoffIso && effectiveSdoStatus === 'Completed' && Number.isFinite(dbYearNum)) {
+        return (
+          cumulativeDeliveredPacksOnOrBefore(
+            r as SbfpReportSourceRow,
+            completionCutoffIso,
+            dbYearNum,
+          ) > 0
+        )
+      }
+
       if (filterMonth) {
         const month = parseInt(filterMonth, 10)
         const dbYear = parseInt(year, 10)
@@ -477,6 +521,9 @@ export default function SbfpSpreadsheetReport() {
     deliveredDateFilterEnabled,
     effectiveDeliveredRange,
     dbYearNum,
+    completionCutoffIso,
+    sdoHierarchyStatusMap,
+    statusCutoffOpts,
   ])
 
   const statusHierarchyCounts = useMemo(() => {
@@ -489,11 +536,11 @@ export default function SbfpSpreadsheetReport() {
       if (!sdoKey || seenSdoKeys.has(sdoKey)) continue
       seenSdoKeys.add(sdoKey)
       const assignedStatus =
-        sdoHierarchyStatusMap.get(sdoKey) || officialSbfpStatusLabel(r.procurement_status)
+        sdoHierarchyStatusMap.get(sdoKey) || effectiveSbfpRowStatus(r as SbfpReportSourceRow, statusCutoffOpts)
       byStatus[assignedStatus] = (byStatus[assignedStatus] ?? 0) + 1
     }
     return { total: seenSdoKeys.size, byStatus }
-  }, [preStatusFilteredRecords, sdoHierarchyStatusMap])
+  }, [preStatusFilteredRecords, sdoHierarchyStatusMap, statusCutoffOpts])
 
   // Filter records using whole-SDO hierarchy status
   const filteredRecords = useMemo(() => {
@@ -502,22 +549,37 @@ export default function SbfpSpreadsheetReport() {
       const sdoKey = uniqueSdoCountKey(r.sdo, r.center) || String(r.id || '')
       const effectiveSdoStatus =
         (sdoKey ? sdoHierarchyStatusMap.get(sdoKey) : undefined) ||
-        officialSbfpStatusLabel(r.procurement_status)
+        effectiveSbfpRowStatus(r as SbfpReportSourceRow, statusCutoffOpts)
       return rowMatchesSbfpStatusFilter(effectiveSdoStatus, filterStatus)
     })
-  }, [preStatusFilteredRecords, filterStatus, sdoHierarchyStatusMap])
+  }, [preStatusFilteredRecords, filterStatus, sdoHierarchyStatusMap, statusCutoffOpts])
 
   const viewRows = useMemo(() => {
     const dbY = Number.isFinite(dbYearNum) ? dbYearNum : undefined
     const { from, to } = effectiveDeliveredRange
-    return (records as SbfpReportSourceRow[]).map(r =>
-      mapSbfpRowToReportView(r, {
+    return (records as SbfpReportSourceRow[]).map(r => {
+      const sdoKey = uniqueSdoCountKey(r.sdo, r.center) || String(r.id || '')
+      const effectiveSdoStatus =
+        (sdoKey ? sdoHierarchyStatusMap.get(sdoKey) : undefined) ||
+        effectiveSbfpRowStatus(r, statusCutoffOpts)
+      const cumulativeThroughCutoff =
+        Boolean(completionCutoffIso) && effectiveSdoStatus === 'Completed' && dbY != null
+      return mapSbfpRowToReportView(r, {
         deliveredFromIso: from,
         deliveredToIso: to,
         dbYear: dbY,
-      }),
-    )
-  }, [records, effectiveDeliveredRange, dbYearNum])
+        completionCutoffIso,
+        cumulativeThroughCutoff,
+      })
+    })
+  }, [
+    records,
+    effectiveDeliveredRange,
+    dbYearNum,
+    completionCutoffIso,
+    sdoHierarchyStatusMap,
+    statusCutoffOpts,
+  ])
 
   const getViewForSource = useCallback(
     (sourceId: string | undefined) => viewRows.find(v => v.source.id === sourceId),
@@ -549,7 +611,8 @@ export default function SbfpSpreadsheetReport() {
       metrics = addSbfpSenateMetrics(metrics, m)
       totalAmount += Number(r.amount) || 0
       totalBeneficiaries += (Number(r.beneficiaries_pm) || 0) + (Number(r.beneficiaries_sm) || 0) + (Number(r.beneficiaries_cm) || 0)
-      const bucket = sbfpStatusBucket(r.procurement_status)
+      const effStatus = effectiveSbfpRowStatus(r, statusCutoffOpts)
+      const bucket = sbfpStatusBucket(effStatus)
       statusCounts[bucket] = (statusCounts[bucket] || 0) + 1
       statusMetrics[bucket] = addSbfpSenateMetrics(statusMetrics[bucket] || emptySbfpSenateMetrics(), m)
     })
@@ -612,7 +675,7 @@ export default function SbfpSpreadsheetReport() {
       statusCounts,
       statusMetrics,
     }
-  }, [filteredRecords, rowSenate])
+  }, [filteredRecords, rowSenate, statusCutoffOpts])
 
   type GroupAgg = SbfpSenateMetrics & {
     sdoCount: number
@@ -663,7 +726,7 @@ export default function SbfpSpreadsheetReport() {
     if (coopId) entry.coopIds.add(coopId)
     const next = addSbfpSenateMetrics(entry, rowSenate(r))
     Object.assign(entry, next)
-    bumpStatus(entry, r.procurement_status)
+    bumpStatus(entry, effectiveSbfpRowStatus(r, statusCutoffOpts))
   }
 
   // Regional Aggregations
@@ -677,7 +740,7 @@ export default function SbfpSpreadsheetReport() {
     return Array.from(map.values())
       .map(r => ({ ...r, coopCount: r.coopIds.size }))
       .sort((a, b) => regionSortKey(a.region) - regionSortKey(b.region))
-  }, [filteredRecords, rowSenate])
+  }, [filteredRecords, rowSenate, statusCutoffOpts])
 
   // Center Aggregations (same columns as regional summary)
   const centerSummary = useMemo(() => {
@@ -691,7 +754,7 @@ export default function SbfpSpreadsheetReport() {
     return Array.from(map.values())
       .map(r => ({ ...r, coopCount: r.coopIds.size }))
       .sort((a, b) => a.center.localeCompare(b.center))
-  }, [filteredRecords, rowSenate])
+  }, [filteredRecords, rowSenate, statusCutoffOpts])
 
 
   const deliveryDetailsRows = useMemo(() => {
@@ -703,7 +766,11 @@ export default function SbfpSpreadsheetReport() {
         const volumeDelivered = m.deliveredL // Already calculated in liters
         const amountPaid = m.paidAmt // From senate metrics
         const deliveryRate = m.pctDelivered // Already calculated percentage
-        const isCompleted = r.procurement_status === 'Completed' || deliveryRate >= 100
+        const effProcStatus = effectiveSbfpRowStatus(r, statusCutoffOpts)
+        const isCompleted =
+          effProcStatus === 'Completed' ||
+          (deliveryRate >= 100 &&
+            (!completionCutoffIso || isRowCompletedOnOrBefore(r, completionCutoffIso, statusCutoffOpts.dbYear)))
         
         return {
           id: String(r.id || `${r.sdo}-${r.region}`),
@@ -717,7 +784,7 @@ export default function SbfpSpreadsheetReport() {
           amountPaid,
           deliveryRate,
           status: isCompleted ? 'Completed' : 'Ongoing',
-          procurementStatus: officialSbfpStatusLabel(r.procurement_status),
+          procurementStatus: effProcStatus,
           number: 0,
           sdoSpan: 0,
         }
@@ -743,7 +810,7 @@ export default function SbfpSpreadsheetReport() {
       i += span
     }
     return mapped
-  }, [filteredRecords, rowSenate])
+  }, [filteredRecords, rowSenate, statusCutoffOpts, completionCutoffIso])
 
   const implSummary = useMemo(() => {
     const emptyEntry = () => ({
@@ -767,7 +834,7 @@ export default function SbfpSpreadsheetReport() {
 
     filteredRecords.forEach(r => {
       const m = rowSenate(r)
-      const status = officialSbfpStatusLabel(r.procurement_status)
+      const status = effectiveSbfpRowStatus(r, statusCutoffOpts)
       const entry = buckets[status]
       Object.assign(entry, addSbfpSenateMetrics(entry, m))
       
@@ -800,7 +867,7 @@ export default function SbfpSpreadsheetReport() {
       return b.remainingContract - a.remainingContract
     })
     return { buckets, reasons }
-  }, [filteredRecords, rowSenate, sdoHierarchyStatusMap])
+  }, [filteredRecords, rowSenate, sdoHierarchyStatusMap, statusCutoffOpts])
 
   /** # column: one number per unique SDO (PM/SM/lots / Pangasinan I Dist 2+3 share a cell). */
   const sdoIndexMeta = useMemo(() => {
@@ -1796,7 +1863,13 @@ export default function SbfpSpreadsheetReport() {
                 type="date"
                 value={deliveredFrom}
                 disabled={!deliveredDateFilterEnabled}
-                onChange={e => setDeliveredFrom(e.target.value)}
+                onChange={e => {
+                  const nextFrom = e.target.value
+                  setDeliveredFrom(nextFrom)
+                  if (nextFrom && deliveredTo && nextFrom > deliveredTo) {
+                    setDeliveredTo(nextFrom)
+                  }
+                }}
                 title="Start of delivery period (inclusive)."
                 style={{
                   height: 28, padding: '0 0.5rem', borderRadius: 4, border: '1px solid #cbd5e1', fontSize: '0.78rem',
@@ -1807,10 +1880,15 @@ export default function SbfpSpreadsheetReport() {
               <input
                 type="date"
                 value={deliveredTo}
-                min={deliveredFrom}
                 disabled={!deliveredDateFilterEnabled}
-                onChange={e => setDeliveredTo(e.target.value)}
-                title="End of delivery period (inclusive). Partial months are prorated from encoder monthly totals."
+                onChange={e => {
+                  const nextTo = e.target.value
+                  setDeliveredTo(nextTo)
+                  if (nextTo && deliveredFrom && nextTo < deliveredFrom) {
+                    setDeliveredFrom(nextTo)
+                  }
+                }}
+                title="End / cutoff of delivery period (inclusive). Partial months are prorated from encoder monthly totals."
                 style={{
                   height: 28, padding: '0 0.5rem', borderRadius: 4, border: '1px solid #cbd5e1', fontSize: '0.78rem',
                   opacity: deliveredDateFilterEnabled ? 1 : 0.55,
@@ -2567,7 +2645,7 @@ export default function SbfpSpreadsheetReport() {
                 else if (startFmt) schedule = startFmt
                 else if (endFmt) schedule = endFmt
 
-                const status = officialSbfpStatusLabel(r.procurement_status)
+                const status = officialSbfpStatusLabel(view?.procurement_status ?? r.procurement_status)
                 // sdoIndexMeta[idx]: { number, rowSpan } — rowSpan>0 = first row of SDO group
                 const meta = sdoIndexMeta[idx]
                 return { meta, r, status, packsToDeliver, packLabel, schedule, deliveredPacks, balance }

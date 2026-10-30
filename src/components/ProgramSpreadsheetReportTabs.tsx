@@ -831,7 +831,7 @@ export function ProgramSpreadsheetSecondaryTabs({
             if (startFmt && endFmt && startFmt !== endFmt) schedule = `${startFmt} to ${endFmt}`
             else if (startFmt) schedule = startFmt
             else if (endFmt) schedule = endFmt
-            const status = officialSbfpStatusLabel(r.procurement_status)
+            const status = officialSbfpStatusLabel(view?.procurement_status ?? r.procurement_status)
             const rowMeta = sdoIndexMeta[idx] || { number: idx + 1, rowSpan: 1 }
             return {
               meta: rowMeta,
