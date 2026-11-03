@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 type Field = 'allotment' | 'obligation' | 'disbursement'
@@ -19,6 +19,29 @@ function centerLabel(center: string) {
 const fmt = (n: number) =>
   (Number(n) || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
+/** Format numeric string live while typing: adds commas per 3 integer digits and keeps up to 2 decimal places. */
+function formatMoneyInput(raw: string): string {
+  const cleaned = raw.replace(/[^0-9.]/g, '')
+  if (!cleaned) return ''
+  const dotIdx = cleaned.indexOf('.')
+  const intRaw = (dotIdx >= 0 ? cleaned.slice(0, dotIdx) : cleaned).replace(/^0+(?=\d)/, '')
+  const intFormatted = intRaw
+    ? intRaw.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+    : dotIdx >= 0
+      ? '0'
+      : ''
+  if (dotIdx >= 0) {
+    const dec = cleaned.slice(dotIdx + 1).replace(/\./g, '').slice(0, 2)
+    return `${intFormatted}.${dec}`
+  }
+  return intFormatted
+}
+
+function parseMoneyInput(raw: string): number {
+  const n = Number(String(raw || '').replace(/,/g, ''))
+  return Number.isFinite(n) ? n : 0
+}
+
 /**
  * Table 5. MFP Financial Accomplishment — shows ONLY the current center's row
  * (e.g. PCC at MMSU sees/edits only PCC at MMSU).
@@ -28,7 +51,12 @@ export function SbfpFinancialAccomplishmentTable({
 }: { center: string; year: number; editable: boolean }) {
   const supabase = createClient()
   const [row, setRow] = useState<Row>({ allotment: 0, obligation: 0, disbursement: 0 })
-  const [draft, setDraft] = useState<Record<Field, string>>({ allotment: '', obligation: '', disbursement: '' })
+  const rowRef = useRef<Row>(row)
+  const [draft, setDraft] = useState<Record<Field, string>>({
+    allotment: '',
+    obligation: '',
+    disbursement: '',
+  })
   const [msg, setMsg] = useState<string | null>(null)
 
   useEffect(() => {
@@ -48,22 +76,44 @@ export function SbfpFinancialAccomplishmentTable({
           obligation: Number(data?.obligation) || 0,
           disbursement: Number(data?.disbursement) || 0,
         }
+        rowRef.current = r
         setRow(r)
         setDraft({
-          allotment: r.allotment ? String(r.allotment) : '',
-          obligation: r.obligation ? String(r.obligation) : '',
-          disbursement: r.disbursement ? String(r.disbursement) : '',
+          allotment: r.allotment ? fmt(r.allotment) : '',
+          obligation: r.obligation ? fmt(r.obligation) : '',
+          disbursement: r.disbursement ? fmt(r.disbursement) : '',
         })
       })
     return () => { alive = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [center, year])
 
+  const handleChange = (field: Field, el: HTMLInputElement) => {
+    const raw = el.value
+    const cursor = el.selectionStart ?? raw.length
+    const charsBeforeCursor = raw.slice(0, cursor).replace(/[^0-9.]/g, '').length
+    const formatted = formatMoneyInput(raw)
+    setDraft(d => ({ ...d, [field]: formatted }))
+    requestAnimationFrame(() => {
+      if (document.activeElement !== el) return
+      let seen = 0
+      let newPos = 0
+      while (newPos < formatted.length && seen < charsBeforeCursor) {
+        if (formatted[newPos] !== ',') seen += 1
+        newPos += 1
+      }
+      el.setSelectionRange(newPos, newPos)
+    })
+  }
+
   const save = async (field: Field) => {
     if (!editable) return
-    const value = Number(String(draft[field]).replace(/,/g, '')) || 0
-    if (value === row[field]) return
-    const next = { ...row, [field]: value }
+    const value = parseMoneyInput(draft[field])
+    setDraft(d => ({ ...d, [field]: value ? fmt(value) : '' }))
+    const current = rowRef.current
+    if (value === current[field]) return
+    const next: Row = { ...current, [field]: value }
+    rowRef.current = next
     setRow(next)
     setMsg(null)
     const { data, error } = await supabase
@@ -81,7 +131,10 @@ export function SbfpFinancialAccomplishmentTable({
       .select('id')
       .maybeSingle()
     if (error) setMsg(error.message)
-    else if (data?.id) setRow(r => ({ ...r, id: data.id }))
+    else if (data?.id) {
+      rowRef.current = { ...rowRef.current, id: data.id }
+      setRow(r => ({ ...r, id: data.id }))
+    }
   }
 
   const cell: CSSProperties = { border: BORDER, padding: 0, background: '#fff' }
@@ -92,6 +145,7 @@ export function SbfpFinancialAccomplishmentTable({
   const input: CSSProperties = {
     width: '100%', border: 0, outline: 'none', background: 'transparent',
     padding: '6px 8px', fontSize: '0.82rem', textAlign: 'center', boxSizing: 'border-box',
+    fontVariantNumeric: 'tabular-nums',
   }
 
   return (
@@ -122,12 +176,12 @@ export function SbfpFinancialAccomplishmentTable({
               <td key={f} style={cell}>
                 {editable ? (
                   <input
-                    type="number"
-                    step="0.01"
+                    type="text"
+                    inputMode="decimal"
                     placeholder="0.00"
                     value={draft[f]}
-                    onChange={e => setDraft(d => ({ ...d, [f]: e.target.value }))}
-                    onBlur={() => save(f)}
+                    onChange={e => handleChange(f, e.currentTarget)}
+                    onBlur={() => void save(f)}
                     onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
                     style={input}
                   />
@@ -149,4 +203,3 @@ export function SbfpFinancialAccomplishmentTable({
     </div>
   )
 }
-
