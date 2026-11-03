@@ -13,11 +13,16 @@ export function excludeAuxSbfp<T extends { milk_type?: string | null }>(rows: T[
 }
 
 export function toPpmpRow(r: any) {
+  const rawCat = String(r.delivery_schedule || '').trim()
+  const category: 'office_supplies' | 'fixtures' | 'training' =
+    rawCat === 'fixtures' || rawCat === 'training' || rawCat === 'office_supplies'
+      ? rawCat
+      : 'office_supplies'
   return {
     id: r.id,
     year: r.year,
     center: r.center,
-    category: r.delivery_schedule || 'office_supplies',
+    category,
     status: r.procurement_status || '',
     item_name: r.sdo === '—' ? '' : (r.sdo || ''),
     amount: Number(r.amount) || 0,

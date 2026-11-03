@@ -227,6 +227,7 @@ export function SbfpCenterWorkspace({
 
       <section className="flex flex-col gap-2">
         <SbfpExcelPpmpTable
+          key={`${center}-${year}-office_supplies`}
           title="OFFICE SUPPLIES TOTAL FUND IN PPMP"
           itemLabel="Office Supplies"
           category="office_supplies"
@@ -239,6 +240,7 @@ export function SbfpCenterWorkspace({
 
       <section className="flex flex-col gap-2">
         <SbfpExcelPpmpTable
+          key={`${center}-${year}-fixtures`}
           title="FIXTURES TOTAL FUND IN PPMP"
           itemLabel="Furniture and Fixtures Supplies"
           category="fixtures"
@@ -251,6 +253,7 @@ export function SbfpCenterWorkspace({
 
       <section className="flex flex-col gap-2">
         <SbfpExcelPpmpTable
+          key={`${center}-${year}-training`}
           title="TRAINING TOTAL FUND IN PPMP"
           itemLabel="Training Expenses"
           category="training"
@@ -263,9 +266,14 @@ export function SbfpCenterWorkspace({
 
       <section className="flex flex-col gap-2">
         <SbfpStaffHiringTable
+          key={`${center}-${year}-hiring`}
           center={center}
           year={year}
           initialRows={hiringRows}
+        />
+        <div className="mt-3">
+          <SbfpFinancialAccomplishmentTable center={center} year={year} editable={editable} />
+        </div>
           editable={editable}
         />
       </section>
