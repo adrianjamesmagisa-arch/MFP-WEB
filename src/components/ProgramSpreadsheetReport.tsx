@@ -36,7 +36,6 @@ import {
   emptySbfpSenateMetrics,
   effectiveSbfpRowStatus,
   isRowCompletedOnOrBefore,
-  cumulativeDeliveredPacksOnOrBefore,
   resolveCompletionCutoffIso,
   SBFP_PROCUREMENT_STATUSES,
   SBFP_STATUS_FILTER_OPTIONS,
@@ -328,23 +327,44 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
   const distinctStatuses = SBFP_STATUS_FILTER_OPTIONS.filter(o => o.value !== 'ALL')
   const dbYearNum = parseInt(year, 10)
 
+  const normalizedDeliveredTo = deliveredTo >= deliveredFrom ? deliveredTo : deliveredFrom
+
   const effectiveDeliveredRange = useMemo(() => {
-    if (Number.isFinite(dbYearNum) && !deliveredDateFilterEnabled) {
-      return defaultCalendarYearDeliveredPackRange(dbYearNum)
+    const base =
+      Number.isFinite(dbYearNum) && !deliveredDateFilterEnabled
+        ? defaultCalendarYearDeliveredPackRange(dbYearNum)
+        : { from: deliveredFrom, to: normalizedDeliveredTo }
+
+    if (filterMonth && Number.isFinite(dbYearNum)) {
+      const m = parseInt(filterMonth, 10)
+      if (Number.isFinite(m) && m >= 1 && m <= 12) {
+        const lastDay = new Date(dbYearNum, m, 0).getDate()
+        const mm = String(m).padStart(2, '0')
+        const dd = String(lastDay).padStart(2, '0')
+        const monthFrom = `${dbYearNum}-${mm}-01`
+        const monthTo = `${dbYearNum}-${mm}-${dd}`
+        if (!deliveredDateFilterEnabled) {
+          return { from: monthFrom, to: monthTo }
+        }
+        return {
+          from: base.from > monthFrom ? base.from : monthFrom,
+          to: base.to < monthTo ? base.to : monthTo,
+        }
+      }
     }
-    const to = deliveredTo >= deliveredFrom ? deliveredTo : deliveredFrom
-    return { from: deliveredFrom, to }
-  }, [dbYearNum, deliveredDateFilterEnabled, deliveredFrom, deliveredTo])
+
+    return base
+  }, [dbYearNum, deliveredDateFilterEnabled, deliveredFrom, normalizedDeliveredTo, filterMonth])
 
   const completionCutoffIso = useMemo(
     () =>
       resolveCompletionCutoffIso({
         deliveredDateFilterEnabled,
-        deliveredToIso: effectiveDeliveredRange.to,
+        deliveredToIso: normalizedDeliveredTo,
         filterMonth,
         dbYear: dbYearNum,
       }),
-    [deliveredDateFilterEnabled, effectiveDeliveredRange.to, filterMonth, dbYearNum],
+    [deliveredDateFilterEnabled, normalizedDeliveredTo, filterMonth, dbYearNum],
   )
 
   const statusCutoffOpts = useMemo(
@@ -377,15 +397,6 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
         if (!matchArea && !matchCenter && !matchRegion && !matchPo && !matchPr) return false
       }
 
-      const key = uniqueSdoCountKey(r.sdo, r.center) || String(r.id || '')
-      const effectiveStatus =
-        (key ? sdoHierarchyStatusMap.get(key) : undefined) ||
-        effectiveSbfpRowStatus(r, statusCutoffOpts)
-
-      if (completionCutoffIso && effectiveStatus === 'Completed' && Number.isFinite(dbYearNum)) {
-        return cumulativeDeliveredPacksOnOrBefore(r, completionCutoffIso, dbYearNum) > 0
-      }
-
       if (filterMonth) {
         const month = parseInt(filterMonth, 10)
         if (
@@ -416,9 +427,6 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
     deliveredDateFilterEnabled,
     effectiveDeliveredRange,
     dbYearNum,
-    completionCutoffIso,
-    sdoHierarchyStatusMap,
-    statusCutoffOpts,
   ])
 
   const statusHierarchyCounts = useMemo(() => {
@@ -451,30 +459,16 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
   const viewRows = useMemo(() => {
     const dbY = Number.isFinite(dbYearNum) ? dbYearNum : undefined
     const { from, to } = effectiveDeliveredRange
-    return records.map(r => {
-      const key = uniqueSdoCountKey(r.sdo, r.center) || String(r.id || '')
-      const effectiveStatus =
-        (key ? sdoHierarchyStatusMap.get(key) : undefined) ||
-        effectiveSbfpRowStatus(r, statusCutoffOpts)
-      const cumulativeThroughCutoff =
-        Boolean(completionCutoffIso) && effectiveStatus === 'Completed' && dbY != null
-      return mapSbfpRowToReportView(r, {
+    return records.map(r =>
+      mapSbfpRowToReportView(r, {
         deliveredFromIso: from,
         deliveredToIso: to,
         dbYear: dbY,
         customPriceOnly: true,
         completionCutoffIso,
-        cumulativeThroughCutoff,
-      })
-    })
-  }, [
-    records,
-    effectiveDeliveredRange,
-    dbYearNum,
-    completionCutoffIso,
-    sdoHierarchyStatusMap,
-    statusCutoffOpts,
-  ])
+      }),
+    )
+  }, [records, effectiveDeliveredRange, dbYearNum, completionCutoffIso])
 
   const viewById = useMemo(() => {
     const m = new Map<string, ReturnType<typeof mapSbfpRowToReportView>>()

@@ -23,7 +23,6 @@ import {
   officialSbfpStatusLabel,
   effectiveSbfpRowStatus,
   isRowCompletedOnOrBefore,
-  cumulativeDeliveredPacksOnOrBefore,
   resolveCompletionCutoffIso,
   SBFP_PROCUREMENT_STATUSES,
   SBFP_STATUS_FILTER_OPTIONS,
@@ -407,23 +406,44 @@ export default function SbfpSpreadsheetReport() {
 
   const dbYearNum = parseInt(year, 10)
 
+  const normalizedDeliveredTo = deliveredTo >= deliveredFrom ? deliveredTo : deliveredFrom
+
   const effectiveDeliveredRange = useMemo(() => {
-    if (Number.isFinite(dbYearNum) && !deliveredDateFilterEnabled) {
-      return defaultDeliveredPackRange(dbYearNum)
+    const base =
+      Number.isFinite(dbYearNum) && !deliveredDateFilterEnabled
+        ? defaultDeliveredPackRange(dbYearNum)
+        : { from: deliveredFrom, to: normalizedDeliveredTo }
+
+    if (filterMonth && Number.isFinite(dbYearNum)) {
+      const m = parseInt(filterMonth, 10)
+      if (Number.isFinite(m) && m >= 1 && m <= 12) {
+        const lastDay = new Date(dbYearNum, m, 0).getDate()
+        const mm = String(m).padStart(2, '0')
+        const dd = String(lastDay).padStart(2, '0')
+        const monthFrom = `${dbYearNum}-${mm}-01`
+        const monthTo = `${dbYearNum}-${mm}-${dd}`
+        if (!deliveredDateFilterEnabled) {
+          return { from: monthFrom, to: monthTo }
+        }
+        return {
+          from: base.from > monthFrom ? base.from : monthFrom,
+          to: base.to < monthTo ? base.to : monthTo,
+        }
+      }
     }
-    const to = deliveredTo >= deliveredFrom ? deliveredTo : deliveredFrom
-    return { from: deliveredFrom, to }
-  }, [dbYearNum, deliveredDateFilterEnabled, deliveredFrom, deliveredTo])
+
+    return base
+  }, [dbYearNum, deliveredDateFilterEnabled, deliveredFrom, normalizedDeliveredTo, filterMonth])
 
   const completionCutoffIso = useMemo(
     () =>
       resolveCompletionCutoffIso({
         deliveredDateFilterEnabled,
-        deliveredToIso: effectiveDeliveredRange.to,
+        deliveredToIso: normalizedDeliveredTo,
         filterMonth,
         dbYear: dbYearNum,
       }),
-    [deliveredDateFilterEnabled, effectiveDeliveredRange.to, filterMonth, dbYearNum],
+    [deliveredDateFilterEnabled, normalizedDeliveredTo, filterMonth, dbYearNum],
   )
 
   const statusCutoffOpts = useMemo(
@@ -466,24 +486,6 @@ export default function SbfpSpreadsheetReport() {
         if (!matchSdo && !matchCenter && !matchRegion && !matchPo && !matchPr) return false
       }
 
-      const sdoKey = uniqueSdoCountKey(r.sdo, r.center) || String(r.id || '')
-      const effectiveSdoStatus =
-        (sdoKey ? sdoHierarchyStatusMap.get(sdoKey) : undefined) ||
-        effectiveSbfpRowStatus(r as SbfpReportSourceRow, statusCutoffOpts)
-
-      // When a delivery date/month cutoff is active, any SDO that completed all of its
-      // deliveries on or before the cutoff (e.g. Candon completed Oct 15 <= Oct 26 cutoff)
-      // stays included even if `From` or `Delivery Month` starts after its completion date.
-      if (completionCutoffIso && effectiveSdoStatus === 'Completed' && Number.isFinite(dbYearNum)) {
-        return (
-          cumulativeDeliveredPacksOnOrBefore(
-            r as SbfpReportSourceRow,
-            completionCutoffIso,
-            dbYearNum,
-          ) > 0
-        )
-      }
-
       if (filterMonth) {
         const month = parseInt(filterMonth, 10)
         const dbYear = parseInt(year, 10)
@@ -521,9 +523,6 @@ export default function SbfpSpreadsheetReport() {
     deliveredDateFilterEnabled,
     effectiveDeliveredRange,
     dbYearNum,
-    completionCutoffIso,
-    sdoHierarchyStatusMap,
-    statusCutoffOpts,
   ])
 
   const statusHierarchyCounts = useMemo(() => {
@@ -557,29 +556,15 @@ export default function SbfpSpreadsheetReport() {
   const viewRows = useMemo(() => {
     const dbY = Number.isFinite(dbYearNum) ? dbYearNum : undefined
     const { from, to } = effectiveDeliveredRange
-    return (records as SbfpReportSourceRow[]).map(r => {
-      const sdoKey = uniqueSdoCountKey(r.sdo, r.center) || String(r.id || '')
-      const effectiveSdoStatus =
-        (sdoKey ? sdoHierarchyStatusMap.get(sdoKey) : undefined) ||
-        effectiveSbfpRowStatus(r, statusCutoffOpts)
-      const cumulativeThroughCutoff =
-        Boolean(completionCutoffIso) && effectiveSdoStatus === 'Completed' && dbY != null
-      return mapSbfpRowToReportView(r, {
+    return (records as SbfpReportSourceRow[]).map(r =>
+      mapSbfpRowToReportView(r, {
         deliveredFromIso: from,
         deliveredToIso: to,
         dbYear: dbY,
         completionCutoffIso,
-        cumulativeThroughCutoff,
-      })
-    })
-  }, [
-    records,
-    effectiveDeliveredRange,
-    dbYearNum,
-    completionCutoffIso,
-    sdoHierarchyStatusMap,
-    statusCutoffOpts,
-  ])
+      }),
+    )
+  }, [records, effectiveDeliveredRange, dbYearNum, completionCutoffIso])
 
   const getViewForSource = useCallback(
     (sourceId: string | undefined) => viewRows.find(v => v.source.id === sourceId),

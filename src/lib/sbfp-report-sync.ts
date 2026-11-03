@@ -588,7 +588,6 @@ export function mapSbfpRowToReportView(
     dbYear?: number
     customPriceOnly?: boolean
     completionCutoffIso?: string | null
-    cumulativeThroughCutoff?: boolean
   },
 ): SbfpReportViewRow {
   const rawStatus = row.procurement_status?.trim() || 'For Preparation'
@@ -599,21 +598,11 @@ export function mapSbfpRowToReportView(
           dbYear: deliveredOpts.dbYear,
         })
       : rawStatus
-  const deliveredPacks =
-    deliveredOpts.cumulativeThroughCutoff &&
-    deliveredOpts.completionCutoffIso &&
-    deliveredOpts.dbYear != null &&
-    Number.isFinite(deliveredOpts.dbYear)
-      ? cumulativeDeliveredPacksOnOrBefore(
-          row,
-          deliveredOpts.completionCutoffIso,
-          deliveredOpts.dbYear,
-        )
-      : resolveDeliveredPacksForReport(row, {
-          deliveredFromIso: deliveredOpts.deliveredFromIso,
-          deliveredToIso: deliveredOpts.deliveredToIso,
-          dbYear: deliveredOpts.dbYear,
-        })
+  const deliveredPacks = resolveDeliveredPacksForReport(row, {
+    deliveredFromIso: deliveredOpts.deliveredFromIso,
+    deliveredToIso: deliveredOpts.deliveredToIso,
+    dbYear: deliveredOpts.dbYear,
+  })
   return {
     source: row,
     region: row.region?.trim() || '—',
