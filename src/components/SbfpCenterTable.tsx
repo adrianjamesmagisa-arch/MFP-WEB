@@ -94,7 +94,14 @@ const STATUSES = [
   'For Preparation', 'Ongoing Procurement', 'Ongoing (For Award)',
   'Awarded (For Delivery)', 'Awarded (Ongoing Delivery)', 'Completed', 'Failed',
 ]
-const MODES = ['Sagip Saka', 'Small Value Procurement', 'Negotiated Procurement', 'Direct Contracting', 'Emergency']
+const MODES = [
+  'Sagip Saka',
+  'Agency to Agency',
+  'Small Value Procurement',
+  'Negotiated Procurement',
+  'Direct Contracting',
+  'Emergency',
+]
 const MILK_TYPES = [...SBFP_MILK_TYPE_VALUES]
 
 // ─────────────────────────────────────────────

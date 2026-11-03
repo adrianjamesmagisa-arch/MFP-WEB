@@ -145,6 +145,17 @@ export const REGIONS = [
 ]
 
 export const MODES_OF_PROCUREMENT = [
-  'Bayanihan Act', 'NP-CP', 'NP-SS', 'NP-EC',
-  'NP-EC/NP-CP', 'NP-CP/SVP', 'NP-Sagip Saka'
+  'Sagip Saka',
+  'Agency to Agency',
+  'Small Value Procurement',
+  'Negotiated Procurement',
+  'Direct Contracting',
+  'Emergency',
+  'Bayanihan Act',
+  'NP-CP',
+  'NP-SS',
+  'NP-EC',
+  'NP-EC/NP-CP',
+  'NP-CP/SVP',
+  'NP-Sagip Saka',
 ]

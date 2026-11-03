@@ -8,6 +8,7 @@ import { SbfpCenterBudgetForm, type BudgetRow } from '@/components/SbfpCenterBud
 import { SbfpCenterCapacityForm, type CapacityRow } from '@/components/SbfpCenterCapacityForm'
 import { SbfpExcelPpmpTable, type PpmpRow } from '@/components/SbfpExcelPpmpTable'
 import { SbfpStaffHiringTable, type HiringRow } from '@/components/SbfpStaffHiringTable'
+import { SbfpFinancialAccomplishmentTable } from '@/components/SbfpFinancialAccomplishmentTable'
 import { SbfpDropoffTable, type DropoffRow } from '@/components/SbfpDropoffTable'
 import { SbfpCreateSchoolYearButton } from '@/components/SbfpCreateSchoolYearButton'
 import { parseSchoolYear, schoolYearLabel, schoolYearToDbYear } from '@/lib/sbfp-year'
@@ -267,6 +268,10 @@ export function SbfpCenterWorkspace({
           initialRows={hiringRows}
           editable={editable}
         />
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <SbfpFinancialAccomplishmentTable center={center} year={year} editable={editable} />
       </section>
 
       {!isEncoder && editable && (

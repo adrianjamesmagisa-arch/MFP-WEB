@@ -28,7 +28,14 @@ const STATUSES = [
   'For Preparation', 'Ongoing Procurement', 'Ongoing (For Award)',
   'Awarded (For Delivery)', 'Awarded (Ongoing Delivery)', 'Completed', 'Failed',
 ]
-const MODES = ['Sagip Saka', 'Small Value Procurement', 'Negotiated Procurement', 'Direct Contracting', 'Emergency']
+const MODES = [
+  'Sagip Saka',
+  'Agency to Agency',
+  'Small Value Procurement',
+  'Negotiated Procurement',
+  'Direct Contracting',
+  'Emergency',
+]
 const MIN_ROWS = 14
 const YELLOW = '#FFF2CC'
 const BLUE = '#BDD7EE'
@@ -44,12 +51,56 @@ function emptyRow(center: string, year: number, category: PpmpCategory, sort: nu
 }
 
 function isFilled(r: PpmpRow) {
-  return !!(r.item_name?.trim() || r.status || r.amount || r.pr_number || r.remarks)
+  return !!(
+    r.item_name?.trim() || r.status || r.amount || r.pr_number || r.remarks ||
+    r.mode_of_procurement || r.date_received || r.ors_date || r.po_number
+  )
 }
 
 function toInputDate(v: string | null | undefined) {
   if (!v) return ''
   return String(v).slice(0, 10)
+}
+
+/** Date input with an explicit clear (×) button so posted dates can be removed. */
+function DateCell({
+  value, onChange, disabled, style,
+}: {
+  value: string
+  onChange: (v: string) => void
+  disabled?: boolean
+  style: CSSProperties
+}) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center' }}>
+      <input
+        disabled={disabled}
+        type="date"
+        value={value || ''}
+        onChange={e => onChange(e.target.value)}
+        onKeyDown={e => {
+          if (!disabled && (e.key === 'Delete' || e.key === 'Backspace') && value) {
+            e.preventDefault()
+            onChange('')
+          }
+        }}
+        style={{ ...style, flex: 1, minWidth: 0 }}
+      />
+      {!disabled && value && (
+        <button
+          type="button"
+          title="Clear date"
+          onClick={() => onChange('')}
+          style={{
+            border: 0, background: 'transparent', cursor: 'pointer',
+            color: '#dc2626', fontWeight: 700, padding: '0 6px', fontSize: '0.85rem',
+          }}
+        >
+          ×
+        </button>
+      )}
+    </div>
+  )
 }
 
 export function SbfpExcelPpmpTable({
@@ -134,6 +185,13 @@ export function SbfpExcelPpmpTable({
     persist(index, rows[index])
   }
 
+  /** Dates save immediately (including clearing back to empty). */
+  const setDate = (index: number, field: 'date_received' | 'ors_date', value: string) => {
+    const next = { ...rows[index], [field]: value }
+    patch(index, field, value)
+    void persist(index, next)
+  }
+
   const cell: CSSProperties = {
     border: BORDER, padding: 0, background: '#fff', verticalAlign: 'middle',
   }
@@ -144,7 +202,7 @@ export function SbfpExcelPpmpTable({
 
   return (
     <div style={{ overflow: 'auto', border: BORDER, background: '#fff' }}>
-      <table style={{ width: '100%', minWidth: 980, borderCollapse: 'collapse' }}>
+      <table style={{ width: '100%', minWidth: 1100, borderCollapse: 'collapse' }}>
         <thead>
           <tr>
             <th colSpan={3} style={{
@@ -194,7 +252,7 @@ export function SbfpExcelPpmpTable({
                   style={{ ...inputStyle(), textAlign: 'right' }}
                 />
               </td>
-              <td style={{ ...cell, background: GRAY, width: 170 }}>
+              <td style={{ ...cell, background: GRAY, width: 200 }}>
                 <select
                   disabled={!editable}
                   value={r.mode_of_procurement}
@@ -205,14 +263,14 @@ export function SbfpExcelPpmpTable({
                   {MODES.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </td>
-              <td style={{ ...cell, width: 130 }}>
-                <input disabled={!editable} type="date" value={r.date_received} onChange={e => patch(i, 'date_received', e.target.value)} onBlur={() => commit(i)} style={inputStyle()} />
+              <td style={{ ...cell, width: 150 }}>
+                <DateCell disabled={!editable} value={r.date_received} onChange={v => setDate(i, 'date_received', v)} style={inputStyle()} />
               </td>
               <td style={{ ...cell, width: 110 }}>
                 <input disabled={!editable} value={r.pr_number} onChange={e => patch(i, 'pr_number', e.target.value)} onBlur={() => commit(i)} style={inputStyle()} />
               </td>
-              <td style={{ ...cell, width: 120 }}>
-                <input disabled={!editable} type="date" value={r.ors_date} onChange={e => patch(i, 'ors_date', e.target.value)} onBlur={() => commit(i)} style={inputStyle()} />
+              <td style={{ ...cell, width: 150 }}>
+                <DateCell disabled={!editable} value={r.ors_date} onChange={v => setDate(i, 'ors_date', v)} style={inputStyle()} />
               </td>
               <td style={{ ...cell, width: 110 }}>
                 <input disabled={!editable} value={r.po_number} onChange={e => patch(i, 'po_number', e.target.value)} onBlur={() => commit(i)} style={inputStyle()} />
