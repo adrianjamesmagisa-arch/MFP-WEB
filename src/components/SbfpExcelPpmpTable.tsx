@@ -228,7 +228,7 @@ export function SbfpExcelPpmpTable({
     const payload = {
       year,
       center,
-      region: 'PPMP',
+      region: `PPMP:${category}`,
       sdo: current.item_name?.trim() || '—',
       procurement_status: current.status || 'For Preparation',
       packs_to_deliver: 0,

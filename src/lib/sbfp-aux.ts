@@ -5,19 +5,35 @@ export const SBFP_MAJOR_TARGETS_TYPE = '__MAJOR_TARGETS__'
 
 export function isSbfpAuxRow(row: { milk_type?: string | null }): boolean {
   const t = row?.milk_type || ''
-  return t === SBFP_PPMP_TYPE || t === SBFP_HIRING_TYPE || t === SBFP_MAJOR_TARGETS_TYPE
+  return (
+    t === SBFP_PPMP_TYPE ||
+    t.startsWith('__PPMP_') ||
+    t === SBFP_HIRING_TYPE ||
+    t === SBFP_MAJOR_TARGETS_TYPE
+  )
 }
 
 export function excludeAuxSbfp<T extends { milk_type?: string | null }>(rows: T[] | null | undefined): T[] {
   return (rows || []).filter(r => !isSbfpAuxRow(r))
 }
 
+function resolvePpmpCategory(r: any): 'office_supplies' | 'fixtures' | 'training' {
+  const sched = String(r?.delivery_schedule || '').trim()
+  if (sched === 'fixtures' || sched === 'training' || sched === 'office_supplies') {
+    return sched
+  }
+  const reg = String(r?.region || '').trim()
+  if (reg.startsWith('PPMP:')) {
+    const sub = reg.slice(5).trim()
+    if (sub === 'fixtures' || sub === 'training' || sub === 'office_supplies') {
+      return sub
+    }
+  }
+  return 'office_supplies'
+}
+
 export function toPpmpRow(r: any) {
-  const rawCat = String(r.delivery_schedule || '').trim()
-  const category: 'office_supplies' | 'fixtures' | 'training' =
-    rawCat === 'fixtures' || rawCat === 'training' || rawCat === 'office_supplies'
-      ? rawCat
-      : 'office_supplies'
+  const category = resolvePpmpCategory(r)
   return {
     id: r.id,
     year: r.year,

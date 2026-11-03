@@ -270,10 +270,6 @@ export function SbfpCenterWorkspace({
           center={center}
           year={year}
           initialRows={hiringRows}
-        />
-        <div className="mt-3">
-          <SbfpFinancialAccomplishmentTable center={center} year={year} editable={editable} />
-        </div>
           editable={editable}
         />
       </section>
