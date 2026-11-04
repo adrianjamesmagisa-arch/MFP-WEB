@@ -125,7 +125,7 @@ export function SbfpCenterWorkspace({
       </div>
 
       {showKpis && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-3">
+        <div className="center-workspace-kpis grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-3">
           <div className="rounded-lg border bg-card p-3 text-center">
             <div className="text-2xl font-bold">{total}</div>
             <div className="text-xs text-muted-foreground mt-1">Total SDOs</div>
@@ -161,7 +161,7 @@ export function SbfpCenterWorkspace({
         </div>
       )}
 
-      <section className="flex flex-col gap-2">
+      <section className="center-procurement-section flex min-w-0 flex-col gap-2">
         <h2 className="text-base font-semibold">1. SDO Procurement</h2>
         <p className="text-xs text-muted-foreground">
           Add <strong>Delivered as of</strong> dates (encoder-chosen). Packs / Raw ₱/L / Income columns appear only for months that have a delivered date. Each month shows <strong>raw milk used (L)</strong>, Raw ₱/L, and Income. <strong>Milk type</strong> drives Packs to Deliver from Amount: PM ÷ ₱25, SM ÷ ₱30, CM ÷ encoder Pack ₱.

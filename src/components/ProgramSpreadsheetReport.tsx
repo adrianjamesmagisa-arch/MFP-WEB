@@ -1323,6 +1323,7 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
 
   return (
     <div
+      className="narrative-report"
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -1333,7 +1334,7 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
     >
       {/* Filter Toolbar */}
       <div
-        className="no-print"
+        className="no-print narrative-report-toolbar"
         style={{
           background: '#ffffff',
           borderBottom: '1px solid #e2e8f0',
@@ -1345,6 +1346,7 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
         }}
       >
         <div
+          className="narrative-report-main-row"
           style={{
             display: 'flex',
             flexWrap: 'wrap',
@@ -1353,8 +1355,8 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
             gap: '0.75rem',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-            <div>
+          <div className="narrative-report-filter-fields" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <div className="narrative-report-filter-field">
               <div
                 style={{
                   fontSize: '0.68rem',
@@ -1387,7 +1389,7 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
               </select>
             </div>
 
-            <div>
+            <div className="narrative-report-filter-field">
               <div
                 style={{
                   fontSize: '0.68rem',
@@ -1441,7 +1443,7 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
               )}
             </div>
 
-            <div>
+            <div className="narrative-report-filter-field">
               <div
                 style={{
                   fontSize: '0.68rem',
@@ -1474,7 +1476,7 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
               </select>
             </div>
 
-            <div>
+            <div className="narrative-report-filter-field">
               <div
                 style={{
                   fontSize: '0.68rem',
@@ -1507,7 +1509,7 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
               </select>
             </div>
 
-            <div style={{ position: 'relative' }}>
+            <div className="narrative-report-filter-field narrative-report-search-field" style={{ position: 'relative' }}>
               <div
                 style={{
                   fontSize: '0.68rem',
@@ -1544,7 +1546,7 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
           </div>
 
           {/* Right Action Buttons */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <div className="narrative-report-actions" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
             <SbfpAiAgent
               filteredRecords={filteredRecords}
               getViewForSource={getViewForSource}
@@ -1569,6 +1571,8 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
             />
 
             <button
+              className="report-action-button"
+              aria-label="Reset filters"
               onClick={clearFilters}
               title="Reset all filters"
               style={{
@@ -1585,10 +1589,12 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
                 cursor: 'pointer',
               }}
             >
-              <RotateCcw size={13} /> Reset
+              <RotateCcw size={13} /><span className="report-action-label">Reset</span><span className="report-action-short-label">Reset</span>
             </button>
 
             <button
+              className="report-action-button"
+              aria-label="Export as CSV"
               onClick={exportToCSV}
               style={{
                 height: 34,
@@ -1606,10 +1612,12 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
                 boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
               }}
             >
-              <Download size={15} /> Export as .CSV
+              <Download size={15} /><span className="report-action-label">Export as .CSV</span><span className="report-action-short-label">CSV</span>
             </button>
 
             <button
+              className="report-action-button"
+              aria-label="Export active tab as Excel"
               onClick={() => void exportToExcel()}
               title="Export the currently active tab as a styled Excel file (.xlsx)"
               style={{
@@ -1628,10 +1636,12 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
                 boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
               }}
             >
-              <FileDown size={15} /> Export as .xlsx
+              <FileDown size={15} /><span className="report-action-label">Export as .xlsx</span><span className="report-action-short-label">Excel</span>
             </button>
 
             <button
+              className="report-action-button"
+              aria-label="Export all tabs as Excel"
               onClick={() => void exportAllTabsToExcel()}
               title="Export all tabs into a single styled multi-sheet Excel workbook (.xlsx)"
               style={{
@@ -1650,10 +1660,12 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
                 boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
               }}
             >
-              <Layers size={14} /> All Tabs (.xlsx)
+              <Layers size={14} /><span className="report-action-label">All Tabs (.xlsx)</span><span className="report-action-short-label">All</span>
             </button>
 
             <button
+              className="report-action-button"
+              aria-label="Print report"
               onClick={() => window.print()}
               style={{
                 height: 34,
@@ -1671,13 +1683,14 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
                 boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
               }}
             >
-              <Printer size={15} /> Print Report
+              <Printer size={15} /><span className="report-action-label">Print Report</span><span className="report-action-short-label">Print</span>
             </button>
           </div>
         </div>
 
         {/* Bottom Date Range & View Tabs Row */}
         <div
+          className="narrative-report-secondary-row"
           style={{
             display: 'flex',
             flexWrap: 'wrap',
@@ -1688,7 +1701,7 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
             gap: '0.5rem',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <div className="narrative-report-delivery-controls" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
             <span
               style={{
                 fontSize: '0.78rem',
@@ -1723,6 +1736,7 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
             </select>
 
             <div
+              className="narrative-report-date-range"
               style={{
                 marginLeft: 12,
                 borderLeft: '1px solid #e2e8f0',
@@ -1833,6 +1847,7 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
             </div>
 
             <label
+              className="narrative-report-excluded-toggle"
               style={{
                 marginLeft: 12,
                 borderLeft: '1px solid #e2e8f0',
@@ -1856,6 +1871,7 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
 
           {/* View Mode Tabs */}
           <div
+            className="narrative-report-tabs"
             style={{
               display: 'flex',
               flexWrap: 'wrap',
@@ -1905,7 +1921,7 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
 
       {/* KPI Summary Cards */}
       <div
-        className="no-print"
+        className="no-print narrative-report-kpis"
         style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',

@@ -1000,6 +1000,10 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 
+.report-action-short-label {
+  display: none;
+}
+
 @media (max-width: 900px) {
   .app-shell-sidebar {
     position: fixed;
@@ -1127,6 +1131,10 @@ body {
   }
 }
 
+.center-table-scroll-hint {
+  display: none;
+}
+
 @media (max-width: 600px) {
   .app-shell-content,
   .app-shell-content-full-bleed {
@@ -1246,11 +1254,327 @@ body {
   }
 }
 
+/* Compact report controls for phone-sized viewports (including 428px iPhones). */
+@media (max-width: 600px) {
+  .narrative-report-toolbar {
+    padding: 0.65rem 0.75rem !important;
+    gap: 0.55rem !important;
+  }
+
+  .narrative-report-main-row,
+  .narrative-report-secondary-row {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    justify-content: stretch !important;
+    gap: 0.55rem !important;
+  }
+
+  .narrative-report-filter-fields {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    min-width: 0;
+    gap: 0.45rem 0.55rem !important;
+    align-items: end !important;
+  }
+
+  .narrative-report-filter-field {
+    min-width: 0;
+  }
+
+  .narrative-report-filter-field > div:first-child {
+    margin-bottom: 0.2rem !important;
+    font-size: 0.62rem !important;
+    line-height: 1.2;
+  }
+
+  .narrative-report-filter-field select,
+  .narrative-report-filter-field input,
+  .narrative-report-filter-field > div[title] {
+    box-sizing: border-box;
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 38px !important;
+    font-size: 0.78rem !important;
+  }
+
+  .narrative-report-search-field {
+    grid-column: 1 / -1;
+  }
+
+  .narrative-report-actions {
+    display: grid !important;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    width: 100%;
+    min-width: 0;
+    gap: 0.4rem !important;
+  }
+
+  .narrative-report-actions .report-action-button,
+  .narrative-report-actions .report-ai-trigger {
+    box-sizing: border-box;
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 40px !important;
+    padding: 0 0.25rem !important;
+    justify-content: center !important;
+    border-radius: 9px !important;
+  }
+
+  .narrative-report-actions .report-action-label,
+  .narrative-report-actions .report-ai-trigger > span {
+    display: none !important;
+  }
+
+  .narrative-report-actions .report-action-short-label {
+    display: inline !important;
+    font-size: 0.57rem;
+    line-height: 1;
+    font-weight: 700;
+  }
+
+  .narrative-report-actions svg {
+    flex: 0 0 auto;
+  }
+
+  .narrative-report-secondary-row {
+    border-top: 1px solid #f1f5f9;
+    padding-top: 0.55rem !important;
+  }
+
+  .narrative-report-delivery-controls {
+    display: grid !important;
+    grid-template-columns: 7.5rem minmax(0, 1fr);
+    width: 100%;
+    min-width: 0;
+    gap: 0.45rem 0.55rem !important;
+  }
+
+  .narrative-report-delivery-controls > span:first-child {
+    font-size: 0.73rem !important;
+  }
+
+  .narrative-report-delivery-controls > select {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    height: 36px !important;
+  }
+
+  .narrative-report-date-range {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-column: 1 / -1;
+    gap: 0.4rem 0.5rem !important;
+    margin: 0 !important;
+    padding: 0.5rem 0 0 !important;
+    border: 0 !important;
+    border-top: 1px solid #e2e8f0 !important;
+  }
+
+  .narrative-report-date-range > label:first-child {
+    grid-column: 1 / -1;
+    font-size: 0.73rem !important;
+  }
+
+  .narrative-report-date-range > span {
+    display: none !important;
+  }
+
+  .narrative-report-date-range input[type='date'] {
+    box-sizing: border-box;
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 38px !important;
+    font-size: 0.74rem !important;
+  }
+
+  .narrative-report-date-range button,
+  .narrative-report-date-range > span:last-child {
+    grid-column: 1 / -1;
+    max-width: none !important;
+  }
+
+  .narrative-report-excluded-toggle {
+    grid-column: 1 / -1;
+    align-items: flex-start !important;
+    margin: 0 !important;
+    padding: 0.25rem 0 0 !important;
+    border: 0 !important;
+    font-size: 0.72rem !important;
+    line-height: 1.35;
+  }
+
+  .narrative-report-tabs {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scroll-snap-type: x proximity;
+  }
+
+  .narrative-report-tabs > button {
+    flex: 0 0 auto;
+    min-height: 36px;
+    padding: 0.4rem 0.55rem !important;
+    font-size: 0.72rem !important;
+    white-space: nowrap;
+    scroll-snap-align: start;
+  }
+
+  .narrative-report-kpis {
+    display: flex !important;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    gap: 0.5rem !important;
+    padding: 0.6rem 0.75rem !important;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  .narrative-report-kpis > div {
+    flex: 0 0 132px;
+    min-width: 0;
+    padding: 0.55rem 0.65rem !important;
+  }
+
+  .narrative-report-kpis > div > div:first-child {
+    font-size: 0.62rem !important;
+    line-height: 1.25;
+  }
+
+  .narrative-report-kpis > div > div:nth-child(2) {
+    margin-top: 0.15rem !important;
+    font-size: 1.05rem !important;
+    overflow-wrap: anywhere;
+  }
+}
+
 /* ==========================================================================
    GLOBAL PRINT ENGINE
    Ensures printouts only show the actual report/data content in clean landscape,
    stripping out sidebars, app chrome, buttons, headers, and scroll-locks.
    ========================================================================== */
+@media (max-width: 600px) {
+  .center-procurement-section,
+  .center-procurement-card,
+  .center-dropoff-card {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .center-workspace-kpis {
+    gap: 0.5rem !important;
+  }
+
+  .center-workspace-kpis > div {
+    min-width: 0;
+    padding: 0.55rem 0.35rem !important;
+    border-radius: 0.65rem;
+  }
+
+  .center-workspace-kpis > div > div:first-child {
+    font-size: 1.25rem;
+    line-height: 1.2;
+  }
+
+  .center-workspace-kpis > div > div:last-child {
+    font-size: 0.65rem;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+  }
+
+  .center-procurement-section > p {
+    font-size: 0.75rem;
+    line-height: 1.45;
+  }
+
+  .center-table-scroll-hint {
+    display: block;
+    padding: 0.45rem 0.65rem;
+    color: var(--gray-600);
+    font-size: 0.68rem;
+    line-height: 1.25;
+    background: var(--gray-50);
+    border-bottom: 1px solid var(--gray-200);
+  }
+
+  .center-procurement-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-content: stretch !important;
+    gap: 0.45rem !important;
+    width: 100%;
+  }
+
+  .center-procurement-actions > button {
+    width: 100%;
+    min-width: 0;
+    min-height: 42px;
+    height: auto !important;
+    padding: 0.5rem 0.35rem !important;
+    gap: 0.35rem;
+    font-size: 0.75rem;
+    line-height: 1.2 !important;
+    white-space: normal;
+    text-align: center;
+    justify-content: center;
+  }
+
+  .center-procurement-actions > button:last-of-type {
+    grid-column: 1 / -1;
+  }
+
+  .center-procurement-scroll {
+    width: 100%;
+    max-width: 100%;
+    max-height: min(62dvh, 560px) !important;
+    overflow: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .center-dropoff-scroll {
+    width: 100%;
+    max-width: 100%;
+    max-height: min(62dvh, 560px) !important;
+    overflow: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* These wide editable grids are swipe-scroll tables on phones. Keeping
+     frozen panes while vertically scrolling made their headers overlap cells. */
+  .center-procurement-table th,
+  .center-procurement-table td {
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
+    z-index: auto !important;
+  }
+
+  .center-procurement-table th {
+    position: static !important;
+  }
+
+  .center-dropoff-table th,
+  .center-dropoff-table td {
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
+    z-index: auto !important;
+  }
+}
+
 @media print {
   @page {
     size: A4 landscape;

@@ -1208,6 +1208,7 @@ export function SbfpCenterTable({
     <>
       {allowAdd && editable && center !== 'OVERALL' && dbYear && (
         <div
+          className="center-procurement-actions"
           style={{
             display: 'flex',
             justifyContent: 'flex-end',
@@ -1282,9 +1283,10 @@ export function SbfpCenterTable({
           </button>
         </div>
       )}
-      <div className="card" style={{ overflow: 'hidden' }}>
-        <div style={{ overflow: 'auto', maxHeight: 'calc(100vh - 280px)' }}>
-          <table className="data-table sbfp-center-table" style={{ minWidth: 3200, fontSize: '0.78rem', borderCollapse: 'separate', borderSpacing: 0 }}>
+      <div className="card center-procurement-card" style={{ overflow: 'hidden' }}>
+        <p className="center-table-scroll-hint">Swipe horizontally to see all columns</p>
+        <div className="center-procurement-scroll" style={{ overflow: 'auto', maxHeight: 'calc(100vh - 280px)' }}>
+          <table className="data-table sbfp-center-table center-procurement-table" style={{ minWidth: 3200, fontSize: '0.78rem', borderCollapse: 'separate', borderSpacing: 0 }}>
             <thead>
               <tr>
                 <th rowSpan={2} style={{ textAlign: 'center', ...stickyTh(SL.check, SW.check, false, 24) }}>

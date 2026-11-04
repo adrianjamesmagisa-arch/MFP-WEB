@@ -534,9 +534,10 @@ export function SbfpDropoffTable({
         )}
       </div>
 
-      <div className="card" style={{ overflow: 'hidden' }}>
-        <div ref={tableScrollRef} style={{ overflow: 'auto', maxHeight: 'calc(100vh - 320px)' }}>
-          <table className="data-table" style={{ minWidth: 1600, fontSize: '0.78rem', borderCollapse: 'separate', borderSpacing: 0 }}>
+      <div className="card center-dropoff-card" style={{ overflow: 'hidden' }}>
+        <p className="center-table-scroll-hint">Swipe horizontally to see all columns</p>
+        <div ref={tableScrollRef} className="center-dropoff-scroll" style={{ overflow: 'auto', maxHeight: 'calc(100vh - 320px)' }}>
+          <table className="data-table center-dropoff-table" style={{ minWidth: 1600, fontSize: '0.78rem', borderCollapse: 'separate', borderSpacing: 0 }}>
             <thead>
               <tr>
                 <th style={{ textAlign: 'center', ...stickyTh(SL.check, SW.check) }}>

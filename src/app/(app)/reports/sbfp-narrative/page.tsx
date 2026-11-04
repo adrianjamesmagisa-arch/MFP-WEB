@@ -1634,10 +1634,10 @@ export default function SbfpSpreadsheetReport() {
     return d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
   }
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#f8fafc', overflow: 'hidden' }}>
+    <div className="narrative-report" style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#f8fafc', overflow: 'hidden' }}>
       
       {/* ?? Filter Toolbar ?? */}
-      <div className="no-print" style={{
+      <div className="no-print narrative-report-toolbar" style={{
         background: '#ffffff',
         borderBottom: '1px solid #e2e8f0',
         padding: '0.875rem 1.5rem',
@@ -1647,10 +1647,10 @@ export default function SbfpSpreadsheetReport() {
         zIndex: 10
       }}>
         {/* Top Controls Row */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
+        <div className="narrative-report-main-row" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
           
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <div>
+          <div className="narrative-report-filter-fields" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div className="narrative-report-filter-field">
               <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>Year</div>
               <select value={year} onChange={e => setYear(e.target.value)}
                 style={{ height: 34, padding: '0 0.75rem', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: '0.85rem', background: '#fff', fontWeight: 600 }}>
@@ -1663,7 +1663,7 @@ export default function SbfpSpreadsheetReport() {
               </select>
             </div>
 
-            <div>
+            <div className="narrative-report-filter-field">
               <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>Center</div>
               {lockedCenter ? (
                 <div
@@ -1693,7 +1693,7 @@ export default function SbfpSpreadsheetReport() {
               )}
             </div>
 
-            <div>
+            <div className="narrative-report-filter-field">
               <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>Region</div>
               <select value={filterRegion} onChange={e => setFilterRegion(e.target.value)}
                 style={{ height: 34, padding: '0 0.75rem', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: '0.85rem', background: '#fff' }}>
@@ -1702,7 +1702,7 @@ export default function SbfpSpreadsheetReport() {
               </select>
             </div>
 
-            <div>
+            <div className="narrative-report-filter-field">
               <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>Procurement Status</div>
               <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
                 style={{ height: 34, padding: '0 0.75rem', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: '0.85rem', background: '#fff' }}>
@@ -1715,7 +1715,7 @@ export default function SbfpSpreadsheetReport() {
               </select>
             </div>
 
-            <div style={{ position: 'relative' }}>
+            <div className="narrative-report-filter-field narrative-report-search-field" style={{ position: 'relative' }}>
               <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>Search SDO</div>
               <div style={{ position: 'relative' }}>
                 <Search size={14} style={{ position: 'absolute', left: 8, top: 10, color: '#94a3b8' }} />
@@ -1731,7 +1731,7 @@ export default function SbfpSpreadsheetReport() {
           </div>
 
           {/* Right Action Buttons */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <div className="narrative-report-actions" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <SbfpAiAgent
               filteredRecords={filteredRecords}
               getViewForSource={getViewForSource}
@@ -1754,6 +1754,8 @@ export default function SbfpSpreadsheetReport() {
             />
 
             <button
+              className="report-action-button"
+              aria-label="Reset filters"
               onClick={clearFilters}
               title="Reset all filters"
               style={{
@@ -1761,10 +1763,12 @@ export default function SbfpSpreadsheetReport() {
                 background: '#f8fafc', color: '#64748b', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer'
               }}
             >
-              <RotateCcw size={13} /> Reset
+              <RotateCcw size={13} /><span className="report-action-label">Reset</span><span className="report-action-short-label">Reset</span>
             </button>
 
             <button
+              className="report-action-button"
+              aria-label="Export as CSV"
               onClick={exportToCSV}
               style={{
                 height: 34, padding: '0 1rem', borderRadius: 6, border: '1px solid #059669',
@@ -1772,10 +1776,12 @@ export default function SbfpSpreadsheetReport() {
                 display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
               }}
             >
-              <Download size={15} /> Export as .CSV
+              <Download size={15} /><span className="report-action-label">Export as .CSV</span><span className="report-action-short-label">CSV</span>
             </button>
 
             <button
+              className="report-action-button"
+              aria-label="Export active tab as Excel"
               onClick={() => exportToExcel()}
               title="Export the currently active tab as a styled Excel file (.xlsx)"
               style={{
@@ -1784,10 +1790,12 @@ export default function SbfpSpreadsheetReport() {
                 display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
               }}
             >
-              <FileDown size={15} /> Export as .xlsx
+              <FileDown size={15} /><span className="report-action-label">Export as .xlsx</span><span className="report-action-short-label">Excel</span>
             </button>
 
             <button
+              className="report-action-button"
+              aria-label="Export all tabs as Excel"
               onClick={exportAllTabsToExcel}
               title="Export all 6 tabs into a single styled multi-sheet Excel workbook (.xlsx)"
               style={{
@@ -1796,10 +1804,12 @@ export default function SbfpSpreadsheetReport() {
                 display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
               }}
             >
-              <Layers size={14} /> All Tabs (.xlsx)
+              <Layers size={14} /><span className="report-action-label">All Tabs (.xlsx)</span><span className="report-action-short-label">All</span>
             </button>
 
             <button
+              className="report-action-button"
+              aria-label="Print report"
               onClick={() => window.print()}
               style={{
                 height: 34, padding: '0 1rem', borderRadius: 6, border: '1px solid #2563eb',
@@ -1807,15 +1817,15 @@ export default function SbfpSpreadsheetReport() {
                 display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
               }}
             >
-              <Printer size={15} /> Print Report
+              <Printer size={15} /><span className="report-action-label">Print Report</span><span className="report-action-short-label">Print</span>
             </button>
           </div>
         </div>
 
         {/* Bottom Date Range & View Tabs Row */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #f1f5f9', paddingTop: '0.5rem' }}>
+        <div className="narrative-report-secondary-row" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #f1f5f9', paddingTop: '0.5rem' }}>
           
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div className="narrative-report-delivery-controls" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
               <Filter size={13} /> Delivery Month:
             </span>
@@ -1831,7 +1841,7 @@ export default function SbfpSpreadsheetReport() {
               ))}
             </select>
 
-            <div style={{ marginLeft: 12, borderLeft: '1px solid #e2e8f0', paddingLeft: 12, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <div className="narrative-report-date-range" style={{ marginLeft: 12, borderLeft: '1px solid #e2e8f0', paddingLeft: 12, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
               <label
                 style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', color: '#475569', cursor: 'pointer', fontWeight: 600 }}
                 title="When off, all SDOs are listed and delivered packs use the full school year (Aug 1 – today)."
@@ -1898,14 +1908,14 @@ export default function SbfpSpreadsheetReport() {
               )}
             </div>
 
-            <label style={{ marginLeft: 12, borderLeft: '1px solid #e2e8f0', paddingLeft: 12, display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: '#475569', cursor: 'pointer' }}>
+            <label className="narrative-report-excluded-toggle" style={{ marginLeft: 12, borderLeft: '1px solid #e2e8f0', paddingLeft: 12, display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: '#475569', cursor: 'pointer' }}>
               <input type="checkbox" checked={includeExcluded} onChange={e => setIncludeExcluded(e.target.checked)} />
               Show SDOs not marked “In Report?”
             </label>
           </div>
 
           {/* View Mode Tabs */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', background: '#f1f5f9', padding: 2, borderRadius: 6, gap: 2 }}>
+          <div className="narrative-report-tabs" style={{ display: 'flex', flexWrap: 'wrap', background: '#f1f5f9', padding: 2, borderRadius: 6, gap: 2 }}>
             {([
               ['master', 'SDO Masterlist', Table],
               ['senate_perf', '1. Procurement & Delivery', CircleDollarSign],
@@ -1936,7 +1946,7 @@ export default function SbfpSpreadsheetReport() {
       </div>
 
       {/* ?? KPI Summary Cards ?? */}
-      <div className="no-print" style={{
+      <div className="no-print narrative-report-kpis" style={{
         display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem',
         padding: '0.75rem 1.5rem', background: '#f8fafc', borderBottom: '1px solid #e2e8f0'
       }}>

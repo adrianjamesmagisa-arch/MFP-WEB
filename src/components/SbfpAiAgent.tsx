@@ -390,7 +390,9 @@ export function SbfpAiAgent({
       {/* 1. Header Trigger Button (Placed beside Reset & Export buttons) */}
       <button
         type="button"
+        className="report-ai-trigger"
         onClick={() => setIsOpen(true)}
+        aria-label="Open AI report assistant"
         title="Ask AI questions about the filtered SBFP SDO data and report metrics"
         style={{
           height: 34,

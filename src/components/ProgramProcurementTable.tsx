@@ -556,9 +556,10 @@ export function ProgramProcurementTable({
   const SW = { report: 60, status: 150, area: 140, region: 80 } as const
 
   return (
-    <div className="card" style={{ overflow: 'hidden' }}>
+    <div className="card center-procurement-card" style={{ overflow: 'hidden' }}>
       {editable && (
         <div
+          className="center-procurement-actions"
           style={{
             display: 'flex',
             justifyContent: 'flex-end',
@@ -631,9 +632,10 @@ export function ProgramProcurementTable({
           </button>
         </div>
       )}
-      <div style={{ overflow: 'auto', maxHeight: 'calc(100vh - 280px)' }}>
+      <p className="center-table-scroll-hint">Swipe horizontally to see all columns</p>
+      <div className="center-procurement-scroll" style={{ overflow: 'auto', maxHeight: 'calc(100vh - 280px)' }}>
         <table
-          className="data-table sbfp-center-table"
+          className="data-table sbfp-center-table center-procurement-table"
           style={{ minWidth: 3200, fontSize: '0.78rem', borderCollapse: 'separate', borderSpacing: 0 }}
         >
           <thead>

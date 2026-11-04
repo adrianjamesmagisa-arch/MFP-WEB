@@ -258,10 +258,11 @@ export function ProgramDropoffTable({
           </button>
         )}
       </div>
-      <div className="card" style={{ overflow: 'hidden' }}>
-        <div style={{ overflow: 'auto', maxHeight: 'calc(100vh - 320px)' }}>
+      <div className="card center-dropoff-card" style={{ overflow: 'hidden' }}>
+        <p className="center-table-scroll-hint">Swipe horizontally to see all columns</p>
+        <div className="center-dropoff-scroll" style={{ overflow: 'auto', maxHeight: 'calc(100vh - 320px)' }}>
           <table
-            className="data-table"
+            className="data-table center-dropoff-table"
             style={{ fontSize: '0.75rem', minWidth: 1100, borderCollapse: 'separate', borderSpacing: 0 }}
           >
             <thead>

@@ -139,7 +139,7 @@ export function ProgramCenterWorkspace({
 
       {schemaReady && (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+          <div className="center-workspace-kpis grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
             <div className="rounded-lg border bg-card p-3 text-center">
               <div className="text-2xl font-bold">{totalAreas}</div>
               <div className="text-xs text-muted-foreground mt-1">{areaColumnLabel}s</div>
@@ -174,7 +174,7 @@ export function ProgramCenterWorkspace({
             </div>
           </div>
 
-          <section className="flex flex-col gap-2">
+          <section className="center-procurement-section flex min-w-0 flex-col gap-2">
             <h2 className="text-base font-semibold">1. Procurement status</h2>
             <p className="text-xs text-muted-foreground">
               Same layout as SBFP SDO procurement, for calendar year {year}. One row per {inlineAreaNoun}.
