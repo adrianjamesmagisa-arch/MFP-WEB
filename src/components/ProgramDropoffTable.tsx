@@ -48,6 +48,7 @@ export function ProgramDropoffTable({
   year,
   month = 8,
   areaColumnLabel,
+  dropoffColumnLabel,
   parentOptions,
   initialRows,
   editable,
@@ -58,6 +59,7 @@ export function ProgramDropoffTable({
   year: number
   month?: number
   areaColumnLabel: string
+  dropoffColumnLabel?: string
   parentOptions: ParentOption[]
   initialRows: ProgramDropoffRow[]
   editable: boolean
@@ -70,6 +72,10 @@ export function ProgramDropoffTable({
   const [busyRowId, setBusyRowId] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   const reservedNamesRef = useRef<Set<string>>(new Set())
+  const isLds = programId === 'lds'
+  const resolvedDropoffColLabel = dropoffColumnLabel || (isLds ? 'Drop-offs' : 'Municipality')
+  const inlineAreaNoun = areaColumnLabel === 'SDO' ? 'SDO' : areaColumnLabel.toLowerCase()
+  const itemSingular = isLds ? 'drop-off' : 'municipality'
 
   useEffect(() => {
     setRows(initialRows)
@@ -121,7 +127,7 @@ export function ProgramDropoffTable({
   const addMunicipality = async () => {
     const parent = (filterParent && parentOptions.find(p => p.id === filterParent)) || parentOptions[0]
     if (!parent) {
-      alert(`Add a ${areaColumnLabel.toLowerCase()} in section 1 first, then you can add a municipality.`)
+      alert(`Add ${areaColumnLabel === 'SDO' ? 'an SDO' : `a ${inlineAreaNoun}`} in section 1 first, then you can add a ${itemSingular}.`)
       return
     }
     if (adding) return
@@ -136,7 +142,7 @@ export function ProgramDropoffTable({
         const reservedForProvince = [...reservedNamesRef.current]
           .filter(k => k.startsWith(`${provinceKey}\u0000`))
           .map(k => k.slice(provinceKey.length + 1))
-        const baseName = nextIncrementedName('New Municipality', [
+        const baseName = nextIncrementedName(isLds ? 'New Drop-off' : 'New Municipality', [
           ...sameProvinceNames,
           ...reservedForProvince,
         ])
@@ -172,14 +178,14 @@ export function ProgramDropoffTable({
         } finally {
           reservedNamesRef.current.delete(reserveKey)
         }
-      }, 'Adding municipality…', { blocking: false })
+      }, isLds ? 'Adding drop-off…' : 'Adding municipality…', { blocking: false })
     } finally {
       setAdding(false)
     }
   }
 
   const remove = async (id: string) => {
-    if (!confirm('Remove municipality drop-off and masterlist row?')) return
+    if (!confirm(isLds ? 'Remove drop-off and masterlist row?' : 'Remove municipality drop-off and masterlist row?')) return
     setBusyRowId(id)
     try {
       await runTask(async () => {
@@ -227,7 +233,7 @@ export function ProgramDropoffTable({
         <label style={{ fontSize: '0.8rem' }}>
           Filter {areaColumnLabel}:{' '}
           <select value={filterParent} onChange={e => setFilterParent(e.target.value)} style={{ marginLeft: 4 }}>
-            <option value="">All ({parentOptions.length} {areaColumnLabel.toLowerCase()}{parentOptions.length === 1 ? '' : 's'})</option>
+            <option value="">All ({parentOptions.length} {inlineAreaNoun}{parentOptions.length === 1 ? '' : 's'})</option>
             {parentOptions.map(p => (
               <option key={p.id} value={p.id}>
                 {p.displayLabel || p.label || 'Untitled'}
@@ -241,14 +247,14 @@ export function ProgramDropoffTable({
             className="btn btn-outline"
             onClick={addMunicipality}
             disabled={adding || parentOptions.length === 0}
-            title={parentOptions.length === 0 ? `Add a ${areaColumnLabel.toLowerCase()} in section 1 first` : undefined}
+            title={parentOptions.length === 0 ? `Add ${areaColumnLabel === 'SDO' ? 'an SDO' : `a ${inlineAreaNoun}`} in section 1 first` : undefined}
             style={{
               marginLeft: 'auto',
               fontSize: '0.8rem',
               cursor: adding ? 'wait' : parentOptions.length === 0 ? 'not-allowed' : 'pointer',
             }}
           >
-            {adding ? <Spinner size={14} /> : <Plus size={14} />} {adding ? 'Adding…' : 'Add municipality'}
+            {adding ? <Spinner size={14} /> : <Plus size={14} />} {adding ? 'Adding…' : `Add ${itemSingular}`}
           </button>
         )}
       </div>
@@ -261,7 +267,7 @@ export function ProgramDropoffTable({
             <thead>
               <tr>
                 <th style={stickyTh(SL.area, SW.area)}>{areaColumnLabel}</th>
-                <th style={stickyTh(SL.muni, SW.muni)}>Municipality</th>
+                <th style={stickyTh(SL.muni, SW.muni)}>{resolvedDropoffColLabel}</th>
                 <th style={{ textAlign: 'right', ...stickyTh(SL.bene, SW.bene, true) }}>Beneficiaries</th>
                 <th style={{ textAlign: 'right' }}>Feeding days</th>
                 <th style={{ textAlign: 'right' }}>Milk packs</th>
@@ -381,7 +387,7 @@ export function ProgramDropoffTable({
           </table>
           {filtered.length === 0 && (
             <p style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--gray-500)' }}>
-              No municipality drop-offs yet. Masterlist Division (F) and School (H) stay N/A for {programId.toUpperCase()}.
+              No {isLds ? 'drop-offs' : 'municipality drop-offs'} yet. Masterlist Division (F) and School (H) stay N/A for {programId.toUpperCase()}.
             </p>
           )}
         </div>

@@ -27,10 +27,11 @@ export default async function MonitoringProgramLayout({
   if (profile?.role === 'encoder') {
     encoderCenter = monitoringNavCenter(profile.center)
   }
+  const showProgramSidebar = programId === 'others' && !encoderCenter
 
   return (
     <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
-      {!encoderCenter && (
+      {showProgramSidebar && (
         <Suspense fallback={<aside style={{ width: 200, flexShrink: 0 }} />}>
           <MonitoringSubSidebar programId={programId} encoderCenter={encoderCenter} />
         </Suspense>
@@ -39,7 +40,11 @@ export default async function MonitoringProgramLayout({
         style={{
           flex: 1,
           overflowY: 'auto',
-          padding: encoderCenter ? '0.25rem 0.5rem 1.5rem' : '1.5rem',
+          padding: encoderCenter
+            ? '0.25rem 0.5rem 1.5rem'
+            : showProgramSidebar
+              ? '1.5rem'
+              : '0.75rem 1rem 1.25rem',
         }}
       >
         {children}

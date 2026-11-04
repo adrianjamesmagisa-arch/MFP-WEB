@@ -520,7 +520,7 @@ export function ProgramProcurementTable({
   const deleteRow = async (id: string) => {
     if (
       !confirm(
-        'Delete this procurement row? Linked municipalities and their masterlist rows will also be removed.',
+        `Delete this procurement row? Linked ${programId === 'lds' ? 'drop-offs' : 'municipalities'} and their masterlist rows will also be removed.`,
       )
     ) {
       return
@@ -627,7 +627,7 @@ export function ProgramProcurementTable({
             style={{ height: 36, padding: '0 0.85rem', lineHeight: 1, fontSize: '0.875rem', opacity: adding ? 0.6 : 1 }}
           >
             <Plus size={15} style={{ flexShrink: 0 }} />
-            <span>{adding ? 'Adding…' : `Add ${areaColumnLabel.toLowerCase()}`}</span>
+            <span>{adding ? 'Adding…' : `Add ${areaColumnLabel === 'SDO' ? 'SDO' : areaColumnLabel.toLowerCase()}`}</span>
           </button>
         </div>
       )}
@@ -666,7 +666,7 @@ export function ProgramProcurementTable({
                 Pack ₱
               </th>
               <th rowSpan={2} style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 145 }}>Mode of Procurement</th>
-              <th rowSpan={2} title="Applies to every municipality under this row in the masterlist">
+              <th rowSpan={2} title={`Applies to every ${programId === 'lds' ? 'drop-off' : 'municipality'} under this row in the masterlist`}>
                 Coop
               </th>
               <th rowSpan={2}>Date Recd (Proc)</th>
@@ -743,7 +743,7 @@ export function ProgramProcurementTable({
             {rows.length === 0 && (
               <tr>
                 <td colSpan={colSpan} style={{ textAlign: 'center', padding: '2rem', color: 'var(--gray-500)' }}>
-                  No procurement rows yet. Add a {areaColumnLabel.toLowerCase()} to group municipalities below.
+                  No procurement rows yet. Add {areaColumnLabel === 'SDO' ? 'an SDO' : `a ${areaColumnLabel.toLowerCase()}`} to group {programId === 'lds' ? 'drop-offs' : 'municipalities'} below.
                 </td>
               </tr>
             )}

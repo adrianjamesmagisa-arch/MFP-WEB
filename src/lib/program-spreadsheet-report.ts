@@ -16,7 +16,7 @@ import {
 import { sbfpCenterAliases } from '@/lib/center-aliases'
 import { REPORT_MIN_YEAR } from '@/lib/app-years'
 
-export type ProgramReportId = 'lgu' | 'dswd'
+export type ProgramReportId = 'lgu' | 'dswd' | 'lds'
 
 export interface ProgramReportMeta {
   id: ProgramReportId
@@ -65,6 +65,21 @@ export const PROGRAM_REPORT_META: Record<ProgramReportId, ProgramReportMeta> = {
       'SUPPLEMENTARY FEEDING PROGRAM FUNDED BY THE DEPARTMENT OF SOCIAL WELFARE AND DEVELOPMENT (DSWD)',
     majorSubtitle: 'DSWD Supplementary Feeding Program – Milk Proponent',
     majorEntityCountLabel: 'No. of Provinces',
+  },
+  lds: {
+    id: 'lds',
+    shortLabel: 'LDS',
+    masterTabLabel: 'LDS Masterlist',
+    entitySingular: 'SDO',
+    entityPlural: 'SDOs',
+    filteredKpiLabel: 'Filtered SDOs',
+    searchLabel: 'Search SDO',
+    searchPlaceholder: 'Search SDO or PO...',
+    printTitle: 'LDS Feeding Program — Milk Procurement Monitoring Report',
+    senatePrintTitle: 'LDS Milk Component — PCC Procurement & Delivery Monitoring Figures',
+    cdpBannerTitle: 'LDS MILK FEEDING PROGRAM',
+    majorSubtitle: 'LDS Feeding Program – Milk Proponent',
+    majorEntityCountLabel: 'No. of SDOs',
   },
 }
 

@@ -110,7 +110,7 @@ export default async function PacksDeliveredPage(props: {
       </div>
 
       {/* Top KPIs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
+      <div className="packs-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
         {[
           { label: 'Total Packs Delivered', value: formatNumber(totalPacks), color: '#0369a1', icon: '📦' },
           { label: 'Total Beneficiaries', value: formatNumber(totalBene), color: '#1d4ed8', icon: '👥' },
@@ -125,7 +125,7 @@ export default async function PacksDeliveredPage(props: {
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
+      <div className="packs-breakdown-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
         {/* By Milk Type */}
         <div className="card" style={{ padding: '1.5rem' }}>
           <h3 style={{ fontWeight: 700, color: 'var(--navy)', marginBottom: '1.25rem', fontSize: '1rem' }}>

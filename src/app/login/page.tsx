@@ -34,9 +34,9 @@ export default function LoginPage() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', background: 'var(--navy)' }}>
+    <div className="login-layout" style={{ minHeight: '100vh', display: 'flex', background: 'var(--navy)' }}>
       {/* Left branding panel */}
-      <div style={{
+      <div className="login-branding" style={{
         flex: 1, display: 'flex', flexDirection: 'column',
         alignItems: 'center', justifyContent: 'center',
         background: 'linear-gradient(135deg, var(--navy) 0%, var(--navy-700) 100%)',
@@ -61,7 +61,7 @@ export default function LoginPage() {
       </div>
 
       {/* Right login form */}
-      <div style={{
+      <div className="login-form-panel" style={{
         width: 440, display: 'flex', alignItems: 'center',
         justifyContent: 'center', background: 'white', padding: '3rem'
       }}>

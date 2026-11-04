@@ -110,6 +110,7 @@ export function SbfpCreateSchoolYearButton({
           }}
         >
           <div
+            className="program-create-dialog-card"
             onClick={e => e.stopPropagation()}
             style={{
               width: 'min(520px, 100%)',

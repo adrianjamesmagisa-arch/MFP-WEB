@@ -141,7 +141,7 @@ export function MfpProgramYearHub({
                 <ArrowRight size={20} style={{ color: program.accent }} />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, fontSize: '0.82rem' }}>
-                <Stat icon={<School size={14} />} label="Municipalities" value={formatNumber(y.municipalityCount)} />
+                <Stat icon={<School size={14} />} label={programId === 'lds' ? 'SDO' : 'Municipalities'} value={formatNumber(y.municipalityCount)} />
                 <Stat icon={<Users size={14} />} label="Beneficiaries" value={formatNumber(y.beneficiaries)} />
                 <Stat icon={<Package size={14} />} label="Target packs" value={formatNumber(y.targetPacks)} />
                 <Stat icon={<Package size={14} />} label="Delivered" value={formatNumber(y.deliveredPacks)} />

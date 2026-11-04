@@ -898,6 +898,354 @@ h1, h2, h3 {
   color: #64748b;
 }
 
+@media (max-width: 700px) {
+  .login-layout {
+    min-height: 100vh !important;
+    min-height: 100dvh !important;
+    flex-direction: column;
+  }
+
+  .login-branding {
+    flex: 0 0 auto !important;
+    padding: 1.5rem 1rem 1rem !important;
+  }
+
+  .login-branding > div > div:first-child {
+    width: 56px !important;
+    height: 56px !important;
+    margin-bottom: 0.8rem !important;
+    font-size: 1.7rem !important;
+  }
+
+  .login-branding h1 {
+    font-size: 1.25rem !important;
+  }
+
+  .login-branding p {
+    font-size: 0.8rem !important;
+  }
+
+  .login-form-panel {
+    width: 100% !important;
+    flex: 1 1 auto;
+    padding: 1.5rem 1.1rem 2rem !important;
+  }
+
+  .login-form-panel > div {
+    max-width: 440px !important;
+  }
+}
+
+/* Responsive application shell and shared page behavior */
+html,
+body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.app-shell-root {
+  display: flex;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-shell-sidebar {
+  height: 100%;
+  flex: 0 0 auto;
+}
+
+.app-shell-main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  width: 0;
+  min-width: 0;
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.app-shell-content {
+  width: 100%;
+  min-width: 0;
+  padding: 2rem;
+}
+
+.app-shell-content-full-bleed {
+  padding: 1rem 1.25rem 1.5rem;
+}
+
+.app-mobile-header,
+.app-shell-mobile-backdrop {
+  display: none;
+}
+
+.page-header {
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+}
+
+.page-header > * {
+  min-width: 0;
+}
+
+.report-table-container {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 900px) {
+  .app-shell-sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 1002;
+    width: min(20rem, 88vw);
+    height: 100dvh;
+    transform: translateX(-105%);
+    visibility: hidden;
+    transition: transform 0.22s ease, visibility 0.22s ease;
+  }
+
+  .app-shell-sidebar[data-mobile-open='true'] {
+    transform: translateX(0);
+    visibility: visible;
+  }
+
+  .app-shell-sidebar .sidebar,
+  .app-shell-sidebar .sidebar.collapsed {
+    width: min(20rem, 88vw);
+    height: 100dvh !important;
+    --sidebar-width: min(20rem, 88vw);
+  }
+
+  .app-shell-mobile-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1001;
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    background: rgba(2, 6, 23, 0.55);
+    cursor: pointer;
+  }
+
+  .app-mobile-header {
+    position: sticky;
+    top: 0;
+    z-index: 90;
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 0.75rem;
+    min-height: 52px;
+    padding: 0.35rem 0.75rem;
+    color: var(--navy);
+    background: #fff;
+    border-bottom: 1px solid var(--gray-200);
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.06);
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 0.9rem;
+    font-weight: 800;
+  }
+
+  .app-mobile-menu-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    color: var(--navy);
+    background: #fff;
+    cursor: pointer;
+  }
+
+  .app-shell-main {
+    width: 100%;
+    height: 100dvh;
+  }
+
+  .app-shell-content,
+  .app-shell-content-full-bleed {
+    padding: 0.9rem;
+  }
+
+  .dash-overview-title {
+    font-size: clamp(1.35rem, 5vw, 1.75rem);
+  }
+
+  .dash-chart-body {
+    min-height: 260px;
+  }
+
+  .dash-table-card,
+  .dash-chart-card {
+    padding: 0.85rem;
+  }
+
+  .dash-table-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .stat-card {
+    padding: 1rem;
+  }
+
+  .packs-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .stat-value {
+    font-size: 1.45rem;
+  }
+
+  .async-loading-modal {
+    padding: 0.75rem;
+  }
+
+  .async-loading-modal__card {
+    padding: 1.5rem 1rem;
+  }
+
+  .async-loading-modal__title {
+    font-size: 1.35rem;
+  }
+
+  .async-loading-modal__message {
+    font-size: 1rem;
+  }
+}
+
+@media (max-width: 600px) {
+  .app-shell-content,
+  .app-shell-content-full-bleed {
+    padding: 0.7rem;
+  }
+
+  .page-title {
+    font-size: 1.3rem;
+  }
+
+  .page-subtitle {
+    line-height: 1.45;
+  }
+
+  .page-header {
+    align-items: flex-start;
+    margin-bottom: 1rem;
+  }
+
+  .dashboard-filter-controls {
+    flex-wrap: wrap;
+    align-items: stretch !important;
+  }
+
+  .dashboard-filter-controls select {
+    flex: 1 1 130px;
+    width: auto !important;
+    min-width: 0;
+  }
+
+  .data-filters-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .data-filters-toolbar form {
+    flex: 1 1 100% !important;
+    max-width: none !important;
+  }
+
+  .data-filters-popover {
+    right: 0 !important;
+    left: auto !important;
+    width: min(340px, calc(100vw - 1.4rem)) !important;
+  }
+
+  .dash-kpi-grid {
+    gap: 0.65rem;
+  }
+
+  .dash-kpi-card {
+    padding: 0.9rem;
+  }
+
+  .dash-kpi-value {
+    font-size: 1.4rem;
+  }
+
+  .dash-table-tools {
+    width: 100%;
+  }
+
+  .dash-search {
+    min-width: 0;
+    flex: 1 1 100%;
+  }
+
+  .btn {
+    min-height: 40px;
+  }
+
+  input,
+  select,
+  textarea {
+    max-width: 100%;
+  }
+
+  .packs-breakdown-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 0.75rem !important;
+    margin-bottom: 1rem !important;
+  }
+
+  .packs-kpi-grid {
+    gap: 0.6rem !important;
+    margin-bottom: 1rem !important;
+  }
+
+  .packs-kpi-grid .stat-card,
+  .packs-breakdown-grid .card {
+    padding: 0.9rem !important;
+  }
+
+  .sbfp-viewer-overlay {
+    align-items: flex-end !important;
+    padding: 0.65rem !important;
+  }
+
+  .sbfp-viewer-dialog {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: calc(100dvh - 1.3rem);
+    overflow-y: auto;
+    padding: 1rem !important;
+    border-radius: 14px !important;
+  }
+
+  .sbfp-viewer-center-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.5rem !important;
+  }
+
+  .program-create-dialog-card {
+    width: 100% !important;
+    max-height: calc(100dvh - 2rem);
+    overflow-y: auto !important;
+    border-radius: 16px !important;
+  }
+}
+
 /* ==========================================================================
    GLOBAL PRINT ENGINE
    Ensures printouts only show the actual report/data content in clean landscape,

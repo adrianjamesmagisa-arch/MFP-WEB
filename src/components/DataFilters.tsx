@@ -678,7 +678,7 @@ export function DataFilters({ filterOptions }: { filterOptions?: FilterOptions }
   const otherGroups = standardGroups.filter(g => g.key !== 'year')
 
   return (
-    <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.25rem', position: 'relative' }}>
+    <div className="data-filters-toolbar" style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.25rem', position: 'relative' }}>
       {/* Search Bar */}
       <form onSubmit={handleSearchSubmit} style={{ position: 'relative', flex: 1, maxWidth: 400 }}>
         <div style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}>
@@ -712,7 +712,7 @@ export function DataFilters({ filterOptions }: { filterOptions?: FilterOptions }
 
         {/* Filter Popover Dropdown */}
         {isOpen && (
-          <div style={{
+          <div className="data-filters-popover" style={{
             position: 'absolute',
             top: '100%',
             left: 0,

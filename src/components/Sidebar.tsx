@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
   LayoutDashboard, Database, Users,
@@ -32,6 +32,7 @@ const reportItems = [
   { href: '/reports/pimd',           icon: BarChart3,      label: 'Factsheet' },
   { href: '/reports/sbfp-narrative', icon: FileBarChart2,  label: 'SBFP Report' },
   { href: '/reports/dswd-narrative', icon: FileBarChart2,  label: 'DSWD Report' },
+  { href: '/reports/lds-narrative',  icon: Church,         label: 'LDS Report' },
   { href: '/reports/lgu-narrative',  icon: FileBarChart2,  label: 'LGU Report' },
   { href: '/reports/summary-deped',  icon: BookOpenCheck,  label: 'Summary DepEd' },
   { href: '/reports/summary-lds',    icon: Church,         label: 'Summary LDS' },
@@ -48,7 +49,18 @@ export default function Sidebar({ userRole, userCenter, userName }: {
   const supabase = createClient()
   const { runAsync } = useAsyncFeedback()
   const [signingOut, setSigningOut] = useState(false)
-  const isCollapsed = pathname.includes('/edit') || pathname.includes('/add') || pathname.includes('/new') || pathname.includes('/bulk-edit')
+  const [isMobileViewport, setIsMobileViewport] = useState(false)
+  const routeUsesCompactSidebar =
+    pathname.includes('/edit') || pathname.includes('/add') || pathname.includes('/new') || pathname.includes('/bulk-edit')
+  const isCollapsed = routeUsesCompactSidebar && !isMobileViewport
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 900px)')
+    const updateViewport = () => setIsMobileViewport(media.matches)
+    updateViewport()
+    media.addEventListener('change', updateViewport)
+    return () => media.removeEventListener('change', updateViewport)
+  }, [])
 
   const isInReports = pathname.startsWith('/reports')
   const [reportsOpen, setReportsOpen] = useState(isInReports)

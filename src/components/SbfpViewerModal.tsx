@@ -46,10 +46,10 @@ export function SbfpViewerModal({ isOpen, onClose }: { isOpen: boolean; onClose:
   }
 
   return createPortal(
-    <div style={{
+    <div className="sbfp-viewer-overlay" style={{
       position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center'
     }}>
-      <div style={{
+      <div className="sbfp-viewer-dialog" style={{
         background: 'white', borderRadius: 12, width: '100%', maxWidth: 500, padding: '1.5rem',
         boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)', position: 'relative'
       }}>
@@ -84,7 +84,7 @@ export function SbfpViewerModal({ isOpen, onClose }: { isOpen: boolean; onClose:
             <Building size={16} />
             Centers
           </label>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem', marginBottom: '1rem' }}>
+          <div className="sbfp-viewer-center-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem', marginBottom: '1rem' }}>
             {CENTERS.map(center => (
               <button
                 key={center}

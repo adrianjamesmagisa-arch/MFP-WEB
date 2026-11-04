@@ -83,7 +83,7 @@ export function DashboardFilter({
   }, [router, searchParams, path, defaultYear])
 
   return (
-    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+    <div className="dashboard-filter-controls" style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
       {!isEncoder && (
         <select
           className="form-input"

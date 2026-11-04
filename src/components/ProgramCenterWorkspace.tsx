@@ -17,7 +17,7 @@ import {
 function areaLabel(programId: MonitoringProgramId): string {
   if (programId === 'dswd') return 'Province'
   if (programId === 'lgu') return 'LGU / Province'
-  if (programId === 'lds') return 'District / Area'
+  if (programId === 'lds') return 'SDO'
   return 'Area'
 }
 
@@ -45,6 +45,7 @@ export function ProgramCenterWorkspace({
   const program = MONITORING_PROGRAMS[programId]
   const editable = userRole !== 'viewer'
   const areaColumnLabel = areaLabel(programId)
+  const inlineAreaNoun = areaColumnLabel === 'SDO' ? 'SDO' : areaColumnLabel.toLowerCase()
   const [liveProcurement, setLiveProcurement] = useState(procurementRows)
   const [liveDropoffs, setLiveDropoffs] = useState(dropoffRows)
 
@@ -176,8 +177,8 @@ export function ProgramCenterWorkspace({
           <section className="flex flex-col gap-2">
             <h2 className="text-base font-semibold">1. Procurement status</h2>
             <p className="text-xs text-muted-foreground">
-              Same layout as SBFP SDO procurement, for calendar year {year}. One row per {areaColumnLabel.toLowerCase()}.
-              Coop, deliveries, and dates sync to every municipality under that row.{' '}
+              Same layout as SBFP SDO procurement, for calendar year {year}. One row per {inlineAreaNoun}.
+              Coop, deliveries, and dates sync to every {programId === 'lds' ? 'drop-off' : 'municipality'} under that row.{' '}
               <a href="#program-dropoffs" className="underline font-medium text-primary">
                 Jump to drop-off points ↓
               </a>
@@ -197,9 +198,11 @@ export function ProgramCenterWorkspace({
           </section>
 
           <section id="program-dropoffs" className="flex flex-col gap-2 scroll-mt-4">
-            <h2 className="text-base font-semibold">1b. Drop-off points (Municipalities)</h2>
+            <h2 className="text-base font-semibold">
+              {programId === 'lds' ? '1b. Drop-off points' : '1b. Drop-off points (Municipalities)'}
+            </h2>
             <p className="text-xs text-muted-foreground">
-              Municipalities under each {areaColumnLabel.toLowerCase()}. Beneficiaries and feeding days auto-calculate packs and sync to MFP Data (
+              {programId === 'lds' ? 'Drop-offs' : 'Municipalities'} under each {inlineAreaNoun}. Beneficiaries and feeding days auto-calculate packs and sync to MFP Data (
               {MFP_GEO_NA} for Division &amp; Elementary School).
             </p>
             <ProgramDropoffTable
@@ -207,6 +210,7 @@ export function ProgramCenterWorkspace({
               center={center}
               year={year}
               areaColumnLabel={areaColumnLabel}
+              dropoffColumnLabel={programId === 'lds' ? 'Drop-offs' : 'Municipality'}
               parentOptions={parentOptions}
               initialRows={dropoffRows}
               editable={editable}

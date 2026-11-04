@@ -2,6 +2,7 @@ import { redirect, notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { parseMonitoringProgram } from '@/lib/monitoring-programs'
 import { monitoringEncoderHomePath } from '@/lib/center-aliases'
+import { ProgramCenterSelector } from '@/components/ProgramCenterSelector'
 
 export default async function MonitoringProgramIndex({
   params,
@@ -24,5 +25,7 @@ export default async function MonitoringProgramIndex({
     redirect(monitoringEncoderHomePath(programId, profile.center))
   }
 
-  redirect(`/monitoring/${programId}/overall`)
+  if (programId === 'others') redirect(`/monitoring/${programId}/overall`)
+
+  return <ProgramCenterSelector programId={programId} />
 }
