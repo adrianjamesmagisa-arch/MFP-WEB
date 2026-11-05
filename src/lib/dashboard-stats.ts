@@ -418,7 +418,6 @@ export async function loadDashboardStats(
         (a, b) =>
           b.deped_target_milk_packs + b.dswd_target_milk_packs -
           (a.deped_target_milk_packs + a.dswd_target_milk_packs),
-      )
-      .slice(0, 8),
+      ),
   }
 }

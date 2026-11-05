@@ -1004,6 +1004,98 @@ body {
   display: none;
 }
 
+/* Reduce desktop page gutters while the sidebar and content share a laptop viewport. */
+@media (min-width: 901px) and (max-width: 1280px) {
+  .app-shell-content:not(.app-shell-content-full-bleed) {
+    padding: 1.25rem;
+  }
+}
+
+/* Keep report controls readable across tablet, laptop, and compact desktop widths. */
+@media (min-width: 601px) and (max-width: 1536px) {
+  .narrative-report {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .narrative-report-toolbar {
+    padding: 0.75rem 1rem !important;
+  }
+
+  .narrative-report-main-row,
+  .narrative-report-secondary-row {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr);
+    justify-content: stretch !important;
+    gap: 0.65rem !important;
+  }
+
+  .narrative-report-filter-fields {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+    width: 100%;
+    min-width: 0;
+    align-items: end;
+    gap: 0.5rem 0.65rem !important;
+  }
+
+  .narrative-report-filter-field {
+    min-width: 0;
+  }
+
+  .narrative-report-filter-field select,
+  .narrative-report-filter-field input,
+  .narrative-report-filter-field > div[title] {
+    box-sizing: border-box;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .narrative-report-actions {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(125px, 1fr));
+    width: 100%;
+    min-width: 0;
+    gap: 0.45rem !important;
+  }
+
+  .narrative-report-actions .report-action-button,
+  .narrative-report-actions .report-ai-trigger {
+    box-sizing: border-box;
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 40px;
+    height: auto !important;
+    padding: 0.45rem 0.55rem !important;
+    justify-content: center !important;
+    line-height: 1.2;
+  }
+
+  .narrative-report-secondary-row {
+    align-items: start !important;
+  }
+
+  .narrative-report-delivery-controls {
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+
+  .narrative-report-tabs {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .narrative-report-tabs > button {
+    flex: 1 1 128px;
+    min-width: 0;
+    min-height: 38px;
+    white-space: normal;
+    line-height: 1.2;
+  }
+}
+
 @media (max-width: 900px) {
   .app-shell-sidebar {
     position: fixed;

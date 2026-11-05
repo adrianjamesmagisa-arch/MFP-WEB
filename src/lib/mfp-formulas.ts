@@ -89,6 +89,17 @@ export function calcMilkFormulations(
   const days = Number(feedingDays) || 0
   if (bene <= 0 || days <= 0) return null
 
+  return calcMilkFormulationsFromPacks(bene * days, factorsOrMilkType)
+}
+
+/** Calculate volume and formulations from an encoder-entered milk-pack count. */
+export function calcMilkFormulationsFromPacks(
+  milkPacksInput: number,
+  factorsOrMilkType: MfpFormulaFactors | string | null | undefined = MFP_DEFAULT_FORMULAS,
+): MilkFormulationResult | null {
+  const milkPacks = Number(milkPacksInput)
+  if (!Number.isFinite(milkPacks) || milkPacks < 0) return null
+
   const factors: MfpFormulaFactors =
     factorsOrMilkType == null || typeof factorsOrMilkType === 'string'
       ? factorsForMilkType(factorsOrMilkType)
@@ -97,7 +108,6 @@ export function calcMilkFormulations(
   const milkTypeHint =
     typeof factorsOrMilkType === 'string' ? factorsOrMilkType : undefined
 
-  const milkPacks = bene * days
   const litersPerPack = factors.total_volume_factor
   const totalVol = milkPacks * litersPerPack
   const rawMilk = totalVol * factors.raw_milk_factor

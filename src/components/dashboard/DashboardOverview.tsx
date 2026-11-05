@@ -394,7 +394,7 @@ export function DashboardOverview({
         <div className="dash-card-head">
           <div>
             <h2 className="dash-card-title">
-              {isEncoder ? 'Program breakdown' : 'Top centers by target packs'}
+              {isEncoder ? 'Program breakdown' : 'Centers by target packs'}
             </h2>
             <p className="dash-card-desc">
               {isEncoder

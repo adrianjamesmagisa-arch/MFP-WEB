@@ -148,32 +148,30 @@ Section 1.
 | Feeding days       | Days of feeding (e.g. 120) — often from SDO or standard options |
 | Other remarks      | If your table includes editable remark columns |
 
-3.3 Auto-calculated (drop-off → masterlist / MFP)
--------------------------------------------------
-When beneficiaries and feeding days are both greater than zero, the system
-computes milk needs using **F5–F9** (same family as MFP Data formulations).
-These values sync to the DepEd school masterlist — **please do not type over
-calculated pack/volume fields** unless your coordinator says otherwise.
+3.3 Encoder-entered milk packs and calculated formulations
+----------------------------------------------------------
+Enter the approved milk-pack count in the editable F5 cell. The count is
+saved per school and synced to the DepEd school masterlist. Changing
+beneficiaries or feeding days does not recalculate the pack count.
 
-F5 — Milk packs (drop-off)
-  Milk packs = Beneficiaries × Feeding days
+F5 - Milk packs (drop-off)
+  Encoder-entered count; it is not calculated from beneficiaries and days.
 
-F6 — Total volume (liters)
+F6 - Total volume (liters)
   Liters per pack depends on milk type from the parent SDO:
-    • SM (Sterilized)     → 0.18 L per pack (180 ml)
-    • PM / CM / default   → 0.20 L per pack (200 ml)
-  Total volume (L) = Milk packs × Liters per pack
+    - SM (Sterilized)     -> 0.18 L per pack (180 ml)
+    - PM / CM / default   -> 0.20 L per pack (200 ml)
+  Total volume (L) = Milk packs x Liters per pack
 
-F7 — Raw milk (kg equivalent path uses volume)
-  Raw milk = Total volume (L) × 0.20
+F7 - Raw milk (kg equivalent path uses volume)
+  Raw milk = Total volume (L) x 0.20
 
-F8 — Whole milk powder, skim milk powder
-  Whole milk powder = Raw milk × 0.268
-  Skim milk powder    = Raw milk × 0.274
+F8 - Whole milk powder, skim milk powder
+  Whole milk powder = Raw milk x 0.268
+  Skim milk powder    = Raw milk x 0.274
 
-F9 — Sugar
-  Sugar = Total volume (L) × 0.02
-
+F9 - Sugar
+  Sugar = Total volume (L) x 0.02
 
 4. OTHER SECTIONS ON THE SBFP CENTER PAGE
 -----------------------------------------
@@ -190,11 +188,10 @@ is clearly editable.
 
 5. MFP DATA (DEPED ROWS)
 ------------------------
-DepEd-funded schools often appear in **MFP Data** after drop-off sync. Volume
-and formulation columns there use the same **F5–F9** logic. Encoder edits
-should focus on identifiers, dates, beneficiaries, and feeding days — not on
-duplicating formula results in Excel elsewhere.
-
+DepEd-funded schools often appear in **MFP Data** after drop-off sync. Their
+encoder-entered pack count and calculated volume/formulation values sync from
+SBFP. Change the pack count in the SBFP drop-off table rather than editing the
+synced MFP row separately, so both views remain aligned.
 
 6. SBFP REPORT (SIDEBAR → REPORTS)
 -----------------------------------

@@ -28,6 +28,7 @@ export function SbfpCenterWorkspace({
   dropoffRows = [],
   dropoffSchemaReady = true,
   feedingDaysReady = true,
+  milkPacksReady = true,
   userRole,
   showKpis = true,
   schoolYearsHubHref,
@@ -44,6 +45,7 @@ export function SbfpCenterWorkspace({
   dropoffRows?: DropoffRow[]
   dropoffSchemaReady?: boolean
   feedingDaysReady?: boolean
+  milkPacksReady?: boolean
   userRole?: string | null
   showKpis?: boolean
   /** Link back to school-year list (no ?sy=). */
@@ -182,10 +184,16 @@ export function SbfpCenterWorkspace({
       <section id="dropoff-points" className="flex flex-col gap-2 scroll-mt-4 w-full min-w-0">
         <h2 className="text-base font-semibold">1b. Drop-off Points (Schools)</h2>
         <p className="text-xs text-muted-foreground">
-          Schools / drop-off points under each SDO. Enter <strong>beneficiaries</strong> and <strong>feeding days</strong> —
-          milk packs and formulations auto-calculate and update the DepEd school masterlist.
+          Schools / drop-off points under each SDO. Enter <strong>beneficiaries</strong>, <strong>feeding days</strong>, and <strong>milk packs</strong> —
+          volume and formulations calculate from the encoder-entered pack count and update the DepEd school masterlist.
         </p>
-        {!dropoffSchemaReady ? (
+        {!milkPacksReady ? (
+          <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            The SBFP drop-off database migrations are incomplete. Apply the drop-off migrations, including{' '}
+            <code className="text-xs">20261105090000_sbfp_dropoff_manual_milk_packs.sql</code>, then refresh this page.
+            Milk-pack editing stays unavailable until the required column exists.
+          </div>
+        ) : !dropoffSchemaReady ? (
           <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
             Drop-off table is not in the database yet. Open{' '}
             <a className="underline font-semibold" href="/api/apply-dropoff-migration" target="_blank" rel="noreferrer">
@@ -198,7 +206,7 @@ export function SbfpCenterWorkspace({
           <>
             {!feedingDaysReady && (
               <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                Run this in Supabase SQL Editor to enable Feeding Days / auto milk packs:
+                Run this in Supabase SQL Editor to enable Feeding Days and milk-pack input:
                 <pre className="mt-2 text-xs whitespace-pre-wrap bg-white/70 p-2 rounded border">
 {`ALTER TABLE public.sbfp_dropoff_points
   ADD COLUMN IF NOT EXISTS feeding_days INTEGER NOT NULL DEFAULT 0;`}
@@ -217,7 +225,7 @@ export function SbfpCenterWorkspace({
                 milk_type: r.milk_type,
               }))}
               initialRows={dropoffRows}
-              editable={editable && feedingDaysReady}
+              editable={editable && feedingDaysReady && milkPacksReady}
               pruneSbfpDataId={pruneDropoffForSbfpId}
               onPruneComplete={clearDropoffPrune}
             />

@@ -73,8 +73,12 @@ export default async function CenterSbfpMasterlist({
   const hiringRows = all.filter(r => r.milk_type === SBFP_HIRING_TYPE).map(toHiringRow)
   const dropoffs = (dropoffRes.error ? [] : (dropoffRes.data || [])) as unknown as SbfpDropoffPoint[]
   const dropoffSchemaReady = !dropoffRes.error
-  const { error: feedingErr } = await supabase.from('sbfp_dropoff_points').select('feeding_days').limit(1)
+  const [{ error: feedingErr }, { error: milkPacksErr }] = await Promise.all([
+    supabase.from('sbfp_dropoff_points').select('feeding_days').limit(1),
+    supabase.from('sbfp_dropoff_points').select('milk_packs').limit(1),
+  ])
   const feedingDaysReady = !feedingErr
+  const milkPacksReady = !milkPacksErr
 
   return (
     <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading…</div>}>
@@ -91,6 +95,7 @@ export default async function CenterSbfpMasterlist({
         dropoffRows={dropoffs}
         dropoffSchemaReady={dropoffSchemaReady}
         feedingDaysReady={feedingDaysReady}
+        milkPacksReady={milkPacksReady}
         userRole={profile?.role}
       />
     </Suspense>

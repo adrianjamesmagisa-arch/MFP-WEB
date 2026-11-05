@@ -51,8 +51,10 @@ export interface SbfpDropoffPoint {
   sdo: string
   dropoff_name: string
   beneficiaries: number
-  /** Encoder-entered feeding days → milk packs = beneficiaries × days. */
+  /** Encoder-entered feeding days. */
   feeding_days?: number | null
+  /** Encoder-entered pack count; volume and formulation values derive from this. */
+  milk_packs: number
   district: string | null
   municipality: string | null
   province: string | null

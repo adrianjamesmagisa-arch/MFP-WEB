@@ -19,6 +19,15 @@ export function SpreadsheetStyle() {
         gap: 10px;
         margin-bottom: 20px;
         flex-wrap: wrap;
+        min-width: 0;
+      }
+
+      .report-wrapper,
+      .report-content {
+        box-sizing: border-box;
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
       }
       
       .report-nav button {
@@ -45,7 +54,10 @@ export function SpreadsheetStyle() {
       }
 
       .report-table-container {
+        max-width: 100%;
         overflow-x: auto;
+        overscroll-behavior-x: contain;
+        -webkit-overflow-scrolling: touch;
         margin-bottom: 40px;
         background: white;
         padding-bottom: 10px;
@@ -101,6 +113,38 @@ export function SpreadsheetStyle() {
 
       .print-header {
         display: none;
+      }
+
+      @media (max-width: 1280px) {
+        .report-nav {
+          gap: 8px;
+          margin-bottom: 16px;
+        }
+
+        .report-nav button {
+          flex: 1 1 150px;
+          min-width: 0;
+          padding: 8px 10px;
+          line-height: 1.25;
+        }
+
+        .report-nav button.print-btn {
+          flex: 1 1 100%;
+          margin-left: 0;
+        }
+      }
+
+      @media (max-width: 700px) {
+        .report-nav {
+          gap: 6px;
+          margin-bottom: 12px;
+        }
+
+        .report-nav button {
+          flex-basis: calc(50% - 3px);
+          padding: 8px;
+          font-size: 12px;
+        }
       }
 
       @media print {

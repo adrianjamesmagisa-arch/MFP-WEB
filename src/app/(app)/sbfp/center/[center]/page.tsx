@@ -89,7 +89,12 @@ export default async function SbfpCenterPage({
   const dropoffs = (dropoffRes.error ? [] : (dropoffRes.data || [])) as unknown as SbfpDropoffPoint[]
   const dropoffSchemaReady = !dropoffRes.error
   // feeding_days is included in the lean select — ready if that column query succeeded.
-  const feedingDaysReady = dropoffSchemaReady
+  const [{ error: feedingErr }, { error: milkPacksErr }] = await Promise.all([
+    supabase.from('sbfp_dropoff_points').select('feeding_days').limit(1),
+    supabase.from('sbfp_dropoff_points').select('milk_packs').limit(1),
+  ])
+  const feedingDaysReady = !feedingErr
+  const milkPacksReady = !milkPacksErr
 
   return (
     <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading…</div>}>
@@ -106,6 +111,7 @@ export default async function SbfpCenterPage({
         dropoffRows={dropoffs}
         dropoffSchemaReady={dropoffSchemaReady}
         feedingDaysReady={feedingDaysReady}
+        milkPacksReady={milkPacksReady}
         userRole={profile?.role}
         schoolYearsHubHref={workspaceBase}
       />

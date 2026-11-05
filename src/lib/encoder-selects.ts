@@ -48,6 +48,7 @@ export const SBFP_DROPOFF_ENCODER_COLUMNS = [
   'dropoff_name',
   'beneficiaries',
   'feeding_days',
+  'milk_packs',
   'district',
   'municipality',
   'province',

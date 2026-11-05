@@ -5,17 +5,17 @@ import { createClient } from '@/lib/supabase/client'
 import { Plus, Trash2 } from 'lucide-react'
 import type { SbfpDropoffPoint } from '@/lib/types'
 import {
-  resolveDropoffFeedingDays,
   parseFeedingDaysFromText,
   composeSdoWithMilkType,
   compareSbfpEncoderRows,
   isPlaceholderDropoffName,
 } from '@/lib/sbfp-dropoff-sync'
-import { calcMilkFormulations, litersPerPackForMilkType } from '@/lib/mfp-formulas'
+import { calcMilkFormulationsFromPacks, litersPerPackForMilkType } from '@/lib/mfp-formulas'
 import { inferSbfpMilkType, normalizeSbfpMilkType } from '@/lib/sbfp-pack-price'
 import { logCenterActivity } from '@/lib/center-activity'
 
 export type DropoffRow = SbfpDropoffPoint
+const MAX_MILK_PACKS_PER_DROPOFF = 2_147_483_647
 
 async function apiSyncDropoff(dropoff: DropoffRow): Promise<string | null> {
   const res = await fetch('/api/sbfp/sync-dropoff', {
@@ -73,7 +73,7 @@ function nextDefaultDropoffName(
 }
 
 function EditableText({
-  value, align = 'left', type = 'text', disabled, onCommit, title, cellStyle, wrap,
+  value, align = 'left', type = 'text', disabled, onCommit, title, cellStyle, wrap, min, max, step,
 }: {
   value: string | number | null | undefined
   align?: 'left' | 'right' | 'center'
@@ -84,6 +84,9 @@ function EditableText({
   cellStyle?: CSSProperties
   /** Allow long text to wrap fully inside the cell (no ellipsis / clipping). */
   wrap?: boolean
+  min?: number
+  max?: number
+  step?: number
 }) {
   const [editing, setEditing] = useState(false)
   const [val, setVal] = useState<string>(value == null ? '' : String(value))
@@ -167,6 +170,9 @@ function EditableText({
           <input
             ref={inputRef}
             type={type}
+            min={min}
+            max={max}
+            step={step}
             value={val}
             onChange={e => setVal(e.target.value)}
             onBlur={save}
@@ -339,11 +345,20 @@ export function SbfpDropoffTable({
   const updateField = async (id: string, field: keyof DropoffRow, value: any) => {
     const prev = rows.find(r => r.id === id)
     if (!prev) return
+    setMsg(null)
     if (isPlaceholderDropoffName(prev.dropoff_name)) {
       appendSessionAddedId(id)
     }
 
     let patch: Partial<DropoffRow> = { [field]: value }
+    if (field === 'milk_packs') {
+      const packs = Number(value)
+      if (!Number.isSafeInteger(packs) || packs < 0 || packs > MAX_MILK_PACKS_PER_DROPOFF) {
+        setMsg('Milk packs must be a whole number between 0 and 2,147,483,647.')
+        return
+      }
+      patch = { milk_packs: packs }
+    }
     if (field === 'sbfp_data_id') {
       const opt = sdoSelectOptions.find(o => o.id === value)
       const inferredDays =
@@ -414,6 +429,7 @@ export function SbfpDropoffTable({
       dropoff_name,
       beneficiaries: 0,
       feeding_days: inferredDays,
+      milk_packs: 0,
       district: '',
       municipality: '',
       province: '',
@@ -564,10 +580,10 @@ export function SbfpDropoffTable({
                 <th style={{ ...stickyTh(SL.sdo, SW.sdo) }}>SDO</th>
                 <th style={{ ...stickyTh(SL.school, SW.school, true, true) }}>Drop-off Point (School)</th>
                 <th style={{ minWidth: 110, textAlign: 'right' }}>Beneficiaries</th>
-                <th style={{ minWidth: 100, textAlign: 'right' }} title="Encoder input — Milk packs = Beneficiaries × Feeding days">
+                <th style={{ minWidth: 100, textAlign: 'right' }} title="Encoder input">
                   Feeding Days
                 </th>
-                <th style={{ minWidth: 110, textAlign: 'right', background: '#1e3a5f' }} title="= Beneficiaries × Feeding days">
+                <th style={{ minWidth: 110, textAlign: 'right', background: '#1e3a5f' }} title="Encoder input; volume and formulations calculate from this value">
                   Milk Packs
                 </th>
                 <th
@@ -611,12 +627,7 @@ export function SbfpDropoffTable({
                   inferSbfpMilkType(parentOpt?.sdo, parentOpt?.remarks, r.sdo) ||
                   normalizeSbfpMilkType(parentOpt?.milk_type) ||
                   'PM'
-                const days = resolveDropoffFeedingDays(r, parentOpt ? {
-                  feeding_days: parentOpt.feeding_days,
-                  sdo: parentOpt.sdo,
-                  remarks: parentOpt.remarks,
-                } : null)
-                const calc = calcMilkFormulations(Number(r.beneficiaries) || 0, days, milkType)
+                const calc = calcMilkFormulationsFromPacks(Number(r.milk_packs) || 0, milkType)
                 const fmt4 = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 4 })
                 const displaySdo =
                   (parentOpt
@@ -686,13 +697,22 @@ export function SbfpDropoffTable({
                       type="number"
                       align="right"
                       disabled={!editable}
-                      title="Type feeding days — milk packs = beneficiaries × days (saves to masterlist)"
+                      title="Type feeding days (saves to the masterlist)"
                       cellStyle={{ background: 'rgba(16,185,129,0.06)' }}
                       onCommit={v => updateField(r.id, 'feeding_days', Number(v) > 0 ? Number(v) : 0)}
                     />
-                    <td style={{ textAlign: 'right', background: 'rgba(59,130,246,0.06)', fontWeight: 600 }}>
-                      {calc ? calc.milkPacks.toLocaleString() : '—'}
-                    </td>
+                    <EditableText
+                      value={r.milk_packs ?? 0}
+                      type="number"
+                      min={0}
+                      max={MAX_MILK_PACKS_PER_DROPOFF}
+                      step={1}
+                      align="right"
+                      disabled={!editable}
+                      title="Enter the milk-pack count; volume and formulations update from this number"
+                      cellStyle={{ background: 'rgba(59,130,246,0.06)', fontWeight: 600 }}
+                      onCommit={v => updateField(r.id, 'milk_packs', v == null ? 0 : Number(v))}
+                    />
                     <td
                       style={{ textAlign: 'right', background: 'rgba(59,130,246,0.04)' }}
                       title={calc ? `Packs × ${volFactor} (${milkType === 'SM' ? '180 ml SM' : '200 ml PM'})` : undefined}

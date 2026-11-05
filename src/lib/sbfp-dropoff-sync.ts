@@ -1,11 +1,11 @@
 /**
  * Sync SBFP drop-off schools into mfp_data masterlist.
  * Identity fields always refresh from drop-off/SDO; HQ money fields are preserved.
- * Milk packs + formulations recompute when beneficiaries + feeding_days are set.
+ * Encoder-entered milk packs remain authoritative; formulations derive from that count.
  * SDO delivery_start / delivery_end push to masterlist date_started / date_completed.
  */
 
-import { calcMilkFormulations } from '@/lib/mfp-formulas'
+import { calcMilkFormulationsFromPacks } from '@/lib/mfp-formulas'
 import { fetchAllRows } from '@/lib/supabase-paginate'
 import { toDateInputValue, totalPacksDelivered, type SbfpRawMilkRow } from '@/lib/sbfp-raw-milk'
 export { inferSbfpMilkType, normalizeSbfpMilkType } from '@/lib/sbfp-pack-price'
@@ -20,6 +20,7 @@ export type SbfpDropoffRow = {
   dropoff_name: string
   beneficiaries?: number | null
   feeding_days?: number | null
+  milk_packs?: number | null
   district?: string | null
   municipality?: string | null
   province?: string | null
@@ -350,7 +351,7 @@ export function resolveDropoffFeedingDays(
   )
 }
 
-/** Build identity + auto milk packs / formulations for mfp_data upsert. */
+/** Build identity + encoder-entered milk packs / derived formulations for mfp_data upsert. */
 export function buildMasterlistIdentity(
   dropoff: SbfpDropoffRow,
   parent?: SbfpParentSdo | null,
@@ -410,22 +411,16 @@ export function buildMasterlistIdentity(
     payload.supplier_id = parent.supplier_id || null
   }
 
-  const calc = calcMilkFormulations(beneficiaries, feedingDays, milkType || 'PM')
+  const milkPacks = Math.max(0, Math.trunc(Number(dropoff.milk_packs) || 0))
+  const calc = calcMilkFormulationsFromPacks(milkPacks, milkType || 'PM')
+  payload.milk_packs = milkPacks
   if (calc) {
-    // Encoder-driven volume columns — always refresh from drop-off formula
-    payload.milk_packs = calc.milkPacks
+    // Pack count is encoder-entered; volume and formulations follow that count.
     payload.total_volume_requirements = Number(calc.totalVol.toFixed(4))
     payload.raw_milk_liters = Number(calc.rawMilk.toFixed(4))
     payload.whole_milk_kg = Number(calc.wholeMilk.toFixed(4))
     payload.skimmed_milk_kg = Number(calc.skimMilk.toFixed(4))
     payload.sugar = Number(calc.sugar.toFixed(4))
-  } else if (beneficiaries <= 0 || feedingDays <= 0) {
-    payload.milk_packs = 0
-    payload.total_volume_requirements = 0
-    payload.raw_milk_liters = 0
-    payload.whole_milk_kg = 0
-    payload.skimmed_milk_kg = 0
-    payload.sugar = 0
   }
 
   return payload

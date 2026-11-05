@@ -350,7 +350,7 @@ export default function PIMDReportPage() {
     // Supabase API max rows per request is typically 1000 — using a larger PAGE_SIZE
     // previously stopped after the first batch (1000 < 10000) and dropped SM/Karabao rows.
     const PAGE_SIZE = 1000
-    const selectCols = 'beneficiaries,milk_packs,milk_cost,total_funds_transferred,funded_by,center,province,division,municipality,elementary_school,milk_type,total_volume_requirements,supplier_id,date_started,date_completed,target_milk_packs_to_deliver,total_milk_packs_delivered,raw_milk_liters,price,feeding_days'
+    const selectCols = 'beneficiaries,milk_packs,milk_cost,total_funds_transferred,funded_by,center,province,division,municipality,elementary_school,milk_type,total_volume_requirements,supplier_id,date_started,date_completed,target_milk_packs_to_deliver,total_milk_packs_delivered,raw_milk_liters,price,feeding_days,source_dropoff_id'
     let allRows: any[] = []
     let offset = 0
     let hasMore = true
@@ -536,6 +536,7 @@ export default function PIMDReportPage() {
 
     const rowPacks = (r: any) => {
       const direct = Number(r.milk_packs) || 0
+      if (r.source_dropoff_id) return direct
       if (direct > 0) return direct
       const calc = calcMilkFormulations(
         Number(r.beneficiaries) || 0,
