@@ -44,6 +44,7 @@ export type SbfpReportSourceRow = SbfpRawMilkRow & {
   status_of_payment?: string | null
   remarks?: string | null
   supplier_id?: string | null
+  created_at?: string | null
   payment_entries?: Array<{ date?: string; amount?: number | null }> | null
   cooperatives?: { name?: string | null } | null
 }

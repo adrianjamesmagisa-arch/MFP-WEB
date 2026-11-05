@@ -40,11 +40,12 @@ import {
   normalizeSbfpMilkType,
   inferSbfpMilkType,
 } from '@/lib/sbfp-dropoff-sync'
-import { excludeAuxSbfp, isSbfpAuxRow } from '@/lib/sbfp-aux'
+import { excludeAuxSbfp, isSbfpAuxRow, SBFP_HIRING_TYPE, SBFP_PPMP_TYPE, toHiringRow, toPpmpRow } from '@/lib/sbfp-aux'
 import { sbfpCenterAliases, sbfpNavCenter } from '@/lib/center-aliases'
 import { milkTypeLabel } from '@/lib/sbfp-pack-price'
 import { rawMilkUtilizedLiters, packsForMonth } from '@/lib/sbfp-raw-milk'
 import { SbfpAiAgent } from '@/components/SbfpAiAgent'
+import { buildSbfpProgressDocx, type ProgressFinanceRow, type ProgressHiringRow, type ProgressPpmpRow, type ProgressReportPayload } from '@/lib/sbfp-progress-docx'
 import {
   MAJOR_INDICATORS,
   HISTORICAL_SCHOOL_YEARS,
@@ -90,6 +91,7 @@ type ReportTab =
   | 'milk_procurement'
   | 'monthly_cummulated'
   | 'major_accomplishments'
+  | 'progress_docx'
 
 const th: CSSProperties = { border: '1px solid #cbd5e1', padding: '8px 8px', textAlign: 'right', whiteSpace: 'normal', lineHeight: 1.2 }
 const thC: CSSProperties = { ...th, textAlign: 'center' }
@@ -119,6 +121,11 @@ const DELIVERY_MONTHS = [
   { value: '11', label: 'November' },
   { value: '12', label: 'December' },
 ] as const
+
+function currentYearMonth(): string {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+}
 
 const IMPLEMENTATION_STATUS_COLORS: Record<SbfpProcurementStatus, string> = {
   'For Preparation': '#92400e',
@@ -159,6 +166,13 @@ export default function SbfpSpreadsheetReport() {
   const [filterMonth, setFilterMonth]       = useState('')
   const [searchQuery, setSearchQuery]       = useState('')
   const [activeTab, setActiveTab]           = useState<ReportTab>('master')
+  const [progressReportMonth, setProgressReportMonth] = useState(currentYearMonth)
+  const [progressPpmp, setProgressPpmp] = useState<ProgressPpmpRow[]>([])
+  const [progressHiring, setProgressHiring] = useState<ProgressHiringRow[]>([])
+  const [progressFinance, setProgressFinance] = useState<ProgressFinanceRow[]>([])
+  const [progressSupplementalLoading, setProgressSupplementalLoading] = useState(false)
+  const [progressSupplementalWarning, setProgressSupplementalWarning] = useState<string | null>(null)
+  const [progressDocxExporting, setProgressDocxExporting] = useState(false)
 
   // Milk Procurement Status 'As Of' dropdown states
   const [milkAsOfMonth, setMilkAsOfMonth]   = useState<string>('ALL')
@@ -405,6 +419,155 @@ export default function SbfpSpreadsheetReport() {
   const distinctStatuses = SBFP_STATUS_FILTER_OPTIONS.filter(o => o.value !== 'ALL')
 
   const dbYearNum = parseInt(year, 10)
+
+  const currentMonthValue = currentYearMonth()
+  const currentYearValue = Number(currentMonthValue.slice(0, 4))
+  const progressMonthMinimum = Number.isFinite(dbYearNum) ? `${dbYearNum}-08` : ''
+  const reportYearMonthMaximum = Number.isFinite(dbYearNum) ? `${dbYearNum}-12` : ''
+  const progressMonthMaximum = dbYearNum > currentYearValue
+    ? progressMonthMinimum
+    : dbYearNum === currentYearValue
+      ? (currentMonthValue < reportYearMonthMaximum ? currentMonthValue : reportYearMonthMaximum)
+      : reportYearMonthMaximum
+  const progressMonthAvailable = Number.isFinite(dbYearNum) && dbYearNum <= currentYearValue && progressMonthMaximum >= progressMonthMinimum
+  const selectedProgressMonth = progressMonthAvailable && progressReportMonth >= progressMonthMinimum && progressReportMonth <= progressMonthMaximum
+    ? progressReportMonth
+    : progressMonthMaximum
+  const progressMonthEnd = useMemo(() => {
+    if (!/^\d{4}-\d{2}$/.test(selectedProgressMonth)) return ''
+    const [reportYear, reportMonth] = selectedProgressMonth.split('-').map(Number)
+    return `${reportYear}-${String(reportMonth).padStart(2, '0')}-${String(new Date(reportYear, reportMonth, 0).getDate()).padStart(2, '0')}`
+  }, [selectedProgressMonth])
+
+  const progressReportPayload = useMemo<ProgressReportPayload | null>(() => {
+    if (!progressMonthEnd || !Number.isFinite(dbYearNum)) return null
+    const reportRows = (records as SbfpReportSourceRow[]).filter(row =>
+      sbfpRowVisibleInReportDefault(row),
+    )
+    const reportStatusMap = buildSdoHierarchyStatusMap(reportRows, {
+      completionCutoffIso: progressMonthEnd,
+      dbYear: dbYearNum,
+    })
+    const procurements = reportRows.map(row => {
+      const sdoKey = uniqueSdoCountKey(row.sdo, row.center) || String(row.id || '')
+      return {
+        ...row,
+        packs_to_deliver: effectivePacksToDeliver(row),
+        reportStatus: reportStatusMap.get(sdoKey) || effectiveSbfpRowStatus(row, {
+          completionCutoffIso: progressMonthEnd,
+          dbYear: dbYearNum,
+        }),
+        reportSdoKey: sdoKey,
+        reportDelivered: resolveDeliveredPacksForReport(row, {
+          deliveredFromIso: `${dbYearNum}-08-01`,
+          deliveredToIso: progressMonthEnd,
+          dbYear: dbYearNum,
+        }),
+      }
+    })
+    return {
+      monthLabel: new Date(`${selectedProgressMonth}-01T12:00:00`).toLocaleDateString('en-PH', { month: 'long' }),
+      monthEnd: progressMonthEnd,
+      schoolYear: schoolYearOptions.find(option => String(schoolYearToDbYear(option)) === year) || dbYearToSchoolYear(dbYearNum),
+      dbYear: dbYearNum,
+      centers: Array.from(new Set(reportRows.map(row => String(row.center || '')).filter(Boolean))),
+      procurements,
+      ppmp: progressPpmp,
+      hiring: progressHiring,
+      finance: progressFinance,
+    }
+  }, [dbYearNum, progressMonthEnd, records, progressFinance, progressHiring, progressPpmp, schoolYearOptions, selectedProgressMonth, year])
+
+  const progressPreview = useMemo(() => {
+    if (!progressReportPayload) return null
+    const rows = progressReportPayload.procurements
+    const visibleRows = rows.filter(row => row.sdo?.trim() && row.center?.trim())
+    const sdoKeys = new Set(visibleRows.map(row => row.reportSdoKey || `${row.center}|${row.sdo}`))
+    const delivered = visibleRows.reduce((total, row) => total + Math.max(0, Number(row.reportDelivered) || 0), 0)
+    const planned = visibleRows.reduce((total, row) => total + Math.max(0, Number(row.packs_to_deliver) || 0), 0)
+    const statusCounts = new Map<string, number>()
+    const countedSdos = new Set<string>()
+    for (const row of visibleRows) {
+      const key = row.reportSdoKey || `${row.center}|${row.sdo}`
+      if (countedSdos.has(key)) continue
+      countedSdos.add(key)
+      const status = row.reportStatus || row.procurement_status || '—'
+      statusCounts.set(status, (statusCounts.get(status) || 0) + 1)
+    }
+    const ppmpCategories = ['office_supplies', 'training', 'fixtures'].map(category => {
+      const items = progressReportPayload.ppmp.filter(row => row.category === category && (row.item_name?.trim() || Number(row.amount) || row.status?.trim()))
+      return { category, count: items.length, amount: items.reduce((total, row) => total + (Number(row.amount) || 0), 0) }
+    })
+    const sumFinance = (field: 'allotment' | 'obligation' | 'disbursement') => progressReportPayload.finance.reduce((total, row) => total + (Number(row[field]) || 0), 0)
+    return { sdoCount: sdoKeys.size, delivered, planned, statusCounts, ppmpCategories, sumFinance }
+  }, [progressReportPayload])
+
+  useEffect(() => {
+    if (activeTab !== 'progress_docx' || !progressMonthAvailable) return
+    let active = true
+    // Loading is a UI response to entering this report tab while its source tables are read.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setProgressSupplementalLoading(true)
+    setProgressSupplementalWarning(null)
+    let auxQuery = supabase.from('sbfp_data')
+        .select('id,year,center,region,sdo,procurement_status,milk_type,amount,delivery_schedule,mode_of_procurement,pr_date_received,pr_number,ors_date,po_number,remarks')
+        .eq('year', dbYearNum)
+        .or(`milk_type.eq.${SBFP_PPMP_TYPE},milk_type.like.__PPMP_%,milk_type.eq.${SBFP_HIRING_TYPE}`)
+        .order('center')
+    let financeQuery = supabase.from('sbfp_financial_accomplishment')
+        .select('center,allotment,obligation,disbursement')
+        .eq('year', dbYearNum)
+        .order('center')
+    if (lockedCenter) {
+      const aliases = sbfpCenterAliases(lockedCenter)
+      if (aliases.length === 1) {
+        auxQuery = auxQuery.eq('center', aliases[0])
+        financeQuery = financeQuery.eq('center', aliases[0])
+      } else if (aliases.length > 1) {
+        auxQuery = auxQuery.in('center', aliases)
+        financeQuery = financeQuery.in('center', aliases)
+      } else {
+        auxQuery = auxQuery.eq('center', lockedCenter)
+        financeQuery = financeQuery.eq('center', lockedCenter)
+      }
+    }
+    Promise.all([auxQuery, financeQuery]).then(([auxResult, financeResult]) => {
+      if (!active) return
+      const warnings: string[] = []
+      if (auxResult.error) {
+        warnings.push(`PPMP and COS details could not be loaded: ${auxResult.error.message}`)
+        setProgressPpmp([])
+        setProgressHiring([])
+      } else {
+        const auxRows = auxResult.data || []
+        setProgressPpmp(auxRows.filter(row => row.milk_type === SBFP_PPMP_TYPE || row.milk_type?.startsWith('__PPMP_')).map(row => {
+          const mapped = toPpmpRow(row)
+          return { center: String(mapped.center || ''), category: mapped.category, status: mapped.status, item_name: mapped.item_name, amount: mapped.amount, sort_order: mapped.sort_order }
+        }))
+        setProgressHiring(auxRows.filter(row => row.milk_type === SBFP_HIRING_TYPE).map(row => {
+          const mapped = toHiringRow(row)
+          return { center: String(mapped.center || ''), position: mapped.position, status: mapped.status, sort_order: mapped.sort_order }
+        }))
+      }
+      if (financeResult.error) {
+        warnings.push(`Financial records could not be loaded: ${financeResult.error.message}`)
+        setProgressFinance([])
+      } else {
+        setProgressFinance((financeResult.data || []) as ProgressFinanceRow[])
+      }
+      setProgressSupplementalWarning(warnings.length ? warnings.join(' ') : null)
+    }).catch(error => {
+      if (active) {
+        setProgressPpmp([])
+        setProgressHiring([])
+        setProgressFinance([])
+        setProgressSupplementalWarning(error instanceof Error ? error.message : 'Could not load supplemental report details.')
+      }
+    }).finally(() => {
+      if (active) setProgressSupplementalLoading(false)
+    })
+    return () => { active = false }
+  }, [activeTab, dbYearNum, lockedCenter, progressMonthAvailable, supabase])
 
   const normalizedDeliveredTo = deliveredTo >= deliveredFrom ? deliveredTo : deliveredFrom
 
@@ -1605,6 +1768,29 @@ export default function SbfpSpreadsheetReport() {
     XLSX.writeFile(wb, `sbfp_all_tabs_complete_${year}_${dateStr}.xlsx`)
   }
 
+  const exportProgressReportDocx = async () => {
+    if (!progressMonthAvailable || !progressReportPayload || records.length === 0) return
+    setProgressDocxExporting(true)
+    try {
+      const response = await fetch('/templates/sbfp-mfp-progress-report-template.docx')
+      if (!response.ok) throw new Error('Could not load the SBFP progress report template.')
+      const template = new Uint8Array(await response.arrayBuffer())
+      const docxBytes = buildSbfpProgressDocx(template, progressReportPayload)
+      const blob = new Blob([new Uint8Array(docxBytes).buffer], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })
+      const url = URL.createObjectURL(blob)
+      const anchor = window.document.createElement('a')
+      anchor.href = url
+      anchor.download = `MFP_Progress_Report_${progressReportPayload.monthLabel}_${selectedProgressMonth.slice(0, 4)}.docx`
+      anchor.click()
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error('Could not export the SBFP progress report:', error)
+      alert(error instanceof Error ? error.message : 'Could not generate the Word report.')
+    } finally {
+      setProgressDocxExporting(false)
+    }
+  }
+
   const clearFilters = () => {
     setFilterRegion('ALL')
     setFilterCenter('ALL')
@@ -1770,6 +1956,7 @@ export default function SbfpSpreadsheetReport() {
               className="report-action-button"
               aria-label="Export as CSV"
               onClick={exportToCSV}
+              disabled={activeTab === 'progress_docx'}
               style={{
                 height: 34, padding: '0 1rem', borderRadius: 6, border: '1px solid #059669',
                 background: '#10b981', color: '#ffffff', fontSize: '0.85rem', fontWeight: 600,
@@ -1783,6 +1970,7 @@ export default function SbfpSpreadsheetReport() {
               className="report-action-button"
               aria-label="Export active tab as Excel"
               onClick={() => exportToExcel()}
+              disabled={activeTab === 'progress_docx'}
               title="Export the currently active tab as a styled Excel file (.xlsx)"
               style={{
                 height: 34, padding: '0 0.85rem', borderRadius: 6, border: '1px solid #1d6b3f',
@@ -1926,6 +2114,7 @@ export default function SbfpSpreadsheetReport() {
               ['milk_procurement', '6. Milk Procurement Status', FileSpreadsheet],
               ['monthly_cummulated', '7. CDP Report', BarChart2],
               ['major_accomplishments', '8. Major Accomplishments', Layers],
+              ['progress_docx', '9. MFP Progress Report', FileDown],
             ] as const).map(([id, label, Icon]) => (
               <button
                 key={id}
@@ -3081,6 +3270,125 @@ export default function SbfpSpreadsheetReport() {
                 </div>
               )
             })()}
+
+            {activeTab === 'progress_docx' && (
+              <section style={{ maxWidth: 980, margin: '0 auto', background: '#fff', border: '1px solid #dbe3ee', borderRadius: 12, padding: '1.25rem', boxShadow: '0 2px 8px rgba(15,23,42,0.05)' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 16 }}>
+                  <div style={{ flex: 1 }}>
+                    <h2 style={{ margin: 0, color: '#0f172a', fontSize: '1.15rem', fontWeight: 800 }}>MFP Progress Report</h2>
+                    <p style={{ margin: '6px 0 0', color: '#64748b', fontSize: '0.85rem', lineHeight: 1.5 }}>
+                      Download the Word report using the supplied document layout and the selected SBFP school year.
+                    </p>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'end', flexWrap: 'wrap', gap: 12, padding: '1rem', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                  <label style={{ display: 'grid', gap: 5, color: '#475569', fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase' }}>
+                    Report month
+                    <input
+                      type="month"
+                      value={selectedProgressMonth}
+                      min={progressMonthMinimum}
+                      max={progressMonthMaximum}
+                      disabled={!progressMonthAvailable}
+                      onChange={event => setProgressReportMonth(event.target.value)}
+                      style={{ height: 38, padding: '0 0.65rem', background: '#fff', border: '1px solid #cbd5e1', borderRadius: 6, color: '#0f172a', fontSize: '0.9rem', fontWeight: 600, textTransform: 'none' }}
+                    />
+                  </label>
+                  <div style={{ flex: 1, minWidth: 260, color: '#64748b', fontSize: '0.78rem', lineHeight: 1.5 }}>
+                    {progressMonthAvailable
+                      ? `Delivered-pack totals and completion checks use a cutoff of ${progressMonthEnd}.`
+                      : 'There are no report months available for this school year yet.'}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={exportProgressReportDocx}
+                    disabled={!progressMonthAvailable || !progressMonthEnd || progressSupplementalLoading || progressDocxExporting || loading || records.length === 0}
+                    style={{ minHeight: 40, padding: '0 1rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, border: 0, borderRadius: 7, background: '#1d4ed8', color: '#fff', fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer', opacity: progressSupplementalLoading || loading || records.length === 0 ? 0.55 : 1 }}
+                  >
+                    <FileDown size={16} />
+                    {progressDocxExporting ? 'Preparing Word file…' : 'Download .DOCX'}
+                  </button>
+                </div>
+
+                <div role="status" style={{ marginTop: 12, padding: '0.75rem 0.9rem', borderRadius: 7, background: '#fffbeb', border: '1px solid #fde68a', color: '#854d0e', fontSize: '0.8rem', lineHeight: 1.55 }}>
+                  Available report months are August through December of the selected SBFP data year, matching the calendar-month delivery data the system stores. The selected month filters delivered-pack totals and completion checks. Planned packs, schedules, and procurement statuses are latest saved values because the system does not store monthly history for them. PPMP, COS hiring, and financial tables are also latest saved values. Salary grade is shown as “—” because the system does not store it.
+                </div>
+                {progressSupplementalLoading && <p style={{ margin: '10px 0 0', color: '#64748b', fontSize: '0.82rem' }}>Loading PPMP, hiring, and financial records…</p>}
+                {progressSupplementalWarning && <p role="status" style={{ margin: '10px 0 0', padding: '0.65rem 0.75rem', borderRadius: 6, background: '#fff7ed', color: '#9a3412', fontSize: '0.8rem', lineHeight: 1.45 }}>{progressSupplementalWarning} The SBFP report and Word download remain available with the sections that loaded.</p>}
+                {!progressSupplementalLoading && activeTab === 'progress_docx' && (
+                  <p style={{ margin: '10px 0 0', color: '#64748b', fontSize: '0.78rem' }}>
+                    {progressPpmp.length} PPMP rows, {progressHiring.length} COS positions, and {progressFinance.length} financial center records loaded for SY {schoolYearOptions.find(option => String(schoolYearToDbYear(option)) === year) || dbYearToSchoolYear(dbYearNum)}.
+                  </p>
+                )}
+
+                {progressPreview && (
+                  <div style={{ marginTop: 18, border: '1px solid #dbe3ee', borderRadius: 9, overflow: 'hidden', background: '#fff' }}>
+                    <div style={{ padding: '0.9rem 1rem', background: '#f1f5f9', borderBottom: '1px solid #dbe3ee' }}>
+                      <h3 style={{ margin: 0, color: '#0f172a', fontSize: '0.98rem', fontWeight: 800 }}>Report preview</h3>
+                      <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '0.78rem' }}>
+                        MFP Progress Report · SY {progressReportPayload?.schoolYear} · {progressReportPayload?.monthLabel} 1–{progressMonthEnd?.slice(-2)}, {progressMonthEnd?.slice(0, 4)}
+                      </p>
+                    </div>
+                    <div style={{ padding: '1rem' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))', gap: 8 }}>
+                        {[
+                          ['SDOs covered', progressPreview.sdoCount.toLocaleString()],
+                          ['Packs to deliver', progressPreview.planned.toLocaleString()],
+                          ['Delivered through cutoff', progressPreview.delivered.toLocaleString()],
+                          ['Remaining packs', Math.max(0, progressPreview.planned - progressPreview.delivered).toLocaleString()],
+                        ].map(([label, value]) => (
+                          <div key={label} style={{ padding: '0.7rem 0.75rem', border: '1px solid #e2e8f0', borderRadius: 7, background: '#f8fafc' }}>
+                            <div style={{ color: '#64748b', fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase' }}>{label}</div>
+                            <div style={{ marginTop: 3, color: '#0f172a', fontSize: '1.05rem', fontWeight: 800 }}>{value}</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 14, marginTop: 16 }}>
+                        <div>
+                          <h4 style={{ margin: '0 0 6px', color: '#334155', fontSize: '0.78rem', fontWeight: 800 }}>Latest procurement status</h4>
+                          {Array.from(progressPreview.statusCounts.entries()).map(([status, count]) => (
+                            <div key={status} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '4px 0', borderBottom: '1px solid #f1f5f9', color: '#475569', fontSize: '0.78rem' }}><span>{status}</span><strong>{count}</strong></div>
+                          ))}
+                        </div>
+                        <div>
+                          <h4 style={{ margin: '0 0 6px', color: '#334155', fontSize: '0.78rem', fontWeight: 800 }}>PPMP and financial highlights</h4>
+                          {progressPreview.ppmpCategories.map(item => (
+                            <div key={item.category} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '4px 0', borderBottom: '1px solid #f1f5f9', color: '#475569', fontSize: '0.78rem' }}>
+                              <span>{item.category.replace('_', ' ')}</span><strong>{item.count} · {fmtPeso(item.amount)}</strong>
+                            </div>
+                          ))}
+                          <div style={{ marginTop: 7, color: '#475569', fontSize: '0.78rem', lineHeight: 1.6 }}>
+                            COS positions: <strong>{progressHiring.length}</strong><br />
+                            Allotment: <strong>{fmtPeso(progressPreview.sumFinance('allotment'))}</strong><br />
+                            Obligation: <strong>{fmtPeso(progressPreview.sumFinance('obligation'))}</strong><br />
+                            Disbursement: <strong>{fmtPeso(progressPreview.sumFinance('disbursement'))}</strong>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ marginTop: 16 }}>
+                        <h4 style={{ margin: '0 0 7px', color: '#334155', fontSize: '0.78rem', fontWeight: 800 }}>SBFP procurement table</h4>
+                        <div style={{ overflow: 'auto', maxHeight: 420, border: '1px solid #e2e8f0', borderRadius: 6 }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.74rem', minWidth: 560 }}>
+                            <thead><tr style={{ position: 'sticky', top: 0, background: '#f8fafc', color: '#475569', textAlign: 'left' }}>
+                              {['Region', 'SDO', 'Center', 'Status', 'Planned', 'Delivered', 'Balance'].map(label => <th key={label} style={{ padding: '7px 8px', borderBottom: '1px solid #e2e8f0' }}>{label}</th>)}
+                            </tr></thead>
+                            <tbody>{progressReportPayload?.procurements.filter(row => row.sdo?.trim() && row.center?.trim()).map((row, index) => (
+                              <tr key={`${row.reportSdoKey || row.sdo}-${index}`}>
+                                {[row.region || '—', row.sdo || '—', row.center || '—', row.reportStatus || row.procurement_status || '—', Number(row.packs_to_deliver || 0).toLocaleString(), Number(row.reportDelivered || 0).toLocaleString(), Math.max(0, Number(row.packs_to_deliver || 0) - Number(row.reportDelivered || 0)).toLocaleString()].map((value, cellIndex) => <td key={cellIndex} style={{ padding: '7px 8px', borderBottom: '1px solid #f1f5f9', color: '#334155' }}>{value}</td>)}
+                              </tr>
+                            ))}</tbody>
+                          </table>
+                        </div>
+                        <p style={{ margin: '5px 0 0', color: '#64748b', fontSize: '0.72rem' }}>Showing {progressPreview.sdoCount.toLocaleString()} SDOs. The selected month filters delivered totals and completion checks.</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </section>
+            )}
 
           </>
         )}
