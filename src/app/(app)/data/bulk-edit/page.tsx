@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useRouter, useParams } from 'next/navigation'
 import { PCC_CENTERS, REGIONS, MODES_OF_PROCUREMENT, type Cooperative } from '@/lib/types'
 import { APP_YEAR_STRINGS } from '@/lib/app-years'
+import { MFP_SCHOOL_FINANCE_FIELDS } from '@/lib/sbfp-dropoff-finance'
 import { Save, X, AlertCircle, CheckCircle2, RotateCcw, PenLine } from 'lucide-react'
 
 // ─── Formula defaults ───────────────────────────────────────────────────────────
@@ -40,6 +41,7 @@ const USER_INPUT_FIELDS = [
 // ─── Types ──────────────────────────────────────────────────────────────────────
 interface UserProfile { role: string; center: string; id: string }
 interface FormState {
+  source_dropoff_id?: string | null
   id?: string;
   year: string; funded_by: string; region: string; center: string
   province: string; division: string; municipality: string; elementary_school: string
@@ -120,8 +122,8 @@ function recalculateRow(row: FormState, colOverrides: Set<string>, fml: typeof D
     if (!colOverrides.has('whole_milk_kg'))             r.whole_milk_kg             = c.wholeMilk.toFixed(4)
     if (!colOverrides.has('skimmed_milk_kg'))           r.skimmed_milk_kg           = c.skimMilk.toFixed(4)
     if (!colOverrides.has('sugar'))                     r.sugar                     = c.sugar.toFixed(4)
-    if (!colOverrides.has('milk_cost'))                 r.milk_cost                 = c.milkCost.toFixed(2)
-    if (!colOverrides.has('total_funds_transferred'))   r.total_funds_transferred   = c.totalFunds.toFixed(2)
+    if (!row.source_dropoff_id && !colOverrides.has('milk_cost')) r.milk_cost = c.milkCost.toFixed(2)
+    if (!row.source_dropoff_id && !colOverrides.has('total_funds_transferred')) r.total_funds_transferred = c.totalFunds.toFixed(2)
   } else {
     if (!colOverrides.has('milk_packs'))                r.milk_packs                = ''
     if (!colOverrides.has('total_volume_requirements')) r.total_volume_requirements = ''
@@ -129,8 +131,8 @@ function recalculateRow(row: FormState, colOverrides: Set<string>, fml: typeof D
     if (!colOverrides.has('whole_milk_kg'))             r.whole_milk_kg             = ''
     if (!colOverrides.has('skimmed_milk_kg'))           r.skimmed_milk_kg           = ''
     if (!colOverrides.has('sugar'))                     r.sugar                     = ''
-    if (!colOverrides.has('milk_cost'))                 r.milk_cost                 = ''
-    if (!colOverrides.has('total_funds_transferred'))   r.total_funds_transferred   = ''
+    if (!row.source_dropoff_id && !colOverrides.has('milk_cost')) r.milk_cost = ''
+    if (!row.source_dropoff_id && !colOverrides.has('total_funds_transferred')) r.total_funds_transferred = ''
   }
   return r
 }
@@ -274,6 +276,7 @@ export default function BulkEditPage() {
           const supplierName = coops.find(c => c.id === d.supplier_id)?.name || d.supplier_id || '';
           return {
             id: d.id,
+            source_dropoff_id: d.source_dropoff_id,
             year: String(d.year || ''), funded_by: d.funded_by || '',
             region: d.region || '', center: d.center || '',
             province: d.province || '', division: d.division || '',
@@ -419,9 +422,11 @@ export default function BulkEditPage() {
       whole_milk_kg: parseFloat(row.whole_milk_kg) || null,
       skimmed_milk_kg: parseFloat(row.skimmed_milk_kg) || null,
       sugar: parseFloat(row.sugar) || null,
-      milk_cost: parseFloat(row.milk_cost),
-      service_fee: parseFloat(row.service_fee),
-      total_funds_transferred: parseFloat(row.total_funds_transferred),
+      ...(row.source_dropoff_id ? {} : {
+        milk_cost: parseFloat(row.milk_cost),
+        service_fee: parseFloat(row.service_fee),
+        total_funds_transferred: parseFloat(row.total_funds_transferred),
+      }),
       mode_of_procurement: row.mode_of_procurement || null,
       moa_signing: row.moa_signing || null,
       fund_transfer: row.fund_transfer || null,
@@ -512,7 +517,10 @@ export default function BulkEditPage() {
     const def = CALC_DEFS[field]
     if (!def) return null
     const isManual   = colOverrides.has(field)
-    const val        = rows[rowIdx][field]
+    const val        = rows[rowIdx][field] ?? ''
+    if (rows[rowIdx].source_dropoff_id && MFP_SCHOOL_FINANCE_FIELDS.some(key => key === field)) {
+      return <td key={field} style={{ ...iCell, textAlign: 'right', padding: '0 10px' }} title="Edit this amount in SBFP Monitoring → Drop-off Points (Schools)">{fmtNum(val || '', true)}</td>
+    }
     const modified   = def.formulaKey ? isModified(def.formulaKey) : false
     const cellActive = activeCell?.rowIdx === rowIdx && activeCell?.letter === def.letter
 
@@ -677,7 +685,7 @@ export default function BulkEditPage() {
 
         {/* V: Service Fee */}
         <td style={{ ...iCell, width: 90, ...activeBorder(rowIdx, 'V') }}>
-          <input type="number" name="service_fee" style={{ ...cInput, textAlign: 'right' }} placeholder="0.00" step="0.01" min="0" value={row.service_fee} onChange={hc} onFocus={fc('V', 'service_fee')} onKeyDown={noEnter} />
+          <input type="number" name="service_fee" disabled={!!row.source_dropoff_id} title={row.source_dropoff_id ? 'Edit shipping in SBFP Monitoring → Drop-off Points (Schools)' : undefined} style={{ ...cInput, textAlign: 'right' }} placeholder="0.00" step="0.01" min="0" value={row.service_fee} onChange={hc} onFocus={fc('V', 'service_fee')} onKeyDown={noEnter} />
         </td>
 
         {/* W: Total Funds (calc) */}
@@ -711,6 +719,9 @@ export default function BulkEditPage() {
       <div className="page-header" style={{ marginBottom: '0.75rem' }}>
         <div>
           <h1 className="page-title">Edit Record</h1>
+          {rows.some(row => row.source_dropoff_id) && (
+            <p className="text-xs text-muted-foreground mt-1">Linked SBFP milk costs, shipping fees, and total funds are maintained in SBFP Monitoring → Drop-off Points (Schools).</p>
+          )}
           <p className="page-subtitle">
             Fill all columns per row simultaneously ·
             <span style={{ color: '#d97706' }}> Yellow</span> = auto-calculated (click to edit formula) ·

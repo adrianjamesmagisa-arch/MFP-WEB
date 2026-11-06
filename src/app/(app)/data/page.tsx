@@ -10,41 +10,8 @@ import { MFP_DATA_LIST_COLUMNS } from '@/lib/encoder-selects'
 import { fetchAllRows } from '@/lib/supabase-paginate'
 import { getCurrentUser } from '@/lib/auth-session'
 import { isNizFamily, mfpCenterAliases } from '@/lib/center-aliases'
-
-function parseMonthNumbers(monthParam?: string): number[] {
-  if (!monthParam) return []
-  return monthParam
-    .split(',')
-    .map(v => Number(v.trim().substring(0, 2)))
-    .filter(m => Number.isFinite(m) && m >= 1 && m <= 12)
-}
-
-function parseYearNumbers(yearParam?: string): number[] {
-  if (!yearParam) return []
-  return yearParam
-    .split(',')
-    .map(v => Number(v.trim()))
-    .filter(n => Number.isFinite(n) && n > 0)
-}
-
-function getContiguousMonthRanges(months: number[]): Array<{ startMonth: number; endMonth: number }> {
-  if (months.length === 0) return [{ startMonth: 1, endMonth: 12 }]
-  const sorted = Array.from(new Set(months)).sort((a, b) => a - b)
-  const ranges: Array<{ startMonth: number; endMonth: number }> = []
-  let curStart = sorted[0]
-  let curEnd = sorted[0]
-  for (let i = 1; i < sorted.length; i++) {
-    if (sorted[i] === curEnd + 1) {
-      curEnd = sorted[i]
-    } else {
-      ranges.push({ startMonth: curStart, endMonth: curEnd })
-      curStart = sorted[i]
-      curEnd = sorted[i]
-    }
-  }
-  ranges.push({ startMonth: curStart, endMonth: curEnd })
-  return ranges
-}
+import { filterValues, mfpDateIntervals, type MfpListFilters } from '@/lib/mfp-list-filters'
+import { includesSbfpSource, is2026Deped, loadSbfpSourceRows, type MfpListRow } from '@/lib/mfp-sbfp-source'
 
 function applyDateRangeFilter(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -54,28 +21,7 @@ function applyDateRangeFilter(
   monthParam: string | undefined,
   fallbackYears: number[],
 ) {
-  const specificYears = parseYearNumbers(yearParam)
-  const months = parseMonthNumbers(monthParam)
-
-  if (specificYears.length === 0 && months.length === 0) {
-    return baseQuery
-  }
-
-  const activeYears = specificYears.length > 0 ? specificYears : fallbackYears
-  if (activeYears.length === 0) return baseQuery
-
-  const monthRanges = getContiguousMonthRanges(months)
-
-  const intervals = activeYears.flatMap(y =>
-    monthRanges.map(r => {
-      const start = `${y}-${String(r.startMonth).padStart(2, '0')}-01`
-      const end =
-        r.endMonth === 12
-          ? `${y + 1}-01-01`
-          : `${y}-${String(r.endMonth + 1).padStart(2, '0')}-01`
-      return { start, end }
-    }),
-  )
+  const intervals = mfpDateIntervals(yearParam, monthParam, fallbackYears)
 
   if (intervals.length === 0) return baseQuery
 
@@ -95,27 +41,13 @@ function applyDateRangeFilter(
 export default async function DataPage({
   searchParams,
 }: {
-  searchParams: Promise<{
-    year?: string        // single year OR comma-separated years e.g. "2025,2026"
-    funded_by?: string
-    region?: string
-    center?: string
-    search?: string
-    province?: string
-    division?: string
-    municipality?: string
-    milk_type?: string
-    supplier?: string
-    date_started_year?: string
-    date_started_month?: string
-    date_completed_year?: string
-    date_completed_month?: string
-    input_month?: string
-    input_year?: string
-  }>
+  searchParams: Promise<MfpListFilters>
 }) {
   const { user, profile } = await getCurrentUser()
   if (!user) redirect('/login')
+  if (!profile || (profile.role === 'encoder' && !profile.center?.trim())) {
+    return <p role="alert" className="p-6 text-red-700">Could not determine your data access. Ask an administrator to check your profile and assigned center.</p>
+  }
 
   const supabase = await createClient()
 
@@ -230,11 +162,19 @@ export default async function DataPage({
     return query
   }
 
-  let records: any[] = []
+  const sourceBacked = includesSbfpSource(params)
+  const funders = filterValues(params.funded_by)
+  const onlySource = listYear === 2026 && funders.length === 1 && funders[0] === 'DepEd'
+  let records: MfpListRow[] = []
   try {
-    records = await fetchAllRows(() => buildListQuery())
+    const [persisted, schools] = await Promise.all([
+      onlySource ? Promise.resolve([]) : fetchAllRows<MfpListRow>(() => buildListQuery()),
+      sourceBacked ? loadSbfpSourceRows(supabase, profile, params, listYears.length ? listYears : APP_YEARS) : Promise.resolve([]),
+    ])
+    records = sourceBacked ? [...persisted.filter(row => !is2026Deped(row)), ...schools] : persisted
   } catch (err) {
-    console.error('mfp_data list query failed:', err instanceof Error ? err.message : err)
+    console.error('MFP list query failed:', err instanceof Error ? err.message : err)
+    return <div className="p-6"><h1 className="page-title">MFP Data</h1><p role="alert" className="mt-3 text-red-700">Could not load MFP Data. Refresh to try again. No complete record count is available.</p></div>
   }
 
   // Filter dropdowns from the already-loaded list (no second 5000-row scan).
@@ -316,13 +256,21 @@ export default async function DataPage({
 
       <DataFilters filterOptions={filterOptions} />
 
+      {sourceBacked && (
+        <p role="status" className="mb-3 rounded-md border bg-blue-50 px-3 py-2 text-xs text-blue-900">
+          2026 DepEd schools come from SBFP Monitoring with “In Masterlist?” checked.
+          {' '}Edit school details through the SBFP action.
+          {' '}{records.filter(row => row.mfp_link_status === 'missing').length} school(s) in this result are not yet linked to MFP Data; their available SBFP details are shown.
+        </p>
+      )}
+
       <DataTable
         key={`${params.year ?? 'all'}:${params.search ?? ''}:${params.funded_by ?? ''}:${params.center ?? ''}:${params.region ?? ''}:${params.province ?? ''}:${params.division ?? ''}:${params.municipality ?? ''}:${params.milk_type ?? ''}:${params.supplier ?? ''}:${params.date_started_year ?? ''}:${params.date_started_month ?? ''}:${params.date_completed_year ?? ''}:${params.date_completed_month ?? ''}`}
         records={records ?? []}
         readOnly={profile?.role === 'viewer'}
         userRole={profile?.role ?? 'viewer'}
         resyncDelivery={
-          syncCenter
+          syncCenter && !sourceBacked
             ? {
               center: syncCenter,
               year: syncYear,
@@ -330,7 +278,7 @@ export default async function DataPage({
             : null
         }
         resyncProgram={
-          syncCenter
+          syncCenter && !sourceBacked
             ? {
               center: syncCenter,
               year: syncYear,

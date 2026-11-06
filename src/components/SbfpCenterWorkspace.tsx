@@ -29,6 +29,8 @@ export function SbfpCenterWorkspace({
   dropoffSchemaReady = true,
   feedingDaysReady = true,
   milkPacksReady = true,
+  dropoffFinanceReady = false,
+  dropoffLoadError,
   userRole,
   showKpis = true,
   schoolYearsHubHref,
@@ -46,6 +48,8 @@ export function SbfpCenterWorkspace({
   dropoffSchemaReady?: boolean
   feedingDaysReady?: boolean
   milkPacksReady?: boolean
+  dropoffFinanceReady?: boolean
+  dropoffLoadError?: string
   userRole?: string | null
   showKpis?: boolean
   /** Link back to school-year list (no ?sy=). */
@@ -187,7 +191,14 @@ export function SbfpCenterWorkspace({
           Schools / drop-off points under each SDO. Enter <strong>beneficiaries</strong>, <strong>feeding days</strong>, and <strong>milk packs</strong> —
           volume and formulations calculate from the encoder-entered pack count and update the DepEd school masterlist.
         </p>
-        {!milkPacksReady ? (
+        <p className="text-xs text-muted-foreground">
+          Enter each school’s milk contract allocation and shipping/service fee. Shipping is additional to the SDO milk contract.
+        </p>
+        {dropoffLoadError ? (
+          <p role="alert" className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900">
+            Could not load school drop-offs: {dropoffLoadError}
+          </p>
+        ) : !milkPacksReady ? (
           <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
             The SBFP drop-off database migrations are incomplete. Apply the drop-off migrations, including{' '}
             <code className="text-xs">20261105090000_sbfp_dropoff_manual_milk_packs.sql</code>, then refresh this page.
@@ -204,6 +215,11 @@ export function SbfpCenterWorkspace({
           </div>
         ) : (
           <>
+            {!dropoffFinanceReady && (
+              <p role="status" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                School financial encoding is awaiting database setup. Existing school and milk-pack editing remains available.
+              </p>
+            )}
             {!feedingDaysReady && (
               <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                 Run this in Supabase SQL Editor to enable Feeding Days and milk-pack input:
@@ -223,9 +239,11 @@ export function SbfpCenterWorkspace({
                 feeding_days: r.feeding_days,
                 remarks: r.remarks,
                 milk_type: r.milk_type,
+                contract_amount: r.contract_amount,
               }))}
               initialRows={dropoffRows}
               editable={editable && feedingDaysReady && milkPacksReady}
+              financeReady={dropoffFinanceReady}
               pruneSbfpDataId={pruneDropoffForSbfpId}
               onPruneComplete={clearDropoffPrune}
             />

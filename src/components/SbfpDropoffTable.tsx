@@ -13,6 +13,8 @@ import {
 import { calcMilkFormulationsFromPacks, litersPerPackForMilkType } from '@/lib/mfp-formulas'
 import { inferSbfpMilkType, normalizeSbfpMilkType } from '@/lib/sbfp-pack-price'
 import { logCenterActivity } from '@/lib/center-activity'
+import { SbfpDropoffFinanceKpis } from '@/components/SbfpDropoffFinanceKpis'
+import { MAX_DROPOFF_AMOUNT, parseDropoffAmount, type DropoffMoneyField } from '@/lib/sbfp-dropoff-finance'
 
 export type DropoffRow = SbfpDropoffPoint
 const MAX_MILK_PACKS_PER_DROPOFF = 2_147_483_647
@@ -46,6 +48,7 @@ type SdoOption = {
   feeding_days?: number | null
   remarks?: string | null
   milk_type?: string | null
+  contract_amount?: number | null
 }
 
 /** Default drop-off name; unique per SDO (matches DB index on center, year, sdo, dropoff_name). */
@@ -73,7 +76,7 @@ function nextDefaultDropoffName(
 }
 
 function EditableText({
-  value, align = 'left', type = 'text', disabled, onCommit, title, cellStyle, wrap, min, max, step,
+  value, align = 'left', type = 'text', disabled, onCommit, title, cellStyle, wrap, min, max, step, currency, onDraft,
 }: {
   value: string | number | null | undefined
   align?: 'left' | 'right' | 'center'
@@ -87,11 +90,14 @@ function EditableText({
   min?: number
   max?: number
   step?: number
+  currency?: boolean
+  onDraft?: (value: string | null) => void
 }) {
   const [editing, setEditing] = useState(false)
   const [val, setVal] = useState<string>(value == null ? '' : String(value))
   const inputRef = useRef<HTMLInputElement>(null)
   const areaRef = useRef<HTMLTextAreaElement>(null)
+  const committedRef = useRef(false)
 
   useEffect(() => { setVal(value == null ? '' : String(value)) }, [value])
   useEffect(() => {
@@ -113,7 +119,10 @@ function EditableText({
     : {}
 
   const save = () => {
+    if (committedRef.current) return
+    committedRef.current = true
     setEditing(false)
+    onDraft?.(null)
     if (type === 'number') {
       const n = val === '' ? null : Number(val)
       onCommit(n != null && Number.isFinite(n) ? n : null)
@@ -126,7 +135,7 @@ function EditableText({
     value == null || value === ''
       ? '—'
       : type === 'number'
-        ? Number(value).toLocaleString()
+        ? (currency ? Number(value).toLocaleString('en-PH', { style: 'currency', currency: 'PHP' }) : Number(value).toLocaleString())
         : String(value)
 
   if (disabled) {
@@ -156,10 +165,10 @@ function EditableText({
           <textarea
             ref={areaRef}
             value={val}
-            onChange={e => setVal(e.target.value)}
+            onChange={e => { setVal(e.target.value); onDraft?.(e.target.value) }}
             onBlur={save}
             onKeyDown={e => {
-              if (e.key === 'Escape') { setVal(value == null ? '' : String(value)); setEditing(false) }
+              if (e.key === 'Escape') { committedRef.current = true; onDraft?.(null); setVal(value == null ? '' : String(value)); setEditing(false) }
               // Enter inserts newline; Ctrl/Cmd+Enter saves
               if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) save()
             }}
@@ -174,11 +183,11 @@ function EditableText({
             max={max}
             step={step}
             value={val}
-            onChange={e => setVal(e.target.value)}
+            onChange={e => { setVal(e.target.value); onDraft?.(e.target.value) }}
             onBlur={save}
             onKeyDown={e => {
               if (e.key === 'Enter') save()
-              if (e.key === 'Escape') { setVal(value == null ? '' : String(value)); setEditing(false) }
+              if (e.key === 'Escape') { committedRef.current = true; onDraft?.(null); setVal(value == null ? '' : String(value)); setEditing(false) }
             }}
             style={fieldStyle}
           />
@@ -189,7 +198,9 @@ function EditableText({
 
   return (
     <td
-      onClick={() => setEditing(true)}
+      onClick={() => { committedRef.current = false; setEditing(true) }}
+      tabIndex={0}
+      onKeyDown={e => { if (e.key === 'Enter') { committedRef.current = false; setEditing(true) } }}
       title={title || (wrap ? String(value || '') : 'Click to edit')}
       style={{ textAlign: align, cursor: 'pointer', ...wrapStyle, ...cellStyle }}
     >
@@ -204,6 +215,7 @@ export function SbfpDropoffTable({
   sdoOptions,
   initialRows,
   editable,
+  financeReady = false,
   pruneSbfpDataId,
   onPruneComplete,
 }: {
@@ -212,6 +224,7 @@ export function SbfpDropoffTable({
   sdoOptions: SdoOption[]
   initialRows: DropoffRow[]
   editable: boolean
+  financeReady?: boolean
   /** When an SDO is deleted from procurement, remove its schools without page refresh. */
   pruneSbfpDataId?: string | null
   onPruneComplete?: () => void
@@ -221,6 +234,16 @@ export function SbfpDropoffTable({
   const [filterSdo, setFilterSdo] = useState<string>('ALL')
   const [adding, setAdding] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
+  const [financeNotice, setFinanceNotice] = useState<string | null>(null)
+  const [savingFinance, setSavingFinance] = useState<Set<string>>(new Set())
+  const savingFinanceRef = useRef(new Set<string>())
+  const [financeDraft, setFinanceDraft] = useState<{ id: string; field: DropoffMoneyField; value: string } | null>(null)
+  const financeRows = useMemo(() => {
+    if (!financeDraft) return rows
+    const parsed = parseDropoffAmount(financeDraft.value)
+    if (parsed.error) return rows
+    return rows.map(row => row.id === financeDraft.id ? { ...row, [financeDraft.field]: parsed.value } : row)
+  }, [rows, financeDraft])
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const scopeKey = `${center}:${year}`
   /** Row IDs added (or edited from placeholder) in this session — kept at the end so they stay visible while encoding. */
@@ -339,7 +362,7 @@ export function SbfpDropoffTable({
     // Background sync — do not block the encoder
     void apiSyncDropoff(row).then(err => {
       if (err) setMsg(err)
-    })
+    }).catch(error => setMsg(error instanceof Error ? `School saved; MFP sync failed: ${error.message}` : 'School saved; MFP sync failed.'))
   }
 
   const updateField = async (id: string, field: keyof DropoffRow, value: any) => {
@@ -377,7 +400,11 @@ export function SbfpDropoffTable({
     }
 
     const next = { ...prev, ...patch }
-    setRows(p => p.map(r => r.id === id ? next : r))
+    // Preserve fields saved by another in-flight operation on this same school.
+    const previousFields = Object.fromEntries(
+      (Object.keys(patch) as Array<keyof DropoffRow>).map(key => [key, prev[key]]),
+    )
+    setRows(p => p.map(r => r.id === id ? { ...r, ...patch } : r))
 
     const { error } = await supabase
       .from('sbfp_dropoff_points')
@@ -385,7 +412,7 @@ export function SbfpDropoffTable({
       .eq('id', id)
     if (error) {
       setMsg(error.message)
-      setRows(p => p.map(r => r.id === id ? prev : r))
+      setRows(p => p.map(r => r.id === id ? { ...r, ...previousFields } : r))
       return
     }
     void logCenterActivity(supabase, {
@@ -397,6 +424,46 @@ export function SbfpDropoffTable({
       detail: `Field: ${field}${next.sdo ? ` · ${next.sdo}` : ''}`,
     })
     syncRow(next)
+  }
+
+  const updateFinancialField = async (id: string, field: DropoffMoneyField, value: string | number | null) => {
+    const previous = rows.find(row => row.id === id)
+    if (!previous || !editable || !financeReady || savingFinanceRef.current.has(id)) return
+    const parsed = parseDropoffAmount(value)
+    if (parsed.error) { setMsg(parsed.error); return }
+    if (parsed.value == null && previous[field] != null) {
+      setMsg('Enter 0 to remove an amount that was already encoded.')
+      return
+    }
+    if (parsed.value === (previous[field] ?? null)) return
+    setMsg(null)
+    setFinanceNotice(null)
+    savingFinanceRef.current.add(id)
+    setSavingFinance(new Set(savingFinanceRef.current))
+    setRows(current => current.map(row => row.id === id ? { ...row, [field]: parsed.value } : row))
+    try {
+      const response = await fetch('/api/sbfp/dropoff-finance', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, field, value: parsed.value, expectedValue: previous[field] ?? null }),
+      })
+      const result: { error?: string; warning?: string | null; dropoff?: DropoffRow } = await response.json()
+      if (!response.ok || !result.dropoff) throw new Error(result.error || 'Could not save school amounts.')
+      // Merge only financial fields; an unrelated school edit may have finished meanwhile.
+      setRows(current => current.map(row => row.id === id ? {
+        ...row, contract_amount: result.dropoff?.contract_amount, service_fee: result.dropoff?.service_fee,
+      } : row))
+      setFinanceNotice(result.warning || null)
+      void logCenterActivity(supabase, {
+        center: previous.center, action: 'updated', source: 'sbfp_dropoff_points', sourceId: id,
+        summary: `Updated school financial allocation · ${previous.dropoff_name}`, detail: `Field: ${field}`,
+      })
+    } catch (error) {
+      setRows(current => current.map(row => row.id === id ? { ...row, [field]: previous[field] } : row))
+      setMsg(error instanceof Error ? error.message : 'Could not save school amounts.')
+    } finally {
+      savingFinanceRef.current.delete(id)
+      setSavingFinance(new Set(savingFinanceRef.current))
+    }
   }
 
   const handleAdd = async () => {
@@ -524,7 +591,7 @@ export function SbfpDropoffTable({
               <option key={o.id} value={o.id}>{o.displayLabel}</option>
             ))}
           </select>
-          {msg && <span className="text-xs text-red-600">{msg}</span>}
+          {msg && <span role="alert" className="text-xs text-red-600">{msg}</span>}
         </div>
         {editable && (
           <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -550,10 +617,15 @@ export function SbfpDropoffTable({
         )}
       </div>
 
+      {financeNotice && <p role="status" className="text-xs text-amber-800">{financeNotice}</p>}
+      {financeReady && (
+        <SbfpDropoffFinanceKpis parents={sdoOptions} schools={financeRows} selectedSdo={filterSdo}
+          saving={savingFinance.size > 0} drafting={financeDraft != null} />
+      )}
       <div className="card center-dropoff-card" style={{ overflow: 'hidden' }}>
         <p className="center-table-scroll-hint">Swipe horizontally to see all columns</p>
         <div ref={tableScrollRef} className="center-dropoff-scroll" style={{ overflow: 'auto', maxHeight: 'calc(100vh - 320px)' }}>
-          <table className="data-table center-dropoff-table" style={{ minWidth: 1600, fontSize: '0.78rem', borderCollapse: 'separate', borderSpacing: 0 }}>
+          <table className="data-table center-dropoff-table" style={{ minWidth: 2050, fontSize: '0.78rem', borderCollapse: 'separate', borderSpacing: 0 }}>
             <thead>
               <tr>
                 <th style={{ textAlign: 'center', ...stickyTh(SL.check, SW.check) }}>
@@ -586,6 +658,9 @@ export function SbfpDropoffTable({
                 <th style={{ minWidth: 110, textAlign: 'right', background: '#1e3a5f' }} title="Encoder input; volume and formulations calculate from this value">
                   Milk Packs
                 </th>
+                <th style={{ minWidth: 150, textAlign: 'right' }}>Contract Amount (₱)</th>
+                <th style={{ minWidth: 150, textAlign: 'right' }}>Shipping / Service Fee (₱)</th>
+                <th style={{ minWidth: 150, textAlign: 'right' }}>Total Funds (₱)</th>
                 <th
                   style={{ minWidth: 110, textAlign: 'right', background: '#1e3a5f' }}
                   title="SM: Packs × 0.18 L (180 ml) · PM: Packs × 0.20 L (200 ml)"
@@ -614,7 +689,7 @@ export function SbfpDropoffTable({
             <tbody>
               {visible.length === 0 && (
                 <tr>
-                  <td colSpan={16} style={{ textAlign: 'center', padding: '2rem', color: 'var(--gray-400)' }}>
+                  <td colSpan={editable ? 19 : 18} style={{ textAlign: 'center', padding: '2rem', color: 'var(--gray-400)' }}>
                     No drop-off schools yet for {center}.
                   </td>
                 </tr>
@@ -713,6 +788,20 @@ export function SbfpDropoffTable({
                       cellStyle={{ background: 'rgba(59,130,246,0.06)', fontWeight: 600 }}
                       onCommit={v => updateField(r.id, 'milk_packs', v == null ? 0 : Number(v))}
                     />
+                    {(['contract_amount', 'service_fee'] as const).map(field => (
+                      <EditableText key={field} value={r[field]} type="number" currency align="right"
+                        min={0} max={MAX_DROPOFF_AMOUNT} step={0.01}
+                        disabled={!editable || !financeReady || savingFinance.has(r.id)}
+                        title={field === 'contract_amount' ? 'School milk-only contract allocation; shipping is separate' : 'School shipping/service fee; enter 0 when there is no fee'}
+                        cellStyle={{ background: 'rgba(16,185,129,0.06)' }}
+                        onDraft={value => setFinanceDraft(value == null ? null : { id: r.id, field, value })}
+                        onCommit={value => updateFinancialField(r.id, field, value)} />
+                    ))}
+                    <td style={{ textAlign: 'right', fontWeight: 600 }} title="Milk cost + shipping; both amounts must be encoded">
+                      {r.contract_amount == null || r.service_fee == null ? '—' :
+                        ((Math.round(r.contract_amount * 100) + Math.round(r.service_fee * 100)) / 100)
+                          .toLocaleString('en-PH', { style: 'currency', currency: 'PHP' })}
+                    </td>
                     <td
                       style={{ textAlign: 'right', background: 'rgba(59,130,246,0.04)' }}
                       title={calc ? `Packs × ${volFactor} (${milkType === 'SM' ? '180 ml SM' : '200 ml PM'})` : undefined}

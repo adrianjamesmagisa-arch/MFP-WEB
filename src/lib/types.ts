@@ -55,6 +55,10 @@ export interface SbfpDropoffPoint {
   feeding_days?: number | null
   /** Encoder-entered pack count; volume and formulation values derive from this. */
   milk_packs: number
+  /** School allocation of the SDO milk-only contract; null means not yet encoded. */
+  contract_amount?: number | null
+  /** Shipping/service fee, additional to the milk contract. */
+  service_fee?: number | null
   district: string | null
   municipality: string | null
   province: string | null

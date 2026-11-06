@@ -220,7 +220,7 @@ export function MfpAiAgent({ records, centerLabel, yearLabel, activeFilters }: M
       totalTargetPacksToDeliver += targetDeliver
       totalDelivered += delivered
 
-      if (milkCost > 0 && funds === 0) {
+      if (r.total_funds_transferred != null && r.total_funds_transferred !== '' && milkCost > 0 && funds === 0) {
         zeroFundsWithMilkCostRows += 1
         zeroFundsWithMilkCostSubtotal += milkCost
         const provKey = String(r.province || 'Unspecified')
@@ -328,9 +328,15 @@ export function MfpAiAgent({ records, centerLabel, yearLabel, activeFilters }: M
       'Year(A)|Funded(B)|Reg(C)|Center(D)|Prov(E)|Muni(G)|Packs(I)|VolL(J)|RawL(K)|Benef(Q)|MilkCost(U)|SvcFee(V)|TotalFunds(W)|Deliv(AE)|Coop(T)'
     const rows = records.slice(0, 40).map(r => {
       const coop = (r.cooperatives as any)?.name || r.supplier_id || '-'
-      return `${r.year || ''}|${r.funded_by || ''}|${r.region || ''}|${r.center || ''}|${r.province || ''}|${r.municipality || ''}|${r.milk_packs ?? 0}|${r.total_volume_requirements ?? 0}|${r.raw_milk_liters ?? 0}|${r.beneficiaries ?? 0}|${r.milk_cost ?? 0}|${r.service_fee ?? 0}|${r.total_funds_transferred ?? 0}|${r.total_milk_packs_delivered ?? 0}|${coop}`
+      return `${r.year || ''}|${r.funded_by || ''}|${r.region || ''}|${r.center || ''}|${r.province || ''}|${r.municipality || ''}|${r.milk_packs ?? 'N/A'}|${r.total_volume_requirements ?? 'N/A'}|${r.raw_milk_liters ?? 'N/A'}|${r.beneficiaries ?? 'N/A'}|${r.milk_cost ?? 'N/A'}|${r.service_fee ?? 'N/A'}|${r.total_funds_transferred ?? 'N/A'}|${r.total_milk_packs_delivered ?? 'N/A'}|${coop}`
     })
-    return [header, ...rows].join('\n')
+    const missingLinks = records.filter(row => row.mfp_link_status === 'missing').length
+    const incompleteMoney = records.filter(row => row.mfp_link_status && (row.milk_cost == null || row.service_fee == null || row.total_funds_transferred == null)).length
+    return [
+      ...(missingLinks ? [`${missingLinks} SBFP source school(s) have no linked MFP record. Their source details are included in the count.`] : []),
+      ...(incompleteMoney ? [`${incompleteMoney} school(s) have incomplete financial values. Financial sums include known amounts only; N/A means unknown, not zero.`] : []),
+      header, ...rows,
+    ].join('\n')
   }, [records])
 
   // Send prompt to Groq API

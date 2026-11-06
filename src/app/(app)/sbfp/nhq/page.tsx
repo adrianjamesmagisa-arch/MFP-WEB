@@ -7,7 +7,8 @@ import { loadCenterSchoolYearCards, loadSchoolYears } from '@/lib/sbfp-school-ye
 import { parseSchoolYear, schoolYearLabel, schoolYearToDbYear } from '@/lib/sbfp-year'
 import { encoderCanAccessSbfpCenter, sbfpNavCenter } from '@/lib/center-aliases'
 import { excludeAuxSbfp, SBFP_HIRING_TYPE, SBFP_PPMP_TYPE, toHiringRow, toPpmpRow } from '@/lib/sbfp-aux'
-import { SBFP_DATA_ENCODER_COLUMNS, SBFP_DROPOFF_ENCODER_COLUMNS } from '@/lib/encoder-selects'
+import { SBFP_DATA_ENCODER_COLUMNS } from '@/lib/encoder-selects'
+import { loadSbfpDropoffs } from '@/lib/sbfp-dropoff-load'
 import type { SbfpDropoffPoint } from '@/lib/types'
 
 export default async function SbfpNhqPage({
@@ -67,13 +68,7 @@ export default async function SbfpNhqPage({
       .select('*')
       .in('center', ['NHQ', 'NIZ'])
       .eq('year', year),
-    supabase
-      .from('sbfp_dropoff_points')
-      .select(SBFP_DROPOFF_ENCODER_COLUMNS)
-      .eq('center', 'NHQ')
-      .eq('year', year)
-      .order('sdo', { ascending: true })
-      .order('dropoff_name', { ascending: true }),
+    loadSbfpDropoffs(supabase, 'NHQ', year),
   ])
   const all = (records || []) as unknown as Array<Record<string, unknown> & { milk_type?: string }>
   const sdoRecords = excludeAuxSbfp(all as any)
@@ -108,6 +103,8 @@ export default async function SbfpNhqPage({
         dropoffSchemaReady={dropoffSchemaReady}
         feedingDaysReady={feedingDaysReady}
         milkPacksReady={milkPacksReady}
+        dropoffFinanceReady={dropoffRes.financeReady}
+        dropoffLoadError={dropoffRes.error?.message}
         userRole={profile?.role}
         schoolYearsHubHref={workspaceBase}
       />

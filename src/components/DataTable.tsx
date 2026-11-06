@@ -9,6 +9,7 @@ import { Edit2, Trash2, Lock } from 'lucide-react'
 import { Spinner } from '@/components/loading/Spinner'
 import { useAsyncTask } from '@/components/loading/AsyncFeedback'
 import { logCenterActivity } from '@/lib/center-activity'
+import { sbfpNavCenter } from '@/lib/center-aliases'
 
 function EditableCell({ id, field, value, type = 'text', className, style, format, render, onSave, readOnly = false }: { id: string, field: string, value: any, type?: string, className?: string, style?: any, format?: (v: any) => any, render?: (v: any) => any, onSave?: (id: string, field: string, oldVal: any, newVal: any) => void, readOnly?: boolean }) {
   const [isEditing, setIsEditing] = useState(false);
@@ -333,6 +334,7 @@ export function DataTable({
 
   const handleCellSave = (id: string, field: string, oldVal: any, newVal: any) => {
     const target = localRecords.find(r => r.id === id)
+    if (target?.mfp_link_status) return
     if (target && Number(target.year) < 2026 && !canEditHistorical) {
       alert('Historical records (2019–2025) can only be edited by an Administrator.')
       return
@@ -383,7 +385,6 @@ export function DataTable({
 
 
   const toggleSelectAll = () => {
-    const selectableRecords = canEditHistorical ? records : records.filter(r => Number(r.year) >= 2026)
     if (selectedIds.size === selectableRecords.length && selectableRecords.length > 0) {
       setSelectedIds(new Set())
     } else {
@@ -393,6 +394,7 @@ export function DataTable({
 
   const toggleRow = (id: string) => {
     const target = records.find(r => r.id === id)
+    if (!target || target.mfp_link_status) return
     if (target && Number(target.year) < 2026 && !canEditHistorical) {
       return
     }
@@ -410,12 +412,12 @@ export function DataTable({
         return
       }
     }
-    sessionStorage.setItem('bulkEditIds', JSON.stringify(Array.from(selectedIds)))
+    sessionStorage.setItem('bulkEditIds', JSON.stringify(selectableRecords.filter(r => selectedIds.has(r.id)).map(r => r.id)))
     router.push('/data/bulk-edit')
   }
 
   const handleBulkDelete = async () => {
-    const ids = Array.from(selectedIds)
+    const ids = selectableRecords.filter(r => selectedIds.has(r.id)).map(r => r.id)
     if (ids.length === 0 || bulkDeleting) return
     if (!canEditHistorical) {
       const hasHistorical = records.some(r => selectedIds.has(r.id) && Number(r.year) < 2026)
@@ -458,6 +460,7 @@ export function DataTable({
 
   /** Only admin / super_admin can edit historical (pre-2026) rows. */
   const canEditHistorical = userRole === 'admin' || userRole === 'super_admin'
+  const selectableRecords = records.filter(r => !r.mfp_link_status && (canEditHistorical || Number(r.year) >= 2026))
 
   return (
     <>
@@ -472,7 +475,7 @@ export function DataTable({
                 {/* CHECKBOX */}
                 {!readOnly && (
                   <th className="col-check" style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 40, width: 40 }}>
-                    <input type="checkbox" checked={records.length > 0 && selectedIds.size === records.length} onChange={toggleSelectAll} style={{ cursor: 'pointer' }} />
+                    <input type="checkbox" checked={selectableRecords.length > 0 && selectableRecords.every(r => selectedIds.has(r.id))} disabled={!selectableRecords.length} onChange={toggleSelectAll} style={{ cursor: 'pointer' }} />
                   </th>
                 )}
                 {/* A-G */}
@@ -518,7 +521,11 @@ export function DataTable({
             <tbody>
               {paginatedRecords?.map((r, rIdx) => {
                 const isHistorical = Number(r.year) < 2026
-                const canEditThisRow = !readOnly && (!isHistorical || canEditHistorical)
+                const missingLink = r.mfp_link_status === 'missing'
+                const sourceSchool = !!r.mfp_link_status
+                const canEditThisRow = !readOnly && !sourceSchool && (!isHistorical || canEditHistorical)
+                const navCenter = sourceSchool ? sbfpNavCenter(r.center) : null
+                const sourceHref = `/sbfp/${navCenter === 'NHQ' ? 'nhq' : `center/${encodeURIComponent(navCenter || '')}`}?sy=${r.year}-${Number(r.year) + 1}#dropoff-points`
                 return (
                   <tr
                     key={r.id || `row-${rIdx}`}
@@ -527,7 +534,9 @@ export function DataTable({
                   >
                     {!readOnly && (
                       <td className="col-check" style={{ textAlign: 'center' }}>
-                        {isHistorical && !canEditHistorical ? (
+                        {sourceSchool ? (
+                          <input type="checkbox" disabled title="Edit this school's source details in SBFP Monitoring." />
+                        ) : isHistorical && !canEditHistorical ? (
                           <input type="checkbox" disabled title="Historical archive (2019–2025) cannot be deleted or bulk-edited by non-admins" style={{ opacity: 0.25, cursor: 'not-allowed' }} />
                         ) : (
                           <input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => toggleRow(r.id)} style={{ cursor: 'pointer' }} />
@@ -550,7 +559,8 @@ export function DataTable({
                     <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="province" value={r.province} className="col-prov" />
                     <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="division" value={r.division} className="col-div" />
                     <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="municipality" value={r.municipality} className="col-muni" />
-                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="elementary_school" value={r.elementary_school} className="col-school" />
+                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="elementary_school" value={r.elementary_school} className="col-school"
+                      render={value => <>{value}{missingLink && <span className="block text-[0.65rem] text-amber-700">Not yet linked</span>}</>} />
 
                     <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="milk_packs" value={r.milk_packs} type="number" format={formatNumber} />
                     <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="total_volume_requirements" value={r.total_volume_requirements} type="number" format={formatNumber} />
@@ -567,9 +577,9 @@ export function DataTable({
 
                     <td>{(r as any).cooperatives?.name ?? 'N/A'}</td>
 
-                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="milk_cost" value={r.milk_cost} type="number" format={v => v ? '₱' + formatNumber(v) : 'N/A'} />
-                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="service_fee" value={r.service_fee} type="number" format={v => v ? '₱' + formatNumber(v) : 'N/A'} />
-                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="total_funds_transferred" value={r.total_funds_transferred} type="number" format={v => v ? '₱' + formatNumber(v) : 'N/A'} style={{ fontWeight: 600 }} />
+                    <EditableCell readOnly={!canEditThisRow || !!r.source_dropoff_id} onSave={handleCellSave} id={r.id} field="milk_cost" value={r.milk_cost} type="number" format={v => v != null ? '₱' + formatNumber(v) : 'N/A'} />
+                    <EditableCell readOnly={!canEditThisRow || !!r.source_dropoff_id} onSave={handleCellSave} id={r.id} field="service_fee" value={r.service_fee} type="number" format={v => v != null ? '₱' + formatNumber(v) : 'N/A'} />
+                    <EditableCell readOnly={!canEditThisRow || !!r.source_dropoff_id} onSave={handleCellSave} id={r.id} field="total_funds_transferred" value={r.total_funds_transferred} type="number" format={v => v != null ? '₱' + formatNumber(v) : 'N/A'} style={{ fontWeight: 600 }} />
                     <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="mode_of_procurement" value={r.mode_of_procurement} />
 
                     <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="moa_signing" value={r.moa_signing} type="date" format={formatDate} />
@@ -626,7 +636,7 @@ export function DataTable({
 
                     {!readOnly && (
                       <td>
-                        {canEditThisRow ? (
+                        {sourceSchool ? <Link href={sourceHref} className="btn btn-outline" style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }} title="Edit school details in SBFP Monitoring">SBFP</Link> : canEditThisRow ? (
                           <Link
                             href={`/data/${r.id}/edit`}
                             className="btn btn-outline"

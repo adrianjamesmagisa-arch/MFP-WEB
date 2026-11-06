@@ -37,6 +37,7 @@ const EXPORT_COLUMNS: { key: string; label: string }[] = [
 ]
 
 function cellValue(row: Record<string, unknown>, key: string): string {
+  if (key === 'mfp_link_status') return row.mfp_link_status === 'missing' ? 'Not yet linked' : row.mfp_link_status === 'linked' ? 'Linked' : ''
   if (key === 'supplier_name') {
     const coop = row.cooperatives as { name?: string } | null | undefined
     const name = coop?.name || row.supplier_id
@@ -67,9 +68,11 @@ export function ExportMfpCsvButton({
       return
     }
 
-    const header = EXPORT_COLUMNS.map(c => escapeCsv(c.label)).join(',')
+    const columns = records.some(row => row.mfp_link_status)
+      ? [...EXPORT_COLUMNS, { key: 'mfp_link_status', label: 'MFP Link Status' }] : EXPORT_COLUMNS
+    const header = columns.map(c => escapeCsv(c.label)).join(',')
     const lines = records.map(row =>
-      EXPORT_COLUMNS.map(c => escapeCsv(cellValue(row, c.key))).join(','),
+      columns.map(c => escapeCsv(cellValue(row, c.key))).join(','),
     )
     const csv = '\uFEFF' + [header, ...lines].join('\r\n')
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })

@@ -1,11 +1,12 @@
 /**
  * Sync SBFP drop-off schools into mfp_data masterlist.
- * Identity fields always refresh from drop-off/SDO; HQ money fields are preserved.
+ * Identity and encoded school money refresh from drop-off/SDO; unencoded money is preserved.
  * Encoder-entered milk packs remain authoritative; formulations derive from that count.
  * SDO delivery_start / delivery_end push to masterlist date_started / date_completed.
  */
 
 import { calcMilkFormulationsFromPacks } from '@/lib/mfp-formulas'
+import { buildDropoffFinancialPatch } from '@/lib/sbfp-dropoff-finance'
 import { fetchAllRows } from '@/lib/supabase-paginate'
 import { toDateInputValue, totalPacksDelivered, type SbfpRawMilkRow } from '@/lib/sbfp-raw-milk'
 export { inferSbfpMilkType, normalizeSbfpMilkType } from '@/lib/sbfp-pack-price'
@@ -21,6 +22,8 @@ export type SbfpDropoffRow = {
   beneficiaries?: number | null
   feeding_days?: number | null
   milk_packs?: number | null
+  contract_amount?: number | null
+  service_fee?: number | null
   district?: string | null
   municipality?: string | null
   province?: string | null
@@ -423,7 +426,7 @@ export function buildMasterlistIdentity(
     payload.sugar = Number(calc.sugar.toFixed(4))
   }
 
-  return payload
+  return { ...payload, ...buildDropoffFinancialPatch(dropoff, existing) }
 }
 
 export async function syncDropoffToMasterlist(

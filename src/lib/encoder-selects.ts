@@ -58,6 +58,9 @@ export const SBFP_DROPOFF_ENCODER_COLUMNS = [
   'created_at',
 ].join(',')
 
+/** Kept separate so older databases can still load the school table. */
+export const SBFP_DROPOFF_FINANCE_COLUMNS = `${SBFP_DROPOFF_ENCODER_COLUMNS},contract_amount,service_fee`
+
 export const PROGRAM_PROCUREMENT_ENCODER_COLUMNS = [
   'id',
   'year',
@@ -116,6 +119,7 @@ export const PROGRAM_DROPOFF_ENCODER_COLUMNS = [
 /** Lean MFP Data list columns (+ cooperatives join for supplier name). */
 export const MFP_DATA_LIST_COLUMNS = [
   'id',
+  'source_dropoff_id',
   'year',
   'funded_by',
   'region',
