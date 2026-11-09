@@ -19,7 +19,7 @@ const programs = [
 const workflow = [
   { icon: ClipboardList, title: 'Record procurement', description: 'Keep contracts, milk types, and school allocations organized under the right center and program.' },
   { icon: Truck, title: 'Follow each delivery', description: 'Update delivered packs, dates, and payments, and compare progress with program commitments.' },
-  { icon: FileSpreadsheet, title: 'Bring the data together', description: 'Review masterlists and monitoring summaries, then prepare reports and export your records.' },
+  { icon: FileSpreadsheet, title: 'Generate program reports', description: 'Turn monitoring records into program reports and progress summaries, then download and export the files you need.' },
 ]
 
 export default function RootPage() {
@@ -43,9 +43,9 @@ export default function RootPage() {
         <section className={styles.hero} aria-labelledby="hero-title">
           <div className={styles.heroInner}>
             <div className={styles.heroCopy}>
-              <p className={styles.eyebrow}><span aria-hidden="true" /> Philippine Carabao Center</p>
+              <p className={styles.eyebrow}><span aria-hidden="true" /> Real-time program tracking</p>
               <h1 id="hero-title">Every delivery.<br />A <em>healthier</em><br />tomorrow.</h1>
-              <p className={styles.heroDescription}>One place to keep our milk feeding programs moving. Connect procurement, beneficiaries, and delivery progress across DA-PCC centers.</p>
+              <p className={styles.heroDescription}>Track procurement, beneficiaries, and delivery progress across DA-PCC centers. Bring your records together with program report generation and downloadable exports.</p>
               <div className={styles.heroActions}>
                 <Link href="/login" className={styles.primaryButton}>Access the system <ArrowRight size={19} aria-hidden="true" /></Link>
                 <a href="#programs" className={styles.exploreLink}>Explore the programs <ArrowDown size={16} aria-hidden="true" /></a>

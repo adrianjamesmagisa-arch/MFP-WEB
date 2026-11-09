@@ -45,6 +45,8 @@ import { sbfpCenterAliases, sbfpNavCenter } from '@/lib/center-aliases'
 import { milkTypeLabel } from '@/lib/sbfp-pack-price'
 import { rawMilkUtilizedLiters, packsForMonth } from '@/lib/sbfp-raw-milk'
 import { SbfpAiAgent } from '@/components/SbfpAiAgent'
+import { CooperativePaymentSummary } from '@/components/CooperativePaymentSummary'
+import { summarizeCooperativePayments } from '@/lib/cooperative-payments'
 import { buildSbfpProgressDocx, type ProgressFinanceRow, type ProgressHiringRow, type ProgressPpmpRow, type ProgressReportPayload } from '@/lib/sbfp-progress-docx'
 import {
   MAJOR_INDICATORS,
@@ -823,6 +825,8 @@ export default function SbfpSpreadsheetReport() {
       statusMetrics,
     }
   }, [filteredRecords, rowSenate, statusCutoffOpts])
+
+  const cooperativePayments = useMemo(() => summarizeCooperativePayments(filteredRecords), [filteredRecords])
 
   type GroupAgg = SbfpSenateMetrics & {
     sdoCount: number
@@ -2458,6 +2462,7 @@ export default function SbfpSpreadsheetReport() {
 
             {activeTab === 'senate_status' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <CooperativePaymentSummary summary={cooperativePayments} year={year} />
                 <div style={{ background: '#ffffff', borderRadius: 8, border: '1px solid #cbd5e1', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
                   <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
                     <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#1e293b' }}>
