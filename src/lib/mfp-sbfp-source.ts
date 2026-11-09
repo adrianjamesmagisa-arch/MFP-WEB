@@ -8,6 +8,7 @@ import { calcMilkFormulationsFromPacks } from '@/lib/mfp-formulas'
 import { fetchAllRows } from '@/lib/supabase-paginate'
 import { buildDropoffFinancialPatch } from '@/lib/sbfp-dropoff-finance'
 import { calculateSchoolMilkPacks } from '@/lib/sbfp-dropoff-packs'
+import { combineAdditionalSchoolRows, type SchoolContractSource } from '@/lib/mfp-school-aggregation'
 
 /** This rollout changes 2026 DepEd membership; historical and other-year lists stay intact. */
 export const SBFP_SOURCE_YEAR = 2026
@@ -18,6 +19,12 @@ export type MfpListRow = MfpMasterRow & {
   created_at?: string | null
   cooperatives?: { name?: string | null } | null
   mfp_link_status?: 'linked' | 'missing'
+  source_contract_id?: string
+  source_contract_label?: string
+  source_contracts?: SchoolContractSource[]
+  source_dropoff_ids?: string[]
+  missing_source_links?: number
+  combined_fields?: string[]
   [field: string]: unknown
 }
 
@@ -67,6 +74,11 @@ export function projectSbfpSchools(schools: School[], parents: Parent[], mirrors
       ...existing,
       ...source,
       id: existing?.id || `sbfp-school:${school.id}`,
+      source_contract_id: parent?.id,
+      source_contract_label: parent?.sdo || school.sdo || '',
+      source_contracts: parent ? [{ id: parent.id, label: parent.sdo || school.sdo || '',
+        target: Number(source.target_milk_packs_to_deliver) || 0,
+        delivered: Number(source.total_milk_packs_delivered) || 0 }] : [],
       mfp_link_status: existing ? 'linked' : 'missing',
       milk_type: milkType || null,
       milk_packs: packs,
@@ -149,5 +161,6 @@ export async function loadSbfpSourceRows(
       .in('source_dropoff_id', schools.slice(offset, offset + 200).map(school => school.id)).order('id')))
   }
   const effectiveFilters = profile.role === 'encoder' ? { ...filters, center: undefined } : filters
-  return projectSbfpSchools(schools, parents, mirrors).filter(row => matchesSourceFilters(row, effectiveFilters, fallbackYears))
+  return combineAdditionalSchoolRows(projectSbfpSchools(schools, parents, mirrors)
+    .filter(row => matchesSourceFilters(row, effectiveFilters, fallbackYears)))
 }

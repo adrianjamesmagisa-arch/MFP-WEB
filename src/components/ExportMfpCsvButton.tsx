@@ -37,6 +37,12 @@ const EXPORT_COLUMNS: { key: string; label: string }[] = [
 ]
 
 function cellValue(row: Record<string, unknown>, key: string): string {
+  if (key === 'source_contract_labels') {
+    const contracts = row.source_contracts as Array<{ label: string }> | undefined
+    return contracts?.map(contract => contract.label).join('; ') || ''
+  }
+  if (key === 'source_dropoff_ids') return (row.source_dropoff_ids as string[] | undefined)?.join('; ') || String(row.source_dropoff_id || '')
+  if (Array.isArray(row.combined_fields) && row.combined_fields.includes(key)) return 'Multiple'
   if (key === 'mfp_link_status') return row.mfp_link_status === 'missing' ? 'Not yet linked' : row.mfp_link_status === 'linked' ? 'Linked' : ''
   if (key === 'supplier_name') {
     const coop = row.cooperatives as { name?: string } | null | undefined
@@ -68,8 +74,11 @@ export function ExportMfpCsvButton({
       return
     }
 
-    const columns = records.some(row => row.mfp_link_status)
+    let columns = records.some(row => row.mfp_link_status)
       ? [...EXPORT_COLUMNS, { key: 'mfp_link_status', label: 'MFP Link Status' }] : EXPORT_COLUMNS
+    if (records.some(row => Array.isArray(row.source_dropoff_ids) && row.source_dropoff_ids.length > 1)) {
+      columns = [...columns, { key: 'source_contract_labels', label: 'Source Contracts' }, { key: 'source_dropoff_ids', label: 'Source School Entry IDs' }]
+    }
     const header = columns.map(c => escapeCsv(c.label)).join(',')
     const lines = records.map(row =>
       columns.map(c => escapeCsv(cellValue(row, c.key))).join(','),

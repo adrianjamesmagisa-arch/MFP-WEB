@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useMemo } from 'react'
+import { sumContractValue, type SchoolContractSource } from '@/lib/mfp-school-aggregation'
 import {
   Sparkles,
   Bot,
@@ -193,6 +194,7 @@ export function MfpAiAgent({ records, centerLabel, yearLabel, activeFilters }: M
     const fundedBySet = new Set<string>()
     const milkTypesSet = new Set<string>()
 
+    const seenContracts = new Set<string>()
     for (const r of records) {
       const packs = toNum(r.milk_packs)
       const volume = toNum(r.total_volume_requirements)
@@ -204,8 +206,11 @@ export function MfpAiAgent({ records, centerLabel, yearLabel, activeFilters }: M
       const milkCost = toNum(r.milk_cost)
       const serviceFee = toNum(r.service_fee)
       const funds = toNum(r.total_funds_transferred)
-      const targetDeliver = toNum(r.target_milk_packs_to_deliver)
-      const delivered = toNum(r.total_milk_packs_delivered)
+      const contracts: SchoolContractSource[] | undefined = r.source_contracts
+      const newContracts = contracts?.filter(contract => !seenContracts.has(contract.id))
+      contracts?.forEach(contract => seenContracts.add(contract.id))
+      const targetDeliver = contracts?.length ? sumContractValue(newContracts || [], 'target') : toNum(r.target_milk_packs_to_deliver)
+      const delivered = contracts?.length ? sumContractValue(newContracts || [], 'delivered') : toNum(r.total_milk_packs_delivered)
 
       totalPacks += packs
       totalVolume += volume
@@ -330,9 +335,10 @@ export function MfpAiAgent({ records, centerLabel, yearLabel, activeFilters }: M
       const coop = (r.cooperatives as any)?.name || r.supplier_id || '-'
       return `${r.year || ''}|${r.funded_by || ''}|${r.region || ''}|${r.center || ''}|${r.province || ''}|${r.municipality || ''}|${r.milk_packs ?? 'N/A'}|${r.total_volume_requirements ?? 'N/A'}|${r.raw_milk_liters ?? 'N/A'}|${r.beneficiaries ?? 'N/A'}|${r.milk_cost ?? 'N/A'}|${r.service_fee ?? 'N/A'}|${r.total_funds_transferred ?? 'N/A'}|${r.total_milk_packs_delivered ?? 'N/A'}|${coop}`
     })
-    const missingLinks = records.filter(row => row.mfp_link_status === 'missing').length
+    const missingLinks = records.reduce((count, row) => count + (row.missing_source_links ?? (row.mfp_link_status === 'missing' ? 1 : 0)), 0)
     const incompleteMoney = records.filter(row => row.mfp_link_status && (row.milk_cost == null || row.service_fee == null || row.total_funds_transferred == null)).length
     return [
+      ...(records.some(row => row.source_contracts?.length) ? ['Matching school entries from original/Add contracts combine only within the same milk type. Beneficiaries use the original contract only; addition beneficiaries are excluded. When the original is absent from the filtered result, beneficiaries are unavailable, not zero; totals include known original counts only. Feeding days with differing values are Multiple. Contract delivery totals are counted once per contract.'] : []),
       ...(missingLinks ? [`${missingLinks} SBFP source school(s) have no linked MFP record. Their source details are included in the count.`] : []),
       ...(incompleteMoney ? [`${incompleteMoney} school(s) have incomplete financial values. Financial sums include known amounts only; N/A means unknown, not zero.`] : []),
       header, ...rows,

@@ -66,7 +66,7 @@ PCC Internal Monitoring Division — the head-office role with read/write access
 
 ```
 src/app/
-  page.tsx                      — root redirect to /dashboard or /login
+  page.tsx                      — public landing page with program overview and /login entry
   login/page.tsx                — public login page
   (app)/                        — authenticated layout group
     layout.tsx                  — shared nav/shell

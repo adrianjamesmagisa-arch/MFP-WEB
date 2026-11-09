@@ -260,7 +260,8 @@ export default async function DataPage({
         <p role="status" className="mb-3 rounded-md border bg-blue-50 px-3 py-2 text-xs text-blue-900">
           2026 DepEd schools come from SBFP Monitoring with “In Masterlist?” checked.
           {' '}Edit school details through the SBFP action.
-          {' '}{records.filter(row => row.mfp_link_status === 'missing').length} school(s) in this result are not yet linked to MFP Data; their available SBFP details are shown.
+          {' '}Matching original and Add contracts combine by school and milk type. Beneficiaries use the original contract only; unavailable when no original is in this filtered result.
+          {' '}{records.reduce((count, row) => count + (row.missing_source_links ?? (row.mfp_link_status === 'missing' ? 1 : 0)), 0)} source school entry/entries in this result are not yet linked to MFP Data; their available SBFP details are shown.
         </p>
       )}
 

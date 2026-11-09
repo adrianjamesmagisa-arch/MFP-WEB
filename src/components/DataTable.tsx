@@ -10,8 +10,9 @@ import { Spinner } from '@/components/loading/Spinner'
 import { useAsyncTask } from '@/components/loading/AsyncFeedback'
 import { logCenterActivity } from '@/lib/center-activity'
 import { sbfpNavCenter } from '@/lib/center-aliases'
+import { sumContractValue, type SchoolContractSource } from '@/lib/mfp-school-aggregation'
 
-function EditableCell({ id, field, value, type = 'text', className, style, format, render, onSave, readOnly = false }: { id: string, field: string, value: any, type?: string, className?: string, style?: any, format?: (v: any) => any, render?: (v: any) => any, onSave?: (id: string, field: string, oldVal: any, newVal: any) => void, readOnly?: boolean }) {
+function EditableCell({ id, field, value, type = 'text', className, style, format, render, onSave, readOnly = false, mixed = false }: { id: string, field: string, value: any, type?: string, className?: string, style?: any, format?: (v: any) => any, render?: (v: any) => any, onSave?: (id: string, field: string, oldVal: any, newVal: any) => void, readOnly?: boolean, mixed?: boolean }) {
   const [isEditing, setIsEditing] = useState(false);
   const [val, setVal] = useState(value);
   const [isSaving, setIsSaving] = useState(false);
@@ -161,7 +162,7 @@ function EditableCell({ id, field, value, type = 'text', className, style, forma
       }}
       onClick={() => !readOnly && !isSaving && setIsEditing(true)}
     >
-      {(val === null || val === undefined || val === '') ? 'N/A' : render ? render(val) : format ? format(val) : val}
+      {mixed ? 'Multiple' : (val === null || val === undefined || val === '') ? 'N/A' : render ? render(val) : format ? format(val) : val}
       {isSaving && (
         <div className="cell-saving-overlay">
           <Spinner size={12} />
@@ -232,6 +233,7 @@ export function DataTable({
   // SDO-level AD/AE (one target + delivered total per year+center+division)
   const divisionDelivery = useMemo(() => {
     const keyData: Record<string, { target: number; delivered: number }> = {}
+    const contractsByDivision = new Map<string, SchoolContractSource[]>()
     displayRecords.forEach(r => {
       const key = `${r.year}|${r.center}|${r.division}`
       if (!keyData[key]) keyData[key] = { target: 0, delivered: 0 }
@@ -239,7 +241,13 @@ export function DataTable({
       const d = Number(r.total_milk_packs_delivered) || 0
       if (t > keyData[key].target) keyData[key].target = t
       if (d > keyData[key].delivered) keyData[key].delivered = d
+      if (r.source_contracts?.length) {
+        contractsByDivision.set(key, [...(contractsByDivision.get(key) || []), ...r.source_contracts])
+      }
     })
+    for (const [key, contracts] of contractsByDivision) {
+      keyData[key] = { target: sumContractValue(contracts, 'target'), delivered: sumContractValue(contracts, 'delivered') }
+    }
     return keyData
   }, [displayRecords])
 
@@ -560,7 +568,14 @@ export function DataTable({
                     <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="division" value={r.division} className="col-div" />
                     <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="municipality" value={r.municipality} className="col-muni" />
                     <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="elementary_school" value={r.elementary_school} className="col-school"
-                      render={value => <>{value}{missingLink && <span className="block text-[0.65rem] text-amber-700">Not yet linked</span>}</>} />
+                      render={value => <>{value}{missingLink && <span className="block text-[0.65rem] text-amber-700">Not yet linked</span>}
+                        {r.source_dropoff_ids?.length > 1 && <details className="mt-1 text-[0.65rem] font-normal">
+                          <summary className="cursor-pointer">Combined from {r.source_dropoff_ids.length} contract entries</summary>
+                          <div>{r.source_contracts.map((contract: SchoolContractSource) => contract.label).join('; ')}</div>
+                          <div>Beneficiaries use the original contract only; unavailable when no original is in this result.</div>
+                          {r.combined_fields?.length > 0 && <div>Multiple values: {r.combined_fields.join(', ')}</div>}
+                        </details>}
+                      </>} />
 
                     <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="milk_packs" value={r.milk_packs} type="number" format={formatNumber} />
                     <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="total_volume_requirements" value={r.total_volume_requirements} type="number" format={formatNumber} />
@@ -569,24 +584,24 @@ export function DataTable({
                     <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="skimmed_milk_kg" value={r.skimmed_milk_kg} type="number" format={v => v?.toFixed(2) ?? 'N/A'} />
                     <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="sugar" value={r.sugar} type="number" format={v => v?.toFixed(2) ?? 'N/A'} />
 
-                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="feeding_days" value={r.feeding_days} type="number" />
-                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="batch" value={r.batch} />
+                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="feeding_days" value={r.feeding_days} type="number" mixed={r.combined_fields?.includes('feeding_days')} />
+                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="batch" value={r.batch} mixed={r.combined_fields?.includes('batch')} />
                     <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="beneficiaries" value={r.beneficiaries} type="number" format={formatNumber} style={{ fontWeight: 600 }} />
                     <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="milk_type" value={r.milk_type} render={v => <span className={'badge badge-' + (v?.toLowerCase() || '')}>{v || 'N/A'}</span>} />
-                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="price" value={r.price} type="number" format={v => v ? '₱' + v.toFixed(2) : 'N/A'} />
+                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="price" value={r.price} type="number" mixed={r.combined_fields?.includes('price')} format={v => v ? '₱' + v.toFixed(2) : 'N/A'} />
 
                     <td>{(r as any).cooperatives?.name ?? 'N/A'}</td>
 
                     <EditableCell readOnly={!canEditThisRow || !!r.source_dropoff_id} onSave={handleCellSave} id={r.id} field="milk_cost" value={r.milk_cost} type="number" format={v => v != null ? '₱' + formatNumber(v) : 'N/A'} />
                     <EditableCell readOnly={!canEditThisRow || !!r.source_dropoff_id} onSave={handleCellSave} id={r.id} field="service_fee" value={r.service_fee} type="number" format={v => v != null ? '₱' + formatNumber(v) : 'N/A'} />
                     <EditableCell readOnly={!canEditThisRow || !!r.source_dropoff_id} onSave={handleCellSave} id={r.id} field="total_funds_transferred" value={r.total_funds_transferred} type="number" format={v => v != null ? '₱' + formatNumber(v) : 'N/A'} style={{ fontWeight: 600 }} />
-                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="mode_of_procurement" value={r.mode_of_procurement} />
+                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="mode_of_procurement" value={r.mode_of_procurement} mixed={r.combined_fields?.includes('mode_of_procurement')} />
 
-                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="moa_signing" value={r.moa_signing} type="date" format={formatDate} />
-                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="fund_transfer" value={r.fund_transfer} type="date" format={formatDate} />
+                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="moa_signing" value={r.moa_signing} type="date" format={formatDate} mixed={r.combined_fields?.includes('moa_signing')} />
+                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="fund_transfer" value={r.fund_transfer} type="date" format={formatDate} mixed={r.combined_fields?.includes('fund_transfer')} />
                     <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="date_started" value={r.date_started} type="date" format={formatDate} />
                     <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="date_completed" value={r.date_completed} type="date" format={formatDate} />
-                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="liquidation" value={r.liquidation} type="date" format={formatDate} />
+                    <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="liquidation" value={r.liquidation} type="date" format={formatDate} mixed={r.combined_fields?.includes('liquidation')} />
 
                     {/* AD/AE — one merged cell per SDO (division), like Excel */}
                     {(() => {

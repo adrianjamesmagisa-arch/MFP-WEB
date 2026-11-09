@@ -63,6 +63,131 @@ async function pageFixture(params = { year: '2026', funded_by: 'DepEd' }, option
     ai: nodes.find(node => node.type === MfpAiAgent) }
 }
 
+function additionalSchoolFixture() {
+  const tables = defaults()
+  Object.assign(tables.sbfp_data[0], { sdo: 'Baybay City - PM', packs_to_deliver: 2000, packs_delivered: 1000 })
+  Object.assign(tables.sbfp_dropoff_points[0], { sdo: 'Baybay City - PM', dropoff_name: 'Altavista ES', beneficiaries: 48, feeding_days: 25, service_fee: 2.15 })
+  tables.sbfp_data.push({ ...tables.sbfp_data[0], id: 'p2', sdo: 'Baybay City Add 1 - PM',
+    delivery_start: '2026-11-01', delivery_end: '2026-12-01', packs_to_deliver: 4000, packs_delivered: 500 })
+  tables.sbfp_dropoff_points.push({ ...tables.sbfp_dropoff_points[0], id: 'add-school', sbfp_data_id: 'p2',
+    sdo: 'Baybay City Add 1 - PM', dropoff_name: ' altavista   ES ', beneficiaries: 123, feeding_days: 30,
+    municipality: 'N/A', service_fee: 3.25 })
+  return tables
+}
+
+test('original and Add school entries combine consistently for the list, CSV, AI and source trace', async () => {
+  const result = await pageFixture(undefined, { tables: additionalSchoolFixture() })
+  const rows = result.table.props.records
+  assert.equal(rows.length, 2)
+  const combined = rows.find(row => row.source_dropoff_ids?.length === 2)
+  assert.ok(combined)
+  assert.equal(combined.beneficiaries, 48)
+  assert.equal(combined.milk_packs, 48 * 25 + 123 * 30)
+  assert.equal(combined.milk_cost, (48 * 25 + 123 * 30) * 25)
+  assert.equal(combined.service_fee, 5.4)
+  assert.equal(combined.total_funds_transferred, combined.milk_cost + 5.4)
+  assert.equal(combined.feeding_days, null)
+  assert.ok(combined.combined_fields.includes('feeding_days'))
+  assert.equal(combined.municipality, 'Baler')
+  assert.equal(combined.date_started, '2026-08-01')
+  assert.equal(combined.date_completed, '2026-12-01')
+  assert.equal(combined.mfp_link_status, 'missing')
+  assert.equal(combined.missing_source_links, 1)
+  assert.deepEqual(new Set(combined.source_dropoff_ids), new Set(['s1', 'add-school']))
+  assert.deepEqual(new Set(combined.source_contracts.map(row => row.id)), new Set(['p1', 'p2']))
+  assert.equal(combined.source_dropoff_id, null)
+  assert.equal(combined.target_milk_packs_to_deliver, 6000)
+  assert.equal(combined.total_milk_packs_delivered, 1500)
+  assert.deepEqual(result.csv.props.records, rows)
+  assert.deepEqual(result.ai.props.records, rows)
+})
+
+test('different milk types, SDOs, centers, and ordinary lots do not combine', async () => {
+  for (const change of [
+    tables => { tables.sbfp_data[1].milk_type = 'SM'; tables.sbfp_data[1].sdo = 'Baybay City Add 1 - SM' },
+    tables => { tables.sbfp_data[1].milk_type = 'CM'; tables.sbfp_data[1].sdo = 'Baybay City Add 1 - CM'; tables.sbfp_data[1].pack_unit_price = 35 },
+    tables => { tables.sbfp_data[1].sdo = 'Other City Add - PM' },
+    tables => { tables.sbfp_data[1].center = 'VSU'; tables.sbfp_dropoff_points[3].center = 'VSU' },
+    tables => { tables.sbfp_data[1].sdo = 'Baybay City Lot 1 - PM' },
+  ]) {
+    const tables = additionalSchoolFixture()
+    change(tables)
+    assert.equal((await pageFixture(undefined, { tables })).table.props.records.length, 3)
+  }
+})
+
+test('original-only beneficiaries preserve zero and unknown counts regardless of row ordering', async () => {
+  for (const beneficiaries of [0, null]) {
+    const tables = additionalSchoolFixture()
+    tables.sbfp_dropoff_points[0].beneficiaries = beneficiaries
+    tables.mfp_data[0].id = 'z-original'
+    const before = structuredClone(tables)
+    const result = await pageFixture(undefined, { tables })
+    const combined = result.table.props.records.find(row => row.source_dropoff_ids)
+    assert.equal(combined.beneficiaries, beneficiaries)
+    assert.equal(combined.source_dropoff_ids[0], 'add-school')
+    assert.deepEqual(tables, before)
+  }
+})
+
+test('filtering applies to each contract before combining and excluded additions disappear', async () => {
+  const tables = additionalSchoolFixture()
+  const november = await pageFixture({ year: '2026', funded_by: 'DepEd', date_started_year: '2026', date_started_month: '11' }, { tables })
+  assert.equal(november.table.props.records.length, 1)
+  assert.equal(november.table.props.records[0].beneficiaries, null)
+  assert.equal(november.table.props.records[0].milk_packs, 123 * 30)
+  assert.equal(november.table.props.records[0].source_dropoff_id, 'add-school')
+  const baler = await pageFixture({ year: '2026', funded_by: 'DepEd', municipality: 'Baler' }, { tables })
+  assert.equal(baler.table.props.records.length, 1)
+  assert.equal(baler.table.props.records[0].beneficiaries, 48)
+  tables.sbfp_dropoff_points[3].include_in_masterlist = false
+  const excluded = await pageFixture(undefined, { tables })
+  assert.equal(excluded.table.props.records.length, 2)
+  assert.equal(excluded.table.props.records[0].beneficiaries, 48)
+})
+
+test('combined finances preserve unknown shipping and explicit zero without mutating source inputs', async () => {
+  for (const shipping of [null, 0]) {
+    const tables = additionalSchoolFixture()
+    tables.sbfp_dropoff_points[3].service_fee = shipping
+    const before = structuredClone(tables)
+    const result = await pageFixture(undefined, { tables })
+    const combined = result.table.props.records.find(row => row.source_dropoff_ids)
+    assert.equal(combined.service_fee, shipping === null ? null : 2.15)
+    assert.equal(combined.total_funds_transferred, shipping === null ? null : combined.milk_cost + 2.15)
+    assert.deepEqual(tables, before)
+  }
+})
+
+test('same-named schools with conflicting known locations remain separate', async () => {
+  for (const [field, value] of [['municipality', 'Other municipality'], ['province', 'Other province'], ['region', 'VIII']]) {
+    const tables = additionalSchoolFixture()
+    if (field === 'region') tables.sbfp_dropoff_points[0].region = 'III'
+    tables.sbfp_dropoff_points[3][field] = value
+    assert.equal((await pageFixture(undefined, { tables })).table.props.records.length, 3)
+  }
+})
+
+test('numbered additions combine without an original, but unknown milk and duplicate entries in one contract stay separate', async () => {
+  const tables = additionalSchoolFixture()
+  tables.sbfp_data.push({ ...tables.sbfp_data[1], id: 'p3', sdo: 'Baybay City add. 2 - PM' })
+  tables.sbfp_dropoff_points.push({ ...tables.sbfp_dropoff_points[3], id: 'add-two', sbfp_data_id: 'p3', beneficiaries: 0, service_fee: 0 })
+  let rows = (await pageFixture(undefined, { tables })).table.props.records
+  assert.equal(rows.length, 2)
+  assert.equal(rows.find(row => row.source_dropoff_ids).source_dropoff_ids.length, 3)
+  tables.sbfp_dropoff_points[0].include_in_masterlist = false
+  rows = (await pageFixture(undefined, { tables })).table.props.records
+  assert.equal(rows.length, 2)
+  assert.equal(rows.find(row => row.source_dropoff_ids).beneficiaries, null)
+  assert.equal(rows.find(row => row.source_dropoff_ids).milk_packs, 123 * 30)
+  tables.sbfp_dropoff_points[4].sbfp_data_id = 'p2'
+  assert.equal((await pageFixture(undefined, { tables })).table.props.records.length, 3)
+  const { combineAdditionalSchoolRows } = load('src/lib/mfp-school-aggregation.ts')
+  const unknownRows = ['base', 'add'].map((id, index) => ({ id, year: 2026, center: 'CLSU', elementary_school: 'School',
+    source_contract_id: id, source_contract_label: index ? 'Baybay City Add' : 'Baybay City', milk_type: null }))
+  assert.equal(combineAdditionalSchoolRows(unknownRows).length, 2)
+})
+
 test('2026 DepEd lists eligible SBFP schools, removes unlinked imports, and retains schools missing an MFP mirror', async () => {
   const result = await pageFixture()
   const rows = result.table.props.records
@@ -190,6 +315,17 @@ test('CSV contains the same two schools and an explicit link status, leaving unk
     const missing = lines.find(line => line.includes('Source School Two')).split(',')
     assert.equal(missing[headers.indexOf('Milk Cost')], '2000')
     assert.equal(missing[headers.indexOf('Total Funds')], '')
+    const combinedResult = await pageFixture(undefined, { tables: additionalSchoolFixture() })
+    ExportMfpCsvButton({ records: combinedResult.table.props.records }).props.onClick()
+    const combinedCsv = await captured.text()
+    const combinedLines = combinedCsv.trimEnd().split('\r\n')
+    assert.equal(combinedLines.length, 3)
+    const combinedHeaders = combinedLines[0].split(',')
+    const combinedValues = combinedLines.find(line => line.includes('Altavista ES')).split(',')
+    assert.equal(combinedValues[combinedHeaders.indexOf('Beneficiaries')], '48')
+    assert.equal(combinedValues[combinedHeaders.indexOf('Milk Packs')], '4890')
+    assert.equal(combinedValues[combinedHeaders.indexOf('Feeding Days')], 'Multiple')
+    assert.match(combinedValues[combinedHeaders.indexOf('Source Contracts')], /Baybay City Add 1 - PM/)
   } finally {
     globalThis.document = priorDocument
     URL.createObjectURL = priorCreate
@@ -225,6 +361,40 @@ test('source school rows edit through SBFP and Select All uses only independentl
   const headerCheckbox = nodes.find(node => node.type === 'input' && node.props?.type === 'checkbox')
   headerCheckbox.props.onChange()
   assert.deepEqual([...selection], ['dswd'])
+  const combinedTables = additionalSchoolFixture()
+  combinedTables.sbfp_data[0].batch = '1'
+  combinedTables.sbfp_data[1].batch = '2'
+  const combinedResult = await pageFixture(undefined, { tables: combinedTables })
+  const combinedRows = combinedResult.table.props.records
+  const combined = combinedRows.find(row => row.source_dropoff_ids)
+  const combinedNodes = elements(DataTable({ records: combinedRows, userRole: 'super_admin' }))
+  const combinedCells = combinedNodes.filter(node => node.props?.id === combined.id && node.props?.field)
+  assert.ok(combinedCells.every(node => node.props.readOnly))
+  for (const field of ['feeding_days', 'batch']) {
+    const cell = combinedCells.find(node => node.props.field === field)
+    assert.equal(cell.props.mixed, true)
+    assert.ok(elements(cell.type(cell.props)).some(node => [node.props?.children].flat().includes('Multiple')))
+  }
+  const schoolCell = combinedCells.find(node => node.props.field === 'elementary_school')
+  assert.ok(elements(schoolCell.props.render(schoolCell.props.value)).some(node => node.type === 'details'))
+  assert.ok(combinedNodes.some(node => node.type === 'td' && node.props?.title?.startsWith('Target milk packs') && node.props.children === '6,000'))
+})
+
+test('AI counts contract deliveries once even when the contract also appears on another school row', async () => {
+  const result = await pageFixture(undefined, { tables: additionalSchoolFixture() })
+  const memoValues = []
+  const { MfpAiAgent } = load('src/components/MfpAiAgent.tsx', { react: {
+    useState: initial => [typeof initial === 'function' ? initial() : initial, () => {}],
+    useEffect: () => {}, useRef: initial => ({ current: initial }),
+    useMemo: factory => { const value = factory(); memoValues.push(value); return value },
+  } })
+  MfpAiAgent({ records: result.table.props.records })
+  const summary = memoValues.find(value => typeof value?.totalPacks === 'number')
+  assert.equal(summary.totalTargetPacksToDeliver, 6000)
+  assert.equal(summary.totalDelivered, 1500)
+  assert.equal(summary.totalPacks, 4970)
+  assert.equal(summary.totalBeneficiaries, 50)
+  assert.ok(memoValues.some(value => typeof value === 'string' && value.includes('original contract only')))
 })
 
 test('orphan schools with unknown milk type keep milk-dependent formulations and missing metadata blank', () => {
