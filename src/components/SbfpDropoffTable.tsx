@@ -14,10 +14,10 @@ import { calcMilkFormulationsFromPacks, litersPerPackForMilkType } from '@/lib/m
 import { inferSbfpMilkType, normalizeSbfpMilkType } from '@/lib/sbfp-pack-price'
 import { logCenterActivity } from '@/lib/center-activity'
 import { SbfpDropoffFinanceKpis } from '@/components/SbfpDropoffFinanceKpis'
-import { MAX_DROPOFF_AMOUNT, parseDropoffAmount, type DropoffMoneyField } from '@/lib/sbfp-dropoff-finance'
+import { calculateSchoolContract, MAX_DROPOFF_AMOUNT, parseDropoffAmount, type DropoffMoneyField } from '@/lib/sbfp-dropoff-finance'
+import { calculateSchoolMilkPacks, MAX_SCHOOL_COUNT, parseSchoolCount } from '@/lib/sbfp-dropoff-packs'
 
 export type DropoffRow = SbfpDropoffPoint
-const MAX_MILK_PACKS_PER_DROPOFF = 2_147_483_647
 
 async function apiSyncDropoff(dropoff: DropoffRow): Promise<string | null> {
   const res = await fetch('/api/sbfp/sync-dropoff', {
@@ -48,6 +48,9 @@ type SdoOption = {
   feeding_days?: number | null
   remarks?: string | null
   milk_type?: string | null
+  pack_unit_price?: number | null
+  year?: number
+  center?: string
   contract_amount?: number | null
 }
 
@@ -237,13 +240,20 @@ export function SbfpDropoffTable({
   const [financeNotice, setFinanceNotice] = useState<string | null>(null)
   const [savingFinance, setSavingFinance] = useState<Set<string>>(new Set())
   const savingFinanceRef = useRef(new Set<string>())
-  const [financeDraft, setFinanceDraft] = useState<{ id: string; field: DropoffMoneyField; value: string } | null>(null)
+  const [financeDraft, setFinanceDraft] = useState<{ id: string; field: DropoffMoneyField | 'beneficiaries' | 'feeding_days'; value: string } | null>(null)
   const financeRows = useMemo(() => {
-    if (!financeDraft) return rows
-    const parsed = parseDropoffAmount(financeDraft.value)
-    if (parsed.error) return rows
-    return rows.map(row => row.id === financeDraft.id ? { ...row, [financeDraft.field]: parsed.value } : row)
-  }, [rows, financeDraft])
+    return rows.map(row => {
+      let preview = row
+      if (financeDraft?.id === row.id) {
+        const parsed = financeDraft.field === 'service_fee' ? parseDropoffAmount(financeDraft.value) :
+          { value: parseSchoolCount(financeDraft.value), error: null }
+        const candidate = { ...row, [financeDraft.field]: parsed.value }
+        if (!parsed.error && parsed.value != null && calculateSchoolMilkPacks(candidate) != null) preview = candidate
+      }
+      const calculated = { ...preview, milk_packs: calculateSchoolMilkPacks(preview) }
+      return { ...calculated, contract_amount: calculateSchoolContract(calculated, sdoOptions.find(o => o.id === preview.sbfp_data_id)).contractAmount }
+    })
+  }, [rows, financeDraft, sdoOptions])
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const scopeKey = `${center}:${year}`
   /** Row IDs added (or edited from placeholder) in this session — kept at the end so they stay visible while encoding. */
@@ -374,13 +384,13 @@ export function SbfpDropoffTable({
     }
 
     let patch: Partial<DropoffRow> = { [field]: value }
-    if (field === 'milk_packs') {
-      const packs = Number(value)
-      if (!Number.isSafeInteger(packs) || packs < 0 || packs > MAX_MILK_PACKS_PER_DROPOFF) {
-        setMsg('Milk packs must be a whole number between 0 and 2,147,483,647.')
-        return
-      }
-      patch = { milk_packs: packs }
+    if (field === 'milk_packs') return // Calculated field; never manually encoded.
+    if (field === 'beneficiaries' || field === 'feeding_days') {
+      const count = parseSchoolCount(value)
+      if (count == null) { setMsg('Beneficiaries and feeding days must be nonnegative whole numbers.'); return }
+      const packs = calculateSchoolMilkPacks({ ...prev, [field]: count })
+      if (packs == null) { setMsg('Beneficiaries × feeding days must not exceed 2,147,483,647 packs.'); return }
+      patch = { [field]: count, milk_packs: packs }
     }
     if (field === 'sbfp_data_id') {
       const opt = sdoSelectOptions.find(o => o.id === value)
@@ -396,6 +406,9 @@ export function SbfpDropoffTable({
       }
       if (!(Number(prev.feeding_days) > 0) && inferredDays > 0) {
         patch.feeding_days = inferredDays
+        const packs = calculateSchoolMilkPacks({ ...prev, feeding_days: inferredDays })
+        if (packs == null) { setMsg('Beneficiaries × feeding days must not exceed 2,147,483,647 packs.'); return }
+        patch.milk_packs = packs
       }
     }
 
@@ -448,9 +461,9 @@ export function SbfpDropoffTable({
       })
       const result: { error?: string; warning?: string | null; dropoff?: DropoffRow } = await response.json()
       if (!response.ok || !result.dropoff) throw new Error(result.error || 'Could not save school amounts.')
-      // Merge only financial fields; an unrelated school edit may have finished meanwhile.
+      // Only shipping belongs to this save; milk cost derives from the current packs/SDO.
       setRows(current => current.map(row => row.id === id ? {
-        ...row, contract_amount: result.dropoff?.contract_amount, service_fee: result.dropoff?.service_fee,
+        ...row, service_fee: result.dropoff?.service_fee,
       } : row))
       setFinanceNotice(result.warning || null)
       void logCenterActivity(supabase, {
@@ -471,6 +484,7 @@ export function SbfpDropoffTable({
       setMsg(sdoSelectOptions.length ? null : 'Add an SDO in procurement first, then add drop-off schools.')
       return
     }
+    setMsg(null)
     setAdding(true)
     const first =
       filterSdo !== 'ALL'
@@ -618,14 +632,12 @@ export function SbfpDropoffTable({
       </div>
 
       {financeNotice && <p role="status" className="text-xs text-amber-800">{financeNotice}</p>}
-      {financeReady && (
-        <SbfpDropoffFinanceKpis parents={sdoOptions} schools={financeRows} selectedSdo={filterSdo}
-          saving={savingFinance.size > 0} drafting={financeDraft != null} />
-      )}
+      <SbfpDropoffFinanceKpis parents={sdoOptions} schools={financeRows} selectedSdo={filterSdo}
+        saving={savingFinance.size > 0} drafting={financeDraft != null} />
       <div className="card center-dropoff-card" style={{ overflow: 'hidden' }}>
         <p className="center-table-scroll-hint">Swipe horizontally to see all columns</p>
         <div ref={tableScrollRef} className="center-dropoff-scroll" style={{ overflow: 'auto', maxHeight: 'calc(100vh - 320px)' }}>
-          <table className="data-table center-dropoff-table" style={{ minWidth: 2050, fontSize: '0.78rem', borderCollapse: 'separate', borderSpacing: 0 }}>
+          <table className="data-table center-dropoff-table" style={{ minWidth: 2180, fontSize: '0.78rem', borderCollapse: 'separate', borderSpacing: 0 }}>
             <thead>
               <tr>
                 <th style={{ textAlign: 'center', ...stickyTh(SL.check, SW.check) }}>
@@ -655,10 +667,11 @@ export function SbfpDropoffTable({
                 <th style={{ minWidth: 100, textAlign: 'right' }} title="Encoder input">
                   Feeding Days
                 </th>
-                <th style={{ minWidth: 110, textAlign: 'right', background: '#1e3a5f' }} title="Encoder input; volume and formulations calculate from this value">
+                <th style={{ minWidth: 110, textAlign: 'right', background: '#1e3a5f' }} title="Automatically calculated: beneficiaries × feeding days">
                   Milk Packs
                 </th>
-                <th style={{ minWidth: 150, textAlign: 'right' }}>Contract Amount (₱)</th>
+                <th style={{ minWidth: 130, textAlign: 'right' }}>SDO Price / Pack (₱)</th>
+                <th style={{ minWidth: 150, textAlign: 'right' }} title="Automatically calculated: milk packs × linked SDO price per pack">Contract Amount (₱)</th>
                 <th style={{ minWidth: 150, textAlign: 'right' }}>Shipping / Service Fee (₱)</th>
                 <th style={{ minWidth: 150, textAlign: 'right' }}>Total Funds (₱)</th>
                 <th
@@ -689,7 +702,7 @@ export function SbfpDropoffTable({
             <tbody>
               {visible.length === 0 && (
                 <tr>
-                  <td colSpan={editable ? 19 : 18} style={{ textAlign: 'center', padding: '2rem', color: 'var(--gray-400)' }}>
+                  <td colSpan={editable ? 20 : 19} style={{ textAlign: 'center', padding: '2rem', color: 'var(--gray-400)' }}>
                     No drop-off schools yet for {center}.
                   </td>
                 </tr>
@@ -697,12 +710,12 @@ export function SbfpDropoffTable({
               {visible.map(r => {
                 const bg = selected.has(r.id) ? '#e0e7ff' : r.id === highlightRowId ? '#fef9c3' : '#fff'
                 const parentOpt = sdoSelectOptions.find(o => o.id === r.sbfp_data_id)
+                const preview = financeRows.find(row => row.id === r.id) || r
+                const financials = calculateSchoolContract(preview, parentOpt)
                 const selectValue = parentOpt?.id || ''
-                const milkType =
-                  inferSbfpMilkType(parentOpt?.sdo, parentOpt?.remarks, r.sdo) ||
-                  normalizeSbfpMilkType(parentOpt?.milk_type) ||
-                  'PM'
-                const calc = calcMilkFormulationsFromPacks(Number(r.milk_packs) || 0, milkType)
+                const milkType = normalizeSbfpMilkType(parentOpt?.milk_type) ||
+                  inferSbfpMilkType(parentOpt?.sdo, parentOpt?.remarks, r.sdo)
+                const calc = preview.milk_packs != null && milkType ? calcMilkFormulationsFromPacks(preview.milk_packs, milkType) : null
                 const fmt4 = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 4 })
                 const displaySdo =
                   (parentOpt
@@ -763,43 +776,44 @@ export function SbfpDropoffTable({
                     <EditableText
                       value={r.beneficiaries}
                       type="number"
+                      min={0} max={MAX_SCHOOL_COUNT} step={1}
                       align="right"
                       disabled={!editable}
-                      onCommit={v => updateField(r.id, 'beneficiaries', Number(v) || 0)}
+                      title="Enter beneficiaries; milk packs calculate automatically"
+                      onDraft={value => setFinanceDraft(value == null ? null : { id: r.id, field: 'beneficiaries', value })}
+                      onCommit={v => updateField(r.id, 'beneficiaries', v)}
                     />
                     <EditableText
-                      value={Number(r.feeding_days) > 0 ? r.feeding_days : ''}
+                      value={r.feeding_days ?? 0}
                       type="number"
+                      min={0} max={MAX_SCHOOL_COUNT} step={1}
                       align="right"
                       disabled={!editable}
                       title="Type feeding days (saves to the masterlist)"
                       cellStyle={{ background: 'rgba(16,185,129,0.06)' }}
-                      onCommit={v => updateField(r.id, 'feeding_days', Number(v) > 0 ? Number(v) : 0)}
+                      onDraft={value => setFinanceDraft(value == null ? null : { id: r.id, field: 'feeding_days', value })}
+                      onCommit={v => updateField(r.id, 'feeding_days', v)}
                     />
-                    <EditableText
-                      value={r.milk_packs ?? 0}
-                      type="number"
-                      min={0}
-                      max={MAX_MILK_PACKS_PER_DROPOFF}
-                      step={1}
-                      align="right"
-                      disabled={!editable}
-                      title="Enter the milk-pack count; volume and formulations update from this number"
-                      cellStyle={{ background: 'rgba(59,130,246,0.06)', fontWeight: 600 }}
-                      onCommit={v => updateField(r.id, 'milk_packs', v == null ? 0 : Number(v))}
-                    />
-                    {(['contract_amount', 'service_fee'] as const).map(field => (
-                      <EditableText key={field} value={r[field]} type="number" currency align="right"
-                        min={0} max={MAX_DROPOFF_AMOUNT} step={0.01}
-                        disabled={!editable || !financeReady || savingFinance.has(r.id)}
-                        title={field === 'contract_amount' ? 'School milk-only contract allocation; shipping is separate' : 'School shipping/service fee; enter 0 when there is no fee'}
-                        cellStyle={{ background: 'rgba(16,185,129,0.06)' }}
-                        onDraft={value => setFinanceDraft(value == null ? null : { id: r.id, field, value })}
-                        onCommit={value => updateFinancialField(r.id, field, value)} />
-                    ))}
-                    <td style={{ textAlign: 'right', fontWeight: 600 }} title="Milk cost + shipping; both amounts must be encoded">
-                      {r.contract_amount == null || r.service_fee == null ? '—' :
-                        ((Math.round(r.contract_amount * 100) + Math.round(r.service_fee * 100)) / 100)
+                    <td style={{ textAlign: 'right', background: 'rgba(59,130,246,0.06)', fontWeight: 600 }}
+                      title="Automatically calculated: beneficiaries × feeding days">
+                      {preview.milk_packs == null ? 'Invalid pack inputs' : preview.milk_packs.toLocaleString()}
+                    </td>
+                    <td style={{ textAlign: 'right' }} title="Price from this school's linked SDO procurement row">
+                      {financials.unitPrice == null ? '—' : financials.unitPrice.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 20 })}
+                    </td>
+                    <td style={{ textAlign: 'right', background: 'rgba(59,130,246,0.06)' }} title={financials.reason || 'Automatically calculated: milk packs × linked SDO price per pack'}>
+                      {financials.contractAmount == null ? financials.reason : financials.contractAmount.toLocaleString('en-PH', { style: 'currency', currency: 'PHP' })}
+                    </td>
+                    <EditableText key="service_fee" value={r.service_fee} type="number" currency align="right"
+                      min={0} max={MAX_DROPOFF_AMOUNT} step={0.01}
+                      disabled={!editable || !financeReady || savingFinance.has(r.id)}
+                      title="School shipping/service fee; enter 0 when there is no fee"
+                      cellStyle={{ background: 'rgba(16,185,129,0.06)' }}
+                      onDraft={value => setFinanceDraft(value == null ? null : { id: r.id, field: 'service_fee', value })}
+                      onCommit={value => updateFinancialField(r.id, 'service_fee', value)} />
+                    <td style={{ textAlign: 'right', fontWeight: 600 }} title="Calculated milk cost + shipping; enter shipping or 0 to complete the total">
+                      {financials.contractAmount == null || preview.service_fee == null ? '—' :
+                        ((Math.round(financials.contractAmount * 100) + Math.round(preview.service_fee * 100)) / 100)
                           .toLocaleString('en-PH', { style: 'currency', currency: 'PHP' })}
                     </td>
                     <td

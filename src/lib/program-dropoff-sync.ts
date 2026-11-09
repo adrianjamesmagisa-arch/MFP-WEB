@@ -17,6 +17,7 @@ import {
   PROGRAM_PROCUREMENT_ENCODER_COLUMNS,
 } from '@/lib/encoder-selects'
 import { fetchAllRows } from '@/lib/supabase-paginate'
+import { computeSbfpAccomplishment } from '@/lib/sbfp-accomplishment'
 
 export type ProgramProcurementRow = {
   id: string
@@ -680,7 +681,7 @@ export async function loadProgramMonthCards(
     .eq('program', programId)
   const { data: proc } = await supabase
     .from('mfp_program_procurement')
-    .select('year,month,packs_to_deliver,packs_delivered')
+    .select('year,month,packs_to_deliver,packs_delivered,delivery_snapshots,monthly_packs_delivered,procurement_status,include_in_report')
     .eq('center', center)
     .eq('program', programId)
   const { data: drops } = await supabase
@@ -717,8 +718,11 @@ export async function loadProgramMonthCards(
     if (!y) continue
     const c = addPeriod(y, m)
     c.areaCount++
-    c.targetPacks += Number(r.packs_to_deliver) || 0
-    c.deliveredPacks += Number(r.packs_delivered) || 0
+    // Match the center workspace: dated tracking, completed legacy fallback,
+    // and the same Failed / In Report exclusions.
+    const accomplishment = computeSbfpAccomplishment([r])
+    c.targetPacks += accomplishment.target
+    c.deliveredPacks += accomplishment.delivered
   }
   for (const r of drops || []) {
     const y = Number(r.year) || 0

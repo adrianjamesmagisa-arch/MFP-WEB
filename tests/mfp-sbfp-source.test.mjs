@@ -70,7 +70,7 @@ test('2026 DepEd lists eligible SBFP schools, removes unlinked imports, and reta
   assert.equal(rows.find(row => row.source_dropoff_id === 's1').milk_packs, 120)
   const missing = rows.find(row => row.source_dropoff_id === 's2')
   assert.equal(missing.mfp_link_status, 'missing')
-  assert.equal(missing.milk_cost, null)
+  assert.equal(missing.milk_cost, 2000)
   assert.equal(missing.total_funds_transferred, null)
   assert.deepEqual(result.csv.props.records, rows)
   assert.deepEqual(result.ai.props.records, rows)
@@ -140,7 +140,7 @@ test('all source pages are read, with one display row per school and no required
   const tables = defaults()
   tables.sbfp_dropoff_points = Array.from({ length: 1001 }, (_, index) => ({
     id: `school-${index}`, year: 2026, center: 'CLSU', sdo: 'Aurora - PM',
-    dropoff_name: `School ${index}`, milk_packs: index, include_in_masterlist: true,
+    dropoff_name: `School ${index}`, beneficiaries: index, feeding_days: 1, milk_packs: 999, include_in_masterlist: true,
   }))
   const result = await pageFixture(undefined, { tables })
   assert.equal(result.table.props.records.length, 1001)
@@ -160,8 +160,8 @@ test('projection matches IDs, preserves encoded zeros and does not borrow anothe
   assert.equal(projected.length, 2)
   assert.equal(projected[0].mfp_link_status, 'missing')
   assert.equal(projected[0].price, null)
-  assert.equal(projected[0].milk_cost, 0)
-  assert.equal(projected[0].total_funds_transferred, 5)
+  assert.equal(projected[0].milk_cost, 3000)
+  assert.equal(projected[0].total_funds_transferred, 3005)
   assert.throws(() => projectSbfpSchools(schools, [], [
     { id: 'a', source_dropoff_id: 's1' }, { id: 'b', source_dropoff_id: 's1' },
   ]), /Multiple MFP/)
@@ -188,7 +188,7 @@ test('CSV contains the same two schools and an explicit link status, leaving unk
     assert.doesNotMatch(csv, /Unlinked import/)
     const headers = lines[0].split(',')
     const missing = lines.find(line => line.includes('Source School Two')).split(',')
-    assert.equal(missing[headers.indexOf('Milk Cost')], '')
+    assert.equal(missing[headers.indexOf('Milk Cost')], '2000')
     assert.equal(missing[headers.indexOf('Total Funds')], '')
   } finally {
     globalThis.document = priorDocument
@@ -230,9 +230,11 @@ test('source school rows edit through SBFP and Select All uses only independentl
 test('orphan schools with unknown milk type keep milk-dependent formulations and missing metadata blank', () => {
   const { projectSbfpSchools } = load('src/lib/mfp-sbfp-source.ts')
   const [orphan] = projectSbfpSchools([{ id: 'orphan', year: 2026, center: 'CLSU', sdo: 'Aurora',
-    dropoff_name: 'Orphan school', milk_packs: 100, include_in_masterlist: true }], [], [])
+    dropoff_name: 'Orphan school', beneficiaries: 4, feeding_days: 25, milk_packs: 999, include_in_masterlist: true }], [], [])
   assert.equal(orphan.milk_packs, 100)
-  for (const field of ['milk_type', 'feeding_days', 'beneficiaries', 'total_volume_requirements', 'raw_milk_liters', 'whole_milk_kg', 'skimmed_milk_kg', 'sugar']) {
+  assert.equal(orphan.feeding_days,25)
+  assert.equal(orphan.beneficiaries,4)
+  for (const field of ['milk_type', 'total_volume_requirements', 'raw_milk_liters', 'whole_milk_kg', 'skimmed_milk_kg', 'sugar']) {
     assert.equal(orphan[field], null, field)
   }
 })

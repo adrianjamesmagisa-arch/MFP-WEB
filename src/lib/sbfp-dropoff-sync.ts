@@ -1,12 +1,13 @@
 /**
  * Sync SBFP drop-off schools into mfp_data masterlist.
  * Identity and encoded school money refresh from drop-off/SDO; unencoded money is preserved.
- * Encoder-entered milk packs remain authoritative; formulations derive from that count.
+ * School beneficiaries × feeding days determine packs; formulations derive from that count.
  * SDO delivery_start / delivery_end push to masterlist date_started / date_completed.
  */
 
 import { calcMilkFormulationsFromPacks } from '@/lib/mfp-formulas'
 import { buildDropoffFinancialPatch } from '@/lib/sbfp-dropoff-finance'
+import { calculateSchoolMilkPacks } from '@/lib/sbfp-dropoff-packs'
 import { fetchAllRows } from '@/lib/supabase-paginate'
 import { toDateInputValue, totalPacksDelivered, type SbfpRawMilkRow } from '@/lib/sbfp-raw-milk'
 export { inferSbfpMilkType, normalizeSbfpMilkType } from '@/lib/sbfp-pack-price'
@@ -34,9 +35,12 @@ export type SbfpDropoffRow = {
 
 export type SbfpParentSdo = {
   id?: string
+  year?: number
+  center?: string
   sdo?: string | null
   region?: string | null
   milk_type?: string | null
+  pack_unit_price?: number | null
   batch?: string | null
   feeding_days?: number | null
   remarks?: string | null
@@ -119,6 +123,7 @@ export function composeSdoWithMilkType(
   milkType: unknown,
 ): string {
   const base = stripMilkTypeFromSdoName(String(sdoOrBase || ''))
+    .replace(/\badd\.?(?:\s+(\d+))?$/i, (_, number: string | undefined) => number ? `Add ${number}` : 'Add')
   const milk = normalizeSbfpMilkType(milkType)
   if (!base) return ''
   if (!milk) return base
@@ -138,6 +143,19 @@ export function sdoLotNumber(value: string): number {
   const mTrailing = s.match(/(?:^|\s+|[-–—])(\d+)(?:\s*[-–—]?\s*(?:PM|SM|SMP|CM|SPM))?$/i)
   if (mTrailing) return Number(mTrailing[1])
   return 0
+}
+
+/** Original contracts first, then lots, then additional contracts in numeric order. */
+export function compareSdoContractVariants(a: string, b: string): number {
+  const variant = (value: string): [number, number] => {
+    const addition = stripMilkTypeFromSdoName(value).match(/\badd\.?(?:\s+(\d+))?$/i)
+    if (addition) return [2, Number(addition[1] || 0)]
+    const lot = sdoLotNumber(value)
+    return [lot ? 1 : 0, lot]
+  }
+  const first = variant(a)
+  const second = variant(b)
+  return first[0] - second[0] || first[1] - second[1]
 }
 
 export const MILK_SORT: Record<string, number> = { PM: 1, SM: 2, CM: 3 }
@@ -189,7 +207,7 @@ export function compareSbfpEncoderRows(
   const byMilk = (MILK_SORT[ma] || 9) - (MILK_SORT[mb] || 9)
   if (byMilk) return byMilk
 
-  const byLot = sdoLotNumber(a.sdo || '') - sdoLotNumber(b.sdo || '')
+  const byLot = compareSdoContractVariants(a.sdo || '', b.sdo || '')
   if (byLot) return byLot
 
   const byBen = (Number(b.beneficiaries_pm) || 0) - (Number(a.beneficiaries_pm) || 0)
@@ -221,6 +239,7 @@ export function sortSbfpEncoderRows<T extends {
  */
 export function baseSdoName(value: string): string {
   return stripMilkTypeFromSdoName(value)
+    .replace(/\s+add\.?(?:\s+\d+)?$/i, '')
     // Procurement lots, tranches, batches, or trailing numbers:
     // "Lot 1", "lot 2", "Tranche 1", "Batch 1", " 1", " 2", " 3", "- 1"
     .replace(/\s*[-–—]?\s*(?:lot|tranche|batch|part|district)?\s*\d+\b/gi, ' ')
@@ -260,19 +279,21 @@ export function uniqueSdoCountKey(
   return c ? `${c}|${name}` : name
 }
 
-/** Drop-offs linked to procurement SDO rows (by sbfp_data_id or normalized sdo label). */
+/** Exact parent links take precedence; legacy unlinked schools require a full contract label. */
 export function filterDropoffsForProcurementRows<
   D extends { sbfp_data_id?: string | null; sdo?: string | null },
   P extends { id?: string; sdo?: string | null },
 >(dropoffs: D[], procurementRows: P[]): D[] {
   if (!procurementRows.length || !dropoffs.length) return []
   const ids = new Set(procurementRows.map(r => r.id).filter(Boolean) as string[])
+  const contractKey = (value: string | null | undefined) =>
+    composeSdoWithMilkType(value, inferSbfpMilkType(value)).toLowerCase()
   const sdoKeys = new Set(
-    procurementRows.map(r => normalizeSdoName(String(r.sdo || ''))).filter(Boolean),
+    procurementRows.map(r => contractKey(r.sdo)).filter(Boolean),
   )
   return dropoffs.filter(d => {
-    if (d.sbfp_data_id && ids.has(d.sbfp_data_id)) return true
-    const key = normalizeSdoName(String(d.sdo || ''))
+    if (d.sbfp_data_id) return ids.has(d.sbfp_data_id)
+    const key = contractKey(d.sdo)
     return Boolean(key && sdoKeys.has(key))
   })
 }
@@ -354,7 +375,7 @@ export function resolveDropoffFeedingDays(
   )
 }
 
-/** Build identity + encoder-entered milk packs / derived formulations for mfp_data upsert. */
+/** Build identity, calculated school packs, and derived formulations for mfp_data upsert. */
 export function buildMasterlistIdentity(
   dropoff: SbfpDropoffRow,
   parent?: SbfpParentSdo | null,
@@ -373,7 +394,7 @@ export function buildMasterlistIdentity(
   ).trim()
 
   const beneficiaries = Number(dropoff.beneficiaries) || 0
-  const feedingDays = resolveDropoffFeedingDays(dropoff, parent)
+  const feedingDays = Number(dropoff.feeding_days) || 0
 
   const payload: Record<string, unknown> = {
     year: dropoff.year,
@@ -390,9 +411,8 @@ export function buildMasterlistIdentity(
   }
 
   // Auto milk type from "(PM)/(SM)/(CM)" on the SDO label, else parent.milk_type
-  const milkFromLabel = inferSbfpMilkType(parent?.sdo, parent?.remarks, dropoff.sdo)
   const milkFromParent = normalizeSbfpMilkType(parent?.milk_type)
-  const milkType = milkFromLabel || milkFromParent
+  const milkType = milkFromParent || inferSbfpMilkType(parent?.sdo, parent?.remarks, dropoff.sdo) || normalizeSbfpMilkType(existing?.milk_type)
   if (milkType) payload.milk_type = milkType
   if (isBlank(existing?.batch) && parent?.batch) payload.batch = parent.batch
 
@@ -414,11 +434,11 @@ export function buildMasterlistIdentity(
     payload.supplier_id = parent.supplier_id || null
   }
 
-  const milkPacks = Math.max(0, Math.trunc(Number(dropoff.milk_packs) || 0))
-  const calc = calcMilkFormulationsFromPacks(milkPacks, milkType || 'PM')
+  const milkPacks = calculateSchoolMilkPacks(dropoff)
+  const calc = milkPacks != null && milkType ? calcMilkFormulationsFromPacks(milkPacks, milkType) : null
   payload.milk_packs = milkPacks
   if (calc) {
-    // Pack count is encoder-entered; volume and formulations follow that count.
+    // Pack count follows school beneficiaries × feeding days.
     payload.total_volume_requirements = Number(calc.totalVol.toFixed(4))
     payload.raw_milk_liters = Number(calc.rawMilk.toFixed(4))
     payload.whole_milk_kg = Number(calc.wholeMilk.toFixed(4))
@@ -426,7 +446,7 @@ export function buildMasterlistIdentity(
     payload.sugar = Number(calc.sugar.toFixed(4))
   }
 
-  return { ...payload, ...buildDropoffFinancialPatch(dropoff, existing) }
+  return { ...payload, ...buildDropoffFinancialPatch(dropoff, parent) }
 }
 
 export async function syncDropoffToMasterlist(
@@ -653,7 +673,7 @@ export async function resyncMasterlistDeliveryForCenter(
   const { data: sdos, error: listErr } = await supabase
     .from('sbfp_data')
     .select(
-      'id,sdo,region,milk_type,batch,feeding_days,remarks,delivery_start,delivery_end,packs_to_deliver,packs_delivered,monthly_packs_delivered,delivery_snapshots,supplier_id,year,center',
+      'id,year,center,sdo,region,milk_type,pack_unit_price,batch,feeding_days,remarks,delivery_start,delivery_end,packs_to_deliver,packs_delivered,monthly_packs_delivered,delivery_snapshots,supplier_id',
     )
     .eq('center', center)
     .eq('year', year)
@@ -743,7 +763,7 @@ export async function loadParentSdo(
   const { data, error } = await supabase
     .from('sbfp_data')
     .select(
-      'id,sdo,region,milk_type,batch,feeding_days,remarks,delivery_start,delivery_end,packs_to_deliver,packs_delivered,monthly_packs_delivered,delivery_snapshots,supplier_id',
+      'id,year,center,sdo,region,milk_type,pack_unit_price,batch,feeding_days,remarks,delivery_start,delivery_end,packs_to_deliver,packs_delivered,monthly_packs_delivered,delivery_snapshots,supplier_id',
     )
     .eq('id', sbfpDataId)
     .maybeSingle()

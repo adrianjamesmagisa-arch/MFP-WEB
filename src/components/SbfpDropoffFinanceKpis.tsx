@@ -14,7 +14,7 @@ export function SbfpDropoffFinanceKpis({ parents, schools, selectedSdo, saving, 
   const totals = reconcileDropoffFinance(parents, schools, selectedSdo)
   const cards = [
     ['SDO milk contract', totals.contract],
-    ['Allocated school milk cost', totals.allocated],
+    ['Calculated school milk cost', totals.allocated],
     [totals.difference < 0 ? 'Overallocated milk cost' : 'Unallocated milk cost', Math.abs(totals.difference)],
     ['School shipping / service fees', totals.shipping],
     ['Combined school funds', totals.total],
@@ -37,7 +37,7 @@ export function SbfpDropoffFinanceKpis({ parents, schools, selectedSdo, saving, 
       </div>
       <p className="mt-2 text-xs text-muted-foreground">
         {totals.schools} included school(s) · Milk contracts exclude shipping. Combined funds = school milk cost + shipping.
-        {totals.missingMilk > 0 && ` ${totals.missingMilk} school milk amount(s) not encoded.`}
+        {totals.missingMilk > 0 && ` ${totals.missingMilk} school milk amount(s) need valid packs and an SDO milk type / price.`}
         {totals.missingShipping > 0 && ` ${totals.missingShipping} shipping fee(s) not encoded; combined funds are partial.`}
         {totals.missingContracts > 0 && ` ${totals.missingContracts} SDO contract amount(s) missing.`}
         {totals.unlinked > 0 && ` ${totals.unlinked} school(s) need an SDO link before comparison.`}

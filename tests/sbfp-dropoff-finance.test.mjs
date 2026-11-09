@@ -64,42 +64,43 @@ test('decimal reconciliation uses cents, including a one-cent allocation gap', (
   assert.equal(finance.reconcileDropoffFinance([{ id: 'p', contract_amount: 0.31 }], s).difference, 0.01)
 })
 
-test('sync preserves unencoded money, honors zero, and does not repeat the parent contract', () => {
-  const school = { id: 'school', year: 2026, center: 'NHQ', sdo: 'Batanes - CM', dropoff_name: 'School', milk_packs: 123 }
-  const parent = { id: 'sdo', sdo: school.sdo, contract_amount: 1000000 }
+test('sync calculates school milk cost, preserves unknown shipping, and ignores manual/parent contract amounts', () => {
+  const school = { id: 'school', sbfp_data_id: 'sdo', year: 2026, center: 'NHQ', sdo: 'Batanes - CM', dropoff_name: 'School', beneficiaries: 123, feeding_days: 1, milk_packs: 999 }
+  const parent = { id: 'sdo', sdo: school.sdo, milk_type: 'CM', pack_unit_price: 12.5, contract_amount: 1000000 }
   const existing = { milk_cost: 80, service_fee: 20, total_funds_transferred: 100 }
   const unencoded = buildMasterlistIdentity(school, parent, existing)
-  assert.equal(Object.hasOwn(unencoded, 'milk_cost'), false)
+  assert.equal(unencoded.milk_cost, 1537.5)
   assert.equal(Object.hasOwn(unencoded, 'service_fee'), false)
-  assert.equal(Object.hasOwn(unencoded, 'total_funds_transferred'), false)
-  const encoded = buildMasterlistIdentity({ ...school, contract_amount: 0, service_fee: 0 }, parent, existing)
+  assert.equal(unencoded.total_funds_transferred, null)
+  const encoded = buildMasterlistIdentity({ ...school, beneficiaries: 0, contract_amount: 999, service_fee: 0 }, parent, existing)
   assert.equal(encoded.milk_cost, 0)
   assert.equal(encoded.service_fee, 0)
   assert.equal(encoded.total_funds_transferred, 0)
-  assert.equal(encoded.milk_packs, 123)
+  assert.equal(encoded.milk_packs, 0)
   assert.equal(encoded.milk_type, 'CM')
-  assert.deepEqual(finance.buildDropoffFinancialPatch({ contract_amount: 50.1 }, existing), { milk_cost: 50.1, total_funds_transferred: 70.1 })
+  assert.deepEqual(finance.buildDropoffFinancialPatch({ ...school, contract_amount: 50.1 }, null), { milk_cost: null, total_funds_transferred: null })
 })
 
 test('repeated sync updates the linked record instead of inserting a duplicate', async () => {
   const calls = []
   const db = { from: () => ({ update: payload => ({ eq: async (_, id) => { calls.push({ id, payload }); return { error: null } } }) }) }
-  const school = { id: 'school', year: 2026, center: 'NHQ', sdo: 'Batanes - CM', dropoff_name: 'School', milk_packs: 123, contract_amount: 100, service_fee: 5 }
+  const school = { id: 'school', sbfp_data_id: 'sdo', year: 2026, center: 'NHQ', sdo: 'Batanes - CM', dropoff_name: 'School', beneficiaries: 123, feeding_days: 1, milk_packs: 999, contract_amount: 100, service_fee: 5 }
   for (let i = 0; i < 2; i++) {
-    const result = await syncDropoffToMasterlist(db, school, null, { id: 'linked' })
+    const result = await syncDropoffToMasterlist(db, school, { id: 'sdo', milk_type: 'CM', pack_unit_price: 10 }, { id: 'linked' })
     assert.equal(result.mfpId, 'linked')
   }
   assert.equal(calls.length, 2)
   for (const call of calls) {
     assert.equal(call.id, 'linked')
-    assert.equal(call.payload.total_funds_transferred, 105)
+    assert.equal(call.payload.total_funds_transferred, 1235)
   }
 })
 
 const schoolId = '12345678-1234-1234-1234-123456789012'
-function endpointFixture({ user = { id: 'user' }, profile = { role: 'encoder', center: 'NHQ' }, center = 'NHQ', conflict = false, error = null, source = {}, mirror = { id: 'mfp' } } = {}) {
+function endpointFixture({ user = { id: 'user' }, profile = { role: 'encoder', center: 'NHQ' }, center = 'NHQ', conflict = false, error = null, source = {}, mirror = { id: 'mfp' }, automaticSetup = true } = {}) {
   const writes = []
-  const sourceRow = { id: schoolId, year: 2026, center, contract_amount: null, service_fee: null, ...source }
+  const sourceRow = { id: schoolId, year: 2026, center, contract_amount: null, service_fee: null, contract_unit_price: 25, ...source }
+  if (!automaticSetup) delete sourceRow.contract_unit_price
   const admin = { from: table => {
     let patch = null
     const query = {
@@ -121,7 +122,7 @@ function endpointFixture({ user = { id: 'user' }, profile = { role: 'encoder', c
   })
   const send = async (overrides = {}) => POST(new Request('http://localhost/api/sbfp/dropoff-finance', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id: schoolId, field: 'contract_amount', value: 100, expectedValue: null, ...overrides }),
+    body: JSON.stringify({ id: schoolId, field: 'service_fee', value: 100, expectedValue: null, ...overrides }),
   }))
   return { send, writes }
 }
@@ -145,19 +146,27 @@ test('financial endpoint permits assigned-center aliases and super admin, writin
     const response = await fixture.send({ center: 'CLSU', total_funds_transferred: 999 })
     assert.equal(response.status, 200)
     assert.equal(fixture.writes.length, 1)
-    assert.deepEqual(Object.keys(fixture.writes[0]).sort(), ['contract_amount', 'updated_at'])
-    assert.equal(fixture.writes[0].contract_amount, 100)
+    assert.deepEqual(Object.keys(fixture.writes[0]).sort(), ['service_fee', 'updated_at'])
+    assert.equal(fixture.writes[0].service_fee, 100)
   }
 })
 
 test('financial endpoint reports conflicts and database failures instead of success', async () => {
   assert.equal((await endpointFixture({ conflict: true }).send()).status, 409)
   assert.equal((await endpointFixture({ error: { message: 'trigger failed' } }).send()).status, 500)
-  const fixture = endpointFixture({ source: { contract_amount: 20 } })
+  const fixture = endpointFixture({ source: { service_fee: 20 } })
   assert.equal((await fixture.send({ value: null, expectedValue: 20 })).status, 400)
   assert.equal(fixture.writes.length, 0)
   assert.equal((await endpointFixture().send({ field: 'center' })).status, 400)
+  assert.equal((await endpointFixture().send({ field: 'contract_amount' })).status, 400)
   assert.equal((await endpointFixture().send({ value: -1 })).status, 400)
+})
+
+test('shipping endpoint requires the automatic-finance setup, not only the old manual columns', async () => {
+  const oldSetup = endpointFixture({ automaticSetup: false })
+  assert.equal((await oldSetup.send()).status, 503)
+  assert.equal(oldSetup.writes.length, 0)
+  assert.equal((await endpointFixture({ source: { contract_unit_price: null } }).send()).status, 200)
 })
 
 test('financial save explicitly warns about missing MFP links without inserting records', async () => {
@@ -166,7 +175,7 @@ test('financial save explicitly warns about missing MFP links without inserting 
   assert.equal(response.status, 200)
   const body = await response.json()
   assert.match(body.warning, /no linked MFP Data record/)
-  assert.equal(body.dropoff.contract_amount, 100)
+  assert.equal(body.dropoff.service_fee, 100)
   assert.equal(fixture.writes.length, 1)
   const excluded = endpointFixture({ mirror: null, source: { include_in_masterlist: false } })
   assert.equal((await (await excluded.send()).json()).warning, null)
@@ -200,7 +209,7 @@ test('school loader paginates and falls back only for missing columns, surfacing
   assert.equal(denied.selected.length, 1)
 })
 
-test('an overlapping failed milk-pack save does not revert a confirmed financial save or its live KPI', async () => {
+test('an overlapping failed beneficiary save does not revert a confirmed shipping save or its live KPI', async () => {
   // Run the real event handlers with a minimal hook host and controlled request order.
   const slots = []
   let cursor = 0
@@ -226,11 +235,12 @@ test('an overlapping failed milk-pack save does not revert a confirmed financial
     '@/lib/center-activity': { logCenterActivity: async () => {} },
   })
   const school = { id: schoolId, year: 2026, center: 'NHQ', sdo: 'Batanes - CM', sbfp_data_id: 'sdo',
-    dropoff_name: 'School', milk_packs: 10, contract_amount: null, service_fee: 0 }
+    dropoff_name: 'School', beneficiaries: 2, feeding_days: 5, milk_packs: 10, contract_amount: null, service_fee: 0 }
+  let parentPrice = 10
   const render = () => {
     cursor = 0
     return SbfpDropoffTable({ center: 'NHQ', year: 2026, initialRows: [school], editable: true,
-      financeReady: true, sdoOptions: [{ id: 'sdo', sdo: school.sdo, contract_amount: 100 }] })
+      financeReady: true, sdoOptions: [{ id: 'sdo', sdo: school.sdo, milk_type: 'CM', pack_unit_price: parentPrice, contract_amount: 100 }] })
   }
   const find = (element, predicate) => {
     if (!element || typeof element !== 'object') return null
@@ -243,21 +253,68 @@ test('an overlapping failed milk-pack save does not revert a confirmed financial
     return null
   }
   const originalFetch = globalThis.fetch
-  globalThis.fetch = async () => new Response(JSON.stringify({ dropoff: { ...school, contract_amount: 100 } }), {
+  globalThis.fetch = async () => new Response(JSON.stringify({ dropoff: { ...school, service_fee: 100 } }), {
     headers: { 'Content-Type': 'application/json' },
   })
   try {
-    const milkCell = find(render(), node => node.props?.title === 'Enter the milk-pack count; volume and formulations update from this number')
-    const pendingMilk = milkCell.props.onCommit(20)
-    const moneyCell = find(render(), node => node.key === 'contract_amount')
+    const beneficiaryCell = find(render(), node => node.props?.title === 'Enter beneficiaries; milk packs calculate automatically')
+    const pendingMilk = beneficiaryCell.props.onCommit(4)
+    const moneyCell = find(render(), node => node.key === 'service_fee')
     await moneyCell.props.onCommit(100)
     finishMilkSave({ error: { message: 'milk save failed' } })
     await pendingMilk
     const kpis = find(render(), node => node.type?.name === 'SbfpDropoffFinanceKpis')
-    assert.equal(kpis.props.schools[0].contract_amount, 100)
+    assert.equal(kpis.props.schools[0].service_fee, 100)
     assert.equal(kpis.props.schools[0].milk_packs, 10)
+    assert.equal(kpis.props.schools[0].contract_amount, 100)
     assert.equal(finance.reconcileDropoffFinance(kpis.props.parents, kpis.props.schools).status, 'Matched')
+    // Typing beneficiaries previews packs/cost before blur; cancelling restores them.
+    const packsInput = find(render(), node => node.props?.title === 'Enter beneficiaries; milk packs calculate automatically')
+    packsInput.props.onDraft('6')
+    assert.equal(find(render(), node => node.type?.name === 'SbfpDropoffFinanceKpis').props.schools[0].contract_amount, 300)
+    packsInput.props.onDraft(null)
+    parentPrice = 12.5
+    const changed = find(render(), node => node.type?.name === 'SbfpDropoffFinanceKpis')
+    assert.equal(changed.props.schools[0].contract_amount, 125)
+    assert.equal(changed.props.schools[0].service_fee, 100)
+    assert.equal(find(render(), node => node.key === 'contract_amount'), null)
+    const calculatedPacks = find(render(), node => node.type === 'td' && node.props?.title === 'Automatically calculated: beneficiaries × feeding days')
+    assert.equal(calculatedPacks.props.onCommit,undefined)
   } finally {
     globalThis.fetch = originalFetch
   }
+})
+
+test('school cost uses the exact parent price and rounds decimal CM prices to cents', () => {
+  const school = { sbfp_data_id: 'sdo', year: 2026, center: 'NHQ', milk_packs: 2125 }
+  assert.equal(finance.calculateSchoolContract(school, { id: 'sdo', milk_type: 'SM', pack_unit_price: 99 }).contractAmount, 63750)
+  assert.equal(finance.calculateSchoolContract(school, { id: 'sdo', milk_type: 'PM', pack_unit_price: 99 }).contractAmount, 53125)
+  for (const [packs, price, expected] of [[1, 1.005, 1.01], [3, 0.335, 1.01], [100, 0.1, 10], [0, 25, 0]]) {
+    assert.equal(finance.calculateSchoolContract({ ...school, milk_packs: packs }, { id: 'sdo', milk_type: 'CM', pack_unit_price: price }).contractAmount, expected)
+  }
+  assert.equal(finance.calculateSchoolContract(school, { id: 'sdo', sdo: 'Batanes - CM', pack_unit_price: 20 }).contractAmount, 42500)
+})
+
+test('missing prices, parents, wrong scope, invalid packs and excessive amounts stay unknown', () => {
+  const school = { sbfp_data_id: 'sdo', year: 2026, center: 'NHQ', milk_packs: 20, contract_amount: 999 }
+  for (const parent of [null, { id: 'other', milk_type: 'PM' }, { id: 'sdo', milk_type: 'CM' },
+    { id: 'sdo', milk_type: 'CM', pack_unit_price: -1 }, { id: 'sdo' },
+    { id: 'sdo', milk_type: 'PM', year: 2025 }, { id: 'sdo', milk_type: 'PM', center: 'CLSU' }]) {
+    assert.equal(finance.calculateSchoolContract(school, parent).contractAmount, null)
+  }
+  for (const milk_packs of [null, -1, 1.5, 2147483648]) {
+    assert.equal(finance.calculateSchoolContract({ ...school, milk_packs }, { id: 'sdo', milk_type: 'PM' }).contractAmount, null)
+  }
+  assert.equal(finance.calculateSchoolContract(school, { id: 'sdo', milk_type: 'CM', pack_unit_price: 999999999999 }).contractAmount, null)
+  assert.equal(finance.calculateSchoolContract(school, { id: 'sdo', milk_type: 'PM', center: 'NHQGP (NIZ)' }).contractAmount, 500)
+})
+
+test('pack, price and SDO changes recalculate milk cost independently of shipping', () => {
+  const school = { sbfp_data_id: 'sdo', beneficiaries: 10, feeding_days: 1, milk_packs: 999, service_fee: 5, contract_amount: 999 }
+  const parent = { id: 'sdo', milk_type: 'CM', pack_unit_price: 12.5 }
+  assert.deepEqual(finance.buildDropoffFinancialPatch(school, parent), { milk_cost: 125, service_fee: 5, total_funds_transferred: 130 })
+  assert.equal(finance.buildDropoffFinancialPatch({ ...school, beneficiaries: 20 }, parent).total_funds_transferred, 255)
+  assert.equal(finance.buildDropoffFinancialPatch(school, { ...parent, pack_unit_price: 15 }).total_funds_transferred, 155)
+  assert.equal(finance.buildDropoffFinancialPatch({ ...school, sbfp_data_id: 'pm' }, { id: 'pm', milk_type: 'PM' }).total_funds_transferred, 255)
+  assert.equal(finance.buildDropoffFinancialPatch({ ...school, service_fee: null }, parent).total_funds_transferred, null)
 })

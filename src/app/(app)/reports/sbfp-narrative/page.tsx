@@ -35,7 +35,7 @@ import {
   uniqueSdoCountKey,
   baseSdoName,
   normalizeSdoName,
-  sdoLotNumber,
+  compareSdoContractVariants,
   MILK_SORT,
   normalizeSbfpMilkType,
   inferSbfpMilkType,
@@ -378,9 +378,8 @@ export default function SbfpSpreadsheetReport() {
           const mA = MILK_SORT[normalizeSbfpMilkType(a.milk_type) || inferSbfpMilkType(a.sdo) || ''] || 9
           const mB = MILK_SORT[normalizeSbfpMilkType(b.milk_type) || inferSbfpMilkType(b.sdo) || ''] || 9
           if (mA !== mB) return mA - mB
-          const lA = sdoLotNumber(a.sdo || '')
-          const lB = sdoLotNumber(b.sdo || '')
-          if (lA !== lB) return lA - lB
+          const byVariant = compareSdoContractVariants(a.sdo || '', b.sdo || '')
+          if (byVariant) return byVariant
           return (a.sdo || '').localeCompare(b.sdo || '')
         })
         setRecords(sorted)

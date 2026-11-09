@@ -3,10 +3,11 @@ import { mfpCenterAliases } from '@/lib/center-aliases'
 import { MFP_DATA_LIST_COLUMNS } from '@/lib/encoder-selects'
 import { filterValues, filterYears, mfpDateIntervals, type MfpListFilters } from '@/lib/mfp-list-filters'
 import { buildMasterlistIdentity, type MfpMasterRow, type SbfpDropoffRow, type SbfpParentSdo } from '@/lib/sbfp-dropoff-sync'
-import { resolveDropoffFeedingDays } from '@/lib/sbfp-dropoff-sync'
 import { inferSbfpMilkType, normalizeSbfpMilkType } from '@/lib/sbfp-pack-price'
 import { calcMilkFormulationsFromPacks } from '@/lib/mfp-formulas'
 import { fetchAllRows } from '@/lib/supabase-paginate'
+import { buildDropoffFinancialPatch } from '@/lib/sbfp-dropoff-finance'
+import { calculateSchoolMilkPacks } from '@/lib/sbfp-dropoff-packs'
 
 /** This rollout changes 2026 DepEd membership; historical and other-year lists stay intact. */
 export const SBFP_SOURCE_YEAR = 2026
@@ -56,13 +57,12 @@ export function projectSbfpSchools(schools: School[], parents: Parent[], mirrors
     const parent = parentCandidate && parentCandidate.year === school.year && sameCenter(parentCandidate.center, school.center) ? parentCandidate : undefined
     const source = buildMasterlistIdentity(school, parent, existing)
     // The sync writer supplies defaults for inserts; the read view must preserve unknowns.
-    const milkType = inferSbfpMilkType(parent?.sdo, parent?.remarks, school.sdo) ||
-      normalizeSbfpMilkType(parent?.milk_type) || normalizeSbfpMilkType(existing?.milk_type)
-    const packs = school.milk_packs ?? existing?.milk_packs ?? null
+    const milkType = normalizeSbfpMilkType(parent?.milk_type) ||
+      inferSbfpMilkType(parent?.sdo, parent?.remarks, school.sdo) || normalizeSbfpMilkType(existing?.milk_type)
+    const packs = calculateSchoolMilkPacks(school)
     const formulations = packs != null && milkType ? calcMilkFormulationsFromPacks(packs, milkType) : null
-    const feedingDays = resolveDropoffFeedingDays(school, parent)
-    const milkCost = school.contract_amount ?? existing?.milk_cost ?? null
-    const serviceFee = school.service_fee ?? existing?.service_fee ?? null
+    const financials = buildDropoffFinancialPatch(school, parent)
+    const serviceFee = school.service_fee ?? null
     return {
       ...existing,
       ...source,
@@ -71,16 +71,15 @@ export function projectSbfpSchools(schools: School[], parents: Parent[], mirrors
       milk_type: milkType || null,
       milk_packs: packs,
       beneficiaries: school.beneficiaries ?? null,
-      feeding_days: feedingDays > 0 ? feedingDays : school.feeding_days ?? parent?.feeding_days ?? existing?.feeding_days ?? null,
+      feeding_days: school.feeding_days ?? 0,
       total_volume_requirements: formulations ? Number(formulations.totalVol.toFixed(4)) : null,
       raw_milk_liters: formulations ? Number(formulations.rawMilk.toFixed(4)) : null,
       whole_milk_kg: formulations ? Number(formulations.wholeMilk.toFixed(4)) : null,
       skimmed_milk_kg: formulations ? Number(formulations.skimMilk.toFixed(4)) : null,
       sugar: formulations ? Number(formulations.sugar.toFixed(4)) : null,
-      milk_cost: milkCost,
+      milk_cost: financials.milk_cost,
       service_fee: serviceFee,
-      total_funds_transferred: milkCost == null || serviceFee == null ? null :
-        typeof source.total_funds_transferred === 'number' ? source.total_funds_transferred : existing?.total_funds_transferred ?? null,
+      total_funds_transferred: financials.total_funds_transferred,
       price: existing?.price ?? null,
       created_at: school.created_at ?? null,
       mode_of_procurement: parent?.mode_of_procurement ?? existing?.mode_of_procurement ?? null,
@@ -118,7 +117,7 @@ export function matchesSourceFilters(row: MfpListRow, filters: MfpListFilters, f
   return true
 }
 
-const PARENT_COLUMNS = 'id,year,center,sdo,region,milk_type,batch,feeding_days,remarks,delivery_start,delivery_end,packs_to_deliver,packs_delivered,monthly_packs_delivered,delivery_snapshots,supplier_id,mode_of_procurement,cooperatives!supplier_id(name)'
+const PARENT_COLUMNS = 'id,year,center,sdo,region,milk_type,pack_unit_price,batch,feeding_days,remarks,delivery_start,delivery_end,packs_to_deliver,packs_delivered,monthly_packs_delivered,delivery_snapshots,supplier_id,mode_of_procurement,cooperatives!supplier_id(name)'
 
 /** Read-only: never invokes sync endpoints or creates/deletes an MFP row. */
 export async function loadSbfpSourceRows(

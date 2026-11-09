@@ -1,3 +1,5 @@
+-- SUPERSEDED: do not run this manual-allocation draft.
+-- Use sbfp_dropoff_automatic_finances.sql instead; it supports fresh setup and upgrade.
 -- Pending migration draft. Not executed against a shared/production database.
 -- The Supabase CLI is unavailable here; promote using `supabase migration new
 -- sbfp_dropoff_finances` and copy this body into its generated file before deployment.

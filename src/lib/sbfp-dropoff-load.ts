@@ -6,7 +6,7 @@ import type { SbfpDropoffPoint } from '@/lib/types'
 /** Load all schools for accurate allocation totals, with compatibility before migration. */
 export async function loadSbfpDropoffs(supabase: SupabaseClient, center: string, year: number) {
   const { error: financeError } = await supabase.from('sbfp_dropoff_points')
-    .select('contract_amount,service_fee').limit(0)
+    .select('contract_amount,service_fee,contract_unit_price').limit(0)
   if (financeError && !['42703', 'PGRST204'].includes(financeError.code)) {
     return { data: [], error: financeError, financeReady: false }
   }

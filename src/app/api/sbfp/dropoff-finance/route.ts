@@ -34,8 +34,8 @@ export async function POST(request: Request) {
   if (!canEditDropoffFinance(profile, source.center)) {
     return NextResponse.json({ error: 'You can only edit schools for your assigned center.' }, { status: 403 })
   }
-  if (!(field in source)) {
-    return NextResponse.json({ error: 'School financial migration is not available yet.' }, { status: 503 })
+  if (!(field in source) || !('contract_unit_price' in source)) {
+    return NextResponse.json({ error: 'Automatic school financial migration is not available yet.' }, { status: 503 })
   }
   if (amount.value == null && source[field] != null) {
     return NextResponse.json({ error: 'Enter 0 to remove an amount that was already encoded.' }, { status: 400 })

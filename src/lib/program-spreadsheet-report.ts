@@ -10,7 +10,7 @@ import {
   MILK_SORT,
   normalizeSbfpMilkType,
   normalizeSdoName,
-  sdoLotNumber,
+  compareSdoContractVariants,
   uniqueSdoCountKey,
 } from '@/lib/sbfp-dropoff-sync'
 import { sbfpCenterAliases } from '@/lib/center-aliases'
@@ -252,9 +252,8 @@ export function normalizeProgramProcurementRows(
     const mB =
       MILK_SORT[normalizeSbfpMilkType(b.milk_type) || inferSbfpMilkType(b.sdo) || ''] || 9
     if (mA !== mB) return mA - mB
-    const lA = sdoLotNumber(a.sdo || '')
-    const lB = sdoLotNumber(b.sdo || '')
-    if (lA !== lB) return lA - lB
+    const byVariant = compareSdoContractVariants(a.sdo || '', b.sdo || '')
+    if (byVariant) return byVariant
     return (a.sdo || '').localeCompare(b.sdo || '')
   })
 }

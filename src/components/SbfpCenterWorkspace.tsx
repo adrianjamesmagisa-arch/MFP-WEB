@@ -174,6 +174,10 @@ export function SbfpCenterWorkspace({
           {' '}
           <a href="#dropoff-points" className="underline font-medium text-primary">Jump to Drop-off Points ↓</a>
         </p>
+        <p className="text-xs text-muted-foreground">
+          For an additional contract, add a separate SDO row named Bataan Add - PM, or Bataan Add 1 - PM / Bataan Add 2 - PM.
+          Select that full contract name when assigning its schools below. Each contract keeps its own amounts and deliveries.
+        </p>
         <SbfpCenterTable
           center={center}
           year={year}
@@ -188,11 +192,11 @@ export function SbfpCenterWorkspace({
       <section id="dropoff-points" className="flex flex-col gap-2 scroll-mt-4 w-full min-w-0">
         <h2 className="text-base font-semibold">1b. Drop-off Points (Schools)</h2>
         <p className="text-xs text-muted-foreground">
-          Schools / drop-off points under each SDO. Enter <strong>beneficiaries</strong>, <strong>feeding days</strong>, and <strong>milk packs</strong> —
-          volume and formulations calculate from the encoder-entered pack count and update the DepEd school masterlist.
+          Schools / drop-off points under each SDO. Enter <strong>beneficiaries</strong> and <strong>feeding days</strong> —
+          milk packs calculate as beneficiaries × feeding days. Milk cost, volume, and formulations follow the calculated packs and update the DepEd school masterlist.
         </p>
         <p className="text-xs text-muted-foreground">
-          Enter each school’s milk contract allocation and shipping/service fee. Shipping is additional to the SDO milk contract.
+          School contract amount = milk packs × the linked SDO’s price per pack. Enter shipping/service fees separately; shipping is additional to the milk contract.
         </p>
         {dropoffLoadError ? (
           <p role="alert" className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900">
@@ -202,7 +206,7 @@ export function SbfpCenterWorkspace({
           <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
             The SBFP drop-off database migrations are incomplete. Apply the drop-off migrations, including{' '}
             <code className="text-xs">20261105090000_sbfp_dropoff_manual_milk_packs.sql</code>, then refresh this page.
-            Milk-pack editing stays unavailable until the required column exists.
+            School encoding stays unavailable until the required column exists.
           </div>
         ) : !dropoffSchemaReady ? (
           <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
@@ -217,12 +221,12 @@ export function SbfpCenterWorkspace({
           <>
             {!dropoffFinanceReady && (
               <p role="status" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                School financial encoding is awaiting database setup. Existing school and milk-pack editing remains available.
+                School shipping encoding and automatic financial sync are awaiting database setup. Calculated milk costs are shown; beneficiary and feeding-day editing remains available.
               </p>
             )}
             {!feedingDaysReady && (
               <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                Run this in Supabase SQL Editor to enable Feeding Days and milk-pack input:
+                Run this in Supabase SQL Editor to enable feeding-day input and calculated milk packs:
                 <pre className="mt-2 text-xs whitespace-pre-wrap bg-white/70 p-2 rounded border">
 {`ALTER TABLE public.sbfp_dropoff_points
   ADD COLUMN IF NOT EXISTS feeding_days INTEGER NOT NULL DEFAULT 0;`}
@@ -239,6 +243,9 @@ export function SbfpCenterWorkspace({
                 feeding_days: r.feeding_days,
                 remarks: r.remarks,
                 milk_type: r.milk_type,
+                pack_unit_price: r.pack_unit_price,
+                center: r.center,
+                year: r.year,
                 contract_amount: r.contract_amount,
               }))}
               initialRows={dropoffRows}
