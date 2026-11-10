@@ -29,6 +29,7 @@ import {
 import { composeSdoWithMilkType, sortSbfpEncoderRows, baseSdoName } from '@/lib/sbfp-dropoff-sync'
 import { useAsyncTask } from '@/components/loading/AsyncFeedback'
 import { logCenterActivity } from '@/lib/center-activity'
+import { DateColumnPicker } from '@/components/DateColumnPicker'
 
 async function apiDropoffMasterlist(body: Record<string, unknown>): Promise<string | null> {
   const res = await fetch('/api/sbfp/sync-dropoff', {
@@ -473,30 +474,14 @@ function MonthlyMapCell({
 }
 
 function SnapshotDateHeader({
-  date, editable, onRename, onDelete,
+  date, editable, onRename, onDelete, existingDates,
 }: {
   date: string
   editable: boolean
-  onRename: (oldDate: string, newDate: string) => void
+  onRename: (oldDate: string, newDate: string) => Promise<void>
   onDelete: (date: string) => void
+  existingDates: string[]
 }) {
-  const [editing, setEditing] = useState(false)
-  const ref = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    if (!editing) return
-    ref.current?.focus()
-    ref.current?.showPicker?.()
-  }, [editing])
-
-  const commit = (iso: string) => {
-    const parsed = parseSnapshotDate(iso)
-    if (!parsed) { setEditing(false); return }
-    const next = formatDeliveredAsOf(parsed)
-    if (next !== date) onRename(date, next)
-    setEditing(false)
-  }
-
   return (
     <th
       rowSpan={2}
@@ -507,20 +492,17 @@ function SnapshotDateHeader({
         <div style={{ flex: 1, textAlign: 'right' }}>
           Delivered as of
           <div>
-            {editable && editing ? (
-              <input
-                ref={ref}
-                type="date"
-                defaultValue={toDateInputValue(date)}
-                onBlur={e => commit(e.target.value)}
-                onChange={e => { if (e.target.value) commit(e.target.value) }}
-                style={{ width: '100%', marginTop: 4, color: '#0f172a', borderRadius: 4, border: 0, padding: '2px 4px' }}
-              />
-            ) : (
-              <button
-                type="button"
+              <DateColumnPicker
+                title="Rename delivery date"
+                initialDate={toDateInputValue(date)}
+                confirmLabel="Save date"
+                existingDates={existingDates}
+                onConfirm={async iso => {
+                  const parsed = parseSnapshotDate(iso)
+                  if (!parsed) throw new Error('Choose a valid date.')
+                  await onRename(date, formatDeliveredAsOf(parsed))
+                }}
                 disabled={!editable}
-                onClick={() => editable && setEditing(true)}
                 style={{
                   background: 'none', border: 0, color: '#fff', fontWeight: 700,
                   textDecoration: editable ? 'underline' : 'none', cursor: editable ? 'pointer' : 'default',
@@ -528,8 +510,7 @@ function SnapshotDateHeader({
                 }}
               >
                 {date}
-              </button>
-            )}
+              </DateColumnPicker>
           </div>
         </div>
         {editable && (
@@ -785,8 +766,6 @@ export function SbfpCenterTable({
   const [extraSnapDates, setExtraSnapDates] = useState<string[]>([])
   const [extraPayDates, setExtraPayDates] = useState<string[]>([])
   const [cooperatives, setCooperatives] = useState<Cooperative[]>([])
-  const addSnapRef                = useRef<HTMLInputElement>(null)
-  const addPayRef                 = useRef<HTMLInputElement>(null)
   const editable                  = userRole !== 'viewer'
   const dbYear                    = year ?? (initialRecords[0]?.year as number | undefined)
   const runTask                   = useAsyncTask('Saving…')
@@ -1218,59 +1197,26 @@ export function SbfpCenterTable({
             flexWrap: 'wrap',
           }}
         >
-          <button
-            type="button"
-            onClick={() => {
-              const el = addSnapRef.current
-              if (el && typeof el.showPicker === 'function') el.showPicker()
-              else el?.click()
-            }}
+          <DateColumnPicker
+            title="Add delivered-as-of date"
+            existingDates={snapDates}
+            onConfirm={addSnapDate}
             className="btn btn-outline"
             style={{ height: 36, padding: '0 0.85rem', lineHeight: 1 }}
           >
             <CalendarPlus size={15} style={{ flexShrink: 0 }} />
             <span>Add delivered-as-of date</span>
-          </button>
-          <input
-            ref={addSnapRef}
-            type="date"
-            onChange={e => {
-              if (e.target.value) {
-                addSnapDate(e.target.value)
-                e.target.value = ''
-              }
-            }}
-            style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
-            tabIndex={-1}
-            aria-hidden
-          />
-          <button
-            type="button"
-            onClick={() => {
-              const el = addPayRef.current
-              if (el && typeof el.showPicker === 'function') el.showPicker()
-              else el?.click()
-            }}
+          </DateColumnPicker>
+          <DateColumnPicker
+            title="Add payment date"
+            existingDates={payDates}
+            onConfirm={addPayDate}
             className="btn btn-outline"
             style={{ height: 36, padding: '0 0.85rem', lineHeight: 1, borderColor: '#166534', color: '#166534' }}
-            title="Add a payment date column — use multiple columns for partial payments"
           >
             <Banknote size={15} style={{ flexShrink: 0 }} />
             <span>Add payment</span>
-          </button>
-          <input
-            ref={addPayRef}
-            type="date"
-            onChange={e => {
-              if (e.target.value) {
-                addPayDate(e.target.value)
-                e.target.value = ''
-              }
-            }}
-            style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
-            tabIndex={-1}
-            aria-hidden
-          />
+          </DateColumnPicker>
           <button
             type="button"
             onClick={handleAdd}
@@ -1353,6 +1299,7 @@ export function SbfpCenterTable({
                   <SnapshotDateHeader
                     key={d}
                     date={d}
+                    existingDates={snapDates}
                     editable={editable}
                     onRename={renameSnapDate}
                     onDelete={deleteSnapDate}

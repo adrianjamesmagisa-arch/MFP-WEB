@@ -1,0 +1,10 @@
+.dialog { position: fixed; inset: 0; margin: auto; width: min(420px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; padding: 24px; background: #fff; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 12px; box-shadow: 0 20px 60px #0a16284d; }
+.dialog::backdrop { background: #0a16287a; }
+.dialog h2 { font-size: 1.1rem; font-weight: 700; margin-bottom: 8px; }
+.dialog p { font-size: .8rem; color: #475569; line-height: 1.6; margin-bottom: 18px; }
+.dialog label { display: block; font-weight: 600; font-size: .85rem; margin-bottom: 7px; }
+.dialog input { display: block; box-sizing: border-box; width: 100%; min-width: 0; padding: 10px 12px; min-height: 44px; border: 1px solid #94a3b8; border-radius: 6px; background: #fff; color: #0f172a; font: inherit; font-size: 16px; }
+.dialog input:focus-visible, .dialog button:focus-visible { outline: 3px solid #f5a623; outline-offset: 3px; }
+.dialog .error { color: #b91c1c; margin-top: 10px; margin-bottom: 0; }
+.actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 24px; }
+.actions button { min-height: 44px; }

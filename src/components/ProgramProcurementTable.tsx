@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { CalendarPlus, Plus, Trash2, Banknote } from 'lucide-react'
+import { DateColumnPicker } from '@/components/DateColumnPicker'
 import type { MonitoringProgramId } from '@/lib/monitoring-programs'
 import type { ProgramProcurementRow } from '@/lib/program-dropoff-sync'
 import type { Cooperative } from '@/lib/types'
@@ -156,8 +157,6 @@ export function ProgramProcurementTable({
   const [extraPayDates, setExtraPayDates] = useState<string[]>([])
   const [adding, setAdding] = useState(false)
   const [cooperatives, setCooperatives] = useState<Cooperative[]>([])
-  const addSnapRef = useRef<HTMLInputElement>(null)
-  const addPayRef = useRef<HTMLInputElement>(null)
   const reservedLabelsRef = useRef<Set<string>>(new Set())
   const dbYear = year
   const customPriceOnly = programUsesCustomPackPrice(programId)
@@ -568,58 +567,26 @@ export function ProgramProcurementTable({
             flexWrap: 'wrap',
           }}
         >
-          <button
-            type="button"
+          <DateColumnPicker
+            title="Add delivered-as-of date"
+            existingDates={snapDates.filter((date): date is string => Boolean(date))}
+            onConfirm={addSnapDate}
             className="btn btn-outline"
             style={{ height: 36, padding: '0 0.85rem', lineHeight: 1 }}
-            onClick={() => {
-              const el = addSnapRef.current
-              if (el && typeof el.showPicker === 'function') el.showPicker()
-              else el?.click()
-            }}
           >
             <CalendarPlus size={15} style={{ flexShrink: 0 }} />
             <span>Add delivered-as-of date</span>
-          </button>
-          <input
-            ref={addSnapRef}
-            type="date"
-            onChange={e => {
-              if (e.target.value) {
-                addSnapDate(e.target.value)
-                e.target.value = ''
-              }
-            }}
-            style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
-            tabIndex={-1}
-            aria-hidden
-          />
-          <button
-            type="button"
+          </DateColumnPicker>
+          <DateColumnPicker
+            title="Add payment date"
+            existingDates={payDates.filter((date): date is string => Boolean(date))}
+            onConfirm={addPayDate}
             className="btn btn-outline"
             style={{ height: 36, padding: '0 0.85rem', lineHeight: 1, borderColor: '#166534', color: '#166534' }}
-            onClick={() => {
-              const el = addPayRef.current
-              if (el && typeof el.showPicker === 'function') el.showPicker()
-              else el?.click()
-            }}
           >
             <Banknote size={15} style={{ flexShrink: 0 }} />
             <span>Add payment</span>
-          </button>
-          <input
-            ref={addPayRef}
-            type="date"
-            onChange={e => {
-              if (e.target.value) {
-                addPayDate(e.target.value)
-                e.target.value = ''
-              }
-            }}
-            style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
-            tabIndex={-1}
-            aria-hidden
-          />
+          </DateColumnPicker>
           <button
             type="button"
             className="btn btn-gold"
