@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth-session'
+import { AnalysisRequestError, isObject, readAnalysisBody, readMessages, readModel } from '@/lib/mfp-analysis-request'
+import { GroqChatError, requestGroq } from '@/lib/groq-chat'
 
 export const dynamic = 'force-dynamic'
 
@@ -60,6 +62,34 @@ interface RequestBody {
   model?: string
 }
 
+function validateContext(value: unknown): void {
+  if (value === undefined) return
+  if (!isObject(value) || !Number.isInteger(value.totalRecords) || Number(value.totalRecords) < 0) throw new AnalysisRequestError('Invalid report context.')
+  if (value.module !== undefined && value.module !== 'mfp' && value.module !== 'sbfp') throw new AnalysisRequestError('Invalid report module.')
+  if (value.compactTable !== undefined && typeof value.compactTable !== 'string') throw new AnalysisRequestError('Invalid report samples.')
+  if (value.activeFilters !== undefined && (!isObject(value.activeFilters) || Object.values(value.activeFilters).some(item =>
+    item != null && typeof item !== 'string' && typeof item !== 'number'))) throw new AnalysisRequestError('Invalid report filters.')
+  const fields = {
+    sbfpMetrics: ['sdoCount', 'totalPacks', 'totalDelivered', 'pctDelivered', 'totalContractAmt', 'totalFunds', 'totalBeneficiaries', 'totalCoops'],
+    summaryMetrics: ['totalPacks', 'totalDelivered', 'totalVolume', 'totalBeneficiaries', 'totalFunds'],
+  }
+  const arrayFields = new Set(['centers', 'regionsBreakdown', 'provincesBreakdown', 'fundedByBreakdown', 'regions', 'provinces', 'fundedBy', 'milkTypes', 'cooperatives', 'zeroFundsDetails', 'regionalSummary', 'centerSummary'])
+  for (const [name, required] of Object.entries(fields)) {
+    const metrics = value[name]
+    if (metrics === undefined) continue
+    if (!isObject(metrics) || required.some(field => typeof metrics[field] !== 'number' || !Number.isFinite(metrics[field]))) throw new AnalysisRequestError('Report metrics are incomplete or invalid.')
+    for (const [field, item] of Object.entries(metrics)) {
+      if (arrayFields.has(field)) {
+        if (!Array.isArray(item) || item.length > 300 || item.some(entry => typeof entry !== 'string')) throw new AnalysisRequestError('Invalid report breakdown.')
+      } else if (field === 'statusBreakdown') {
+        if (!isObject(item) || Object.values(item).some(count => typeof count !== 'number' || !Number.isFinite(count))) throw new AnalysisRequestError('Invalid status breakdown.')
+      } else if (field === 'activeTab') {
+        if (typeof item !== 'string') throw new AnalysisRequestError('Invalid report tab.')
+      } else if (typeof item !== 'number' || !Number.isFinite(item)) throw new AnalysisRequestError('Invalid report metric.')
+    }
+  }
+}
+
 export async function POST(req: Request) {
   try {
     // 1. Verify user session
@@ -68,29 +98,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Unauthorized. Please log in.' }, { status: 401 })
     }
 
-    // 2. Resolve Groq API Key
-    const customKey = req.headers.get('x-groq-api-key')?.trim()
-    const envKey = process.env.GROQ_API_KEY?.trim() || process.env.NEXT_PUBLIC_GROQ_API_KEY?.trim()
-    const apiKey = customKey || envKey
-
-    if (!apiKey) {
-      return NextResponse.json(
-        {
-          error:
-            'Groq API key not configured. Please add GROQ_API_KEY to your .env.local file or enter it in the AI Agent settings.',
-          requiresKey: true,
-        },
-        { status: 400 },
-      )
-    }
-
-    // 3. Parse request body
-    const body: RequestBody = await req.json()
-    const { messages, context, model = 'openai/gpt-oss-120b' } = body
-
-    if (!messages || !Array.isArray(messages) || messages.length === 0) {
-      return NextResponse.json({ error: 'Messages array is required.' }, { status: 400 })
-    }
+    const raw = await readAnalysisBody(req)
+    if (!isObject(raw)) throw new AnalysisRequestError('A JSON object is required.')
+    validateContext(raw.context)
+    const messages = readMessages(raw.messages)
+    const model = readModel(raw.model)
+    const context = raw.context as RequestBody['context']
 
     // 4. Construct grounded system prompt with filtered table context (token-optimized)
     const totalRecords = context?.totalRecords ?? 0
@@ -297,59 +310,16 @@ ${compactTable}
 6. Be concise, direct, professional, and helpful.`
     }
 
-    // 5. Call Groq API (OpenAI-compatible endpoint)
-    const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          ...messages.map(m => ({
-            role: m.role,
-            content: m.content,
-          })),
-        ],
-        temperature: 0.2,
-        max_tokens: 2500,
-      }),
-    })
-
-    if (!groqResponse.ok) {
-      const errText = await groqResponse.text()
-      let parsedMsg = errText
-      try {
-        const errJson = JSON.parse(errText)
-        parsedMsg = errJson.error?.message || errText
-      } catch {
-        // use raw text
-      }
-
-      console.error('Groq API error:', groqResponse.status, parsedMsg)
-      return NextResponse.json(
-        {
-          error: `Groq AI Error (${groqResponse.status}): ${parsedMsg}`,
-        },
-        { status: groqResponse.status },
-      )
-    }
-
-    const data = await groqResponse.json()
-    const reply = data.choices?.[0]?.message?.content || 'No response generated.'
-
-    return NextResponse.json({
-      content: reply,
-      model: data.model || model,
-      usage: data.usage,
-    })
+    const reply = await requestGroq({ request: req, messages, system: systemPrompt, model })
+    return NextResponse.json(reply)
   } catch (err) {
-    console.error('AI chat endpoint error:', err)
+    if (err instanceof AnalysisRequestError) return NextResponse.json({ error: err.message }, { status: 400 })
+    if (err instanceof GroqChatError) return NextResponse.json({ error: err.message, requiresKey: err.requiresKey, retryAfter: err.retryAfter },
+      { status: err.status, headers: err.retryAfter ? { 'Retry-After': String(err.retryAfter) } : undefined })
+    console.error('AI chat endpoint error:', err instanceof Error ? err.name : 'Unknown error')
     return NextResponse.json(
       {
-        error: err instanceof Error ? err.message : 'Internal server error while processing AI request.',
+        error: 'Could not prepare the analysis. Refresh the page and retry.',
       },
       { status: 500 },
     )

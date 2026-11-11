@@ -11,6 +11,7 @@ import { useAsyncTask } from '@/components/loading/AsyncFeedback'
 import { logCenterActivity } from '@/lib/center-activity'
 import { sbfpNavCenter } from '@/lib/center-aliases'
 import { sumContractValue, type SchoolContractSource } from '@/lib/mfp-school-aggregation'
+import { useMfpAnalysisScope } from '@/components/MfpAnalysisScope'
 
 function EditableCell({ id, field, value, type = 'text', className, style, format, render, onSave, readOnly = false, mixed = false }: { id: string, field: string, value: any, type?: string, className?: string, style?: any, format?: (v: any) => any, render?: (v: any) => any, onSave?: (id: string, field: string, oldVal: any, newVal: any) => void, readOnly?: boolean, mixed?: boolean }) {
   const [isEditing, setIsEditing] = useState(false);
@@ -188,6 +189,7 @@ export function DataTable({
   userRole?: string
 }) {
   const router = useRouter()
+  const analysis = useMfpAnalysisScope()
   const supabase = createClient()
   const runTask = useAsyncTask('Syncing delivery totals…')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -473,6 +475,11 @@ export function DataTable({
   return (
     <>
       <div className="card" style={{ overflow: 'hidden' }}>
+        {analysis && <div className="flex flex-wrap items-center gap-3 border-b px-4 py-2 text-xs text-slate-600">
+          <span>Use the Analyze checkboxes in the school column to select records for the AI Agent.</span>
+          <strong>{analysis.selectedIds.size.toLocaleString()} selected for analysis</strong>
+          {analysis.selectedIds.size > 0 && <button type="button" className="underline" onClick={analysis.clear}>Clear analysis selection</button>}
+        </div>}
         <div style={{ overflow: 'auto', maxHeight: 'calc(100vh - 260px)' }}>
           <table
             className="data-table mfp-data-table"
@@ -494,7 +501,12 @@ export function DataTable({
                 <th className="col-prov" style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 100 }}>E — Province</th>
                 <th className="col-div" style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 100 }}>F — Division</th>
                 <th className="col-muni" style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 120 }}>G — Municipality</th>
-                <th className="col-school" style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 160 }}>H — Elementary School</th>
+                <th className="col-school" style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 160 }}>H — Elementary School
+                  {analysis && <label className="mt-2 flex items-center gap-2 text-[0.65rem] font-normal">
+                    <input type="checkbox" aria-label="Select all filtered records for analysis" checked={records.length > 0 && analysis.selectedIds.size === records.length}
+                      disabled={!records.length} onChange={analysis.toggleAll} /> Analyze all filtered rows
+                  </label>}
+                </th>
                 {/* I-N auto-calc */}
                 <th style={{ width: 90, minWidth: 90, whiteSpace: 'normal', lineHeight: 1.2 }}>I — Milk Packs</th>
                 <th style={{ width: 90, minWidth: 90, whiteSpace: 'normal', lineHeight: 1.2 }}>J — Total Vol. Req (L)</th>
@@ -568,7 +580,9 @@ export function DataTable({
                     <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="division" value={r.division} className="col-div" />
                     <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="municipality" value={r.municipality} className="col-muni" />
                     <EditableCell readOnly={!canEditThisRow} onSave={handleCellSave} id={r.id} field="elementary_school" value={r.elementary_school} className="col-school"
-                      render={value => <>{value}{missingLink && <span className="block text-[0.65rem] text-amber-700">Not yet linked</span>}
+                      render={value => <>{analysis && <label className="mb-1 flex items-center gap-2 text-[0.65rem] text-blue-800" onClick={event => event.stopPropagation()}>
+                        <input type="checkbox" aria-label={`Analyze ${r.elementary_school || 'record'} (${r.id})`} checked={analysis.selectedIds.has(r.id)} onChange={() => analysis.toggle(r.id)} /> Analyze
+                      </label>}{value}{missingLink && <span className="block text-[0.65rem] text-amber-700">Not yet linked</span>}
                         {r.source_dropoff_ids?.length > 1 && <details className="mt-1 text-[0.65rem] font-normal">
                           <summary className="cursor-pointer">Combined from {r.source_dropoff_ids.length} contract entries</summary>
                           <div>{r.source_contracts.map((contract: SchoolContractSource) => contract.label).join('; ')}</div>

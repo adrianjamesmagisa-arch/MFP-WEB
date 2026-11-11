@@ -1,7 +1,9 @@
 'use client'
 
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { sumContractValue, type SchoolContractSource } from '@/lib/mfp-school-aggregation'
+import type { MfpListRow } from '@/lib/mfp-sbfp-source'
+import { summarizeMfpRows } from '@/lib/mfp-analytics'
+import { useMfpAnalysisScope } from '@/components/MfpAnalysisScope'
 import {
   Sparkles,
   Bot,
@@ -19,7 +21,7 @@ import {
 } from 'lucide-react'
 
 export interface MfpAiAgentProps {
-  records: Array<Record<string, any>>
+  records: MfpListRow[]
   centerLabel?: string | null
   yearLabel?: string | number | null
   activeFilters?: Record<string, string | number | undefined>
@@ -30,6 +32,8 @@ interface Message {
   role: 'user' | 'assistant'
   content: string
   timestamp: string
+  basis?: string
+  origin?: 'computed' | 'groq'
 }
 
 const DEFAULT_MODEL = 'openai/gpt-oss-120b'
@@ -40,16 +44,26 @@ const GROQ_MODELS = [
 ]
 
 const QUICK_PROMPTS = [
+  'How many elementary schools are participating in this scope?',
   'Summarize the key metrics of the current filtered data',
   'Total milk packs delivered vs target & completion rate',
   'Break down milk packs and funds by Center and Region',
-  'Which cooperatives/suppliers delivered the highest volume?',
+  'Top cooperatives by milk packs',
   'Compare funding sources (DepEd vs DSWD vs LDS)',
-  'Are there any records with zero or delayed deliveries?',
+  'Show zero or delayed deliveries',
 ]
 
-export function MfpAiAgent({ records, centerLabel, yearLabel, activeFilters }: MfpAiAgentProps) {
+export function MfpAiAgent(props: MfpAiAgentProps) {
+  const analysis = useMfpAnalysisScope()
   const [isOpen, setIsOpen] = useState(false)
+  const records = analysis?.mode === 'selected' ? props.records.filter(row => analysis.selectedIds.has(row.id)) : props.records
+  const scopeKey = analysis ? `${analysis.version}:${analysis.mode}:${[...analysis.selectedIds].sort().join('|')}` : 'unavailable'
+  return <MfpAiConversation key={scopeKey} {...props} records={records} analysis={analysis} isOpen={isOpen} setIsOpen={setIsOpen} />
+}
+
+function MfpAiConversation({ records, analysis, isOpen, setIsOpen }: MfpAiAgentProps & {
+  analysis: ReturnType<typeof useMfpAnalysisScope>; isOpen: boolean; setIsOpen: (open: boolean) => void
+}) {
   const [showSettings, setShowSettings] = useState(false)
   const [apiKey, setApiKey] = useState('')
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL)
@@ -61,6 +75,19 @@ export function MfpAiAgent({ records, centerLabel, yearLabel, activeFilters }: M
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const requestRef = useRef<AbortController | null>(null)
+  const inFlight = useRef(false)
+  const [needsRefresh, setNeedsRefresh] = useState(false)
+  const [retryUntil, setRetryUntil] = useState(0)
+  const [clock, setClock] = useState(0)
+  const retrySeconds = Math.max(0, Math.ceil((retryUntil - clock) / 1000))
+  useEffect(() => () => requestRef.current?.abort(), [])
+  useEffect(() => {
+    if (!retryUntil) return
+    const timer = setInterval(() => setClock(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [retryUntil])
+  const closeAssistant = () => { requestRef.current?.abort(); setIsOpen(false) }
 
   // Load saved API key and model from localStorage on mount
   useEffect(() => {
@@ -112,309 +139,51 @@ export function MfpAiAgent({ records, centerLabel, yearLabel, activeFilters }: M
     }
   }
 
-  // Precompute aggregate metrics from records to ground the AI
-  // Precompute aggregate metrics & breakdowns to ground the AI with minimal tokens
-  const summaryMetrics = useMemo(() => {
-    const toNum = (v: unknown): number => {
-      if (typeof v === 'number') return Number.isFinite(v) ? v : 0
-      if (typeof v === 'string' && v.trim() !== '') {
-        const parsed = Number(v.replace(/,/g, ''))
-        return Number.isFinite(parsed) ? parsed : 0
-      }
-      return 0
-    }
+  const overview = useMemo(() => summarizeMfpRows(records), [records])
 
-    let totalPacks = 0 // Column I: milk_packs
-    let totalVolume = 0 // Column J: total_volume_requirements
-    let totalRawMilkLiters = 0 // Column K: raw_milk_liters
-    let totalWholeMilkKg = 0 // Column L: whole_milk_kg
-    let totalSkimmedMilkKg = 0 // Column M: skimmed_milk_kg
-    let totalSugarKg = 0 // Column N: sugar
-    let totalBeneficiaries = 0 // Column Q: beneficiaries
-    let totalMilkCost = 0 // Column U: milk_cost
-    let totalServiceFee = 0 // Column V: service_fee
-    let totalFunds = 0 // Column W: total_funds_transferred
-    let totalTargetPacksToDeliver = 0 // Column AD: target_milk_packs_to_deliver
-    let totalDelivered = 0 // Column AE: total_milk_packs_delivered
-
-    let zeroFundsWithMilkCostRows = 0
-    let zeroFundsWithMilkCostSubtotal = 0
-
-    interface GroupAgg {
-      records: number
-      packs: number
-      volume: number
-      rawMilk: number
-      beneficiaries: number
-      milkCost: number
-      serviceFee: number
-      totalFunds: number
-      delivered: number
-    }
-
-    const emptyAgg = (): GroupAgg => ({
-      records: 0,
-      packs: 0,
-      volume: 0,
-      rawMilk: 0,
-      beneficiaries: 0,
-      milkCost: 0,
-      serviceFee: 0,
-      totalFunds: 0,
-      delivered: 0,
-    })
-
-    const addAgg = (
-      map: Map<string, GroupAgg>,
-      key: string,
-      rowVals: Omit<GroupAgg, 'records'>,
-    ) => {
-      const prev = map.get(key) || emptyAgg()
-      prev.records += 1
-      prev.packs += rowVals.packs
-      prev.volume += rowVals.volume
-      prev.rawMilk += rowVals.rawMilk
-      prev.beneficiaries += rowVals.beneficiaries
-      prev.milkCost += rowVals.milkCost
-      prev.serviceFee += rowVals.serviceFee
-      prev.totalFunds += rowVals.totalFunds
-      prev.delivered += rowVals.delivered
-      map.set(key, prev)
-    }
-
-    const centersMap = new Map<string, GroupAgg>()
-    const regionsMap = new Map<string, GroupAgg>()
-    const provincesMap = new Map<string, GroupAgg>()
-    const fundedByMap = new Map<string, GroupAgg>()
-    const coopsMap = new Map<string, GroupAgg>()
-    const zeroFundsByProvinceMap = new Map<string, { records: number; milkCost: number; center: string }>()
-
-    const regionsSet = new Set<string>()
-    const provincesSet = new Set<string>()
-    const fundedBySet = new Set<string>()
-    const milkTypesSet = new Set<string>()
-
-    const seenContracts = new Set<string>()
-    for (const r of records) {
-      const packs = toNum(r.milk_packs)
-      const volume = toNum(r.total_volume_requirements)
-      const rawMilk = toNum(r.raw_milk_liters)
-      const wholeMilk = toNum(r.whole_milk_kg)
-      const skimmedMilk = toNum(r.skimmed_milk_kg)
-      const sugar = toNum(r.sugar)
-      const beneficiaries = toNum(r.beneficiaries)
-      const milkCost = toNum(r.milk_cost)
-      const serviceFee = toNum(r.service_fee)
-      const funds = toNum(r.total_funds_transferred)
-      const contracts: SchoolContractSource[] | undefined = r.source_contracts
-      const newContracts = contracts?.filter(contract => !seenContracts.has(contract.id))
-      contracts?.forEach(contract => seenContracts.add(contract.id))
-      const targetDeliver = contracts?.length ? sumContractValue(newContracts || [], 'target') : toNum(r.target_milk_packs_to_deliver)
-      const delivered = contracts?.length ? sumContractValue(newContracts || [], 'delivered') : toNum(r.total_milk_packs_delivered)
-
-      totalPacks += packs
-      totalVolume += volume
-      totalRawMilkLiters += rawMilk
-      totalWholeMilkKg += wholeMilk
-      totalSkimmedMilkKg += skimmedMilk
-      totalSugarKg += sugar
-      totalBeneficiaries += beneficiaries
-      totalMilkCost += milkCost
-      totalServiceFee += serviceFee
-      totalFunds += funds
-      totalTargetPacksToDeliver += targetDeliver
-      totalDelivered += delivered
-
-      if (r.total_funds_transferred != null && r.total_funds_transferred !== '' && milkCost > 0 && funds === 0) {
-        zeroFundsWithMilkCostRows += 1
-        zeroFundsWithMilkCostSubtotal += milkCost
-        const provKey = String(r.province || 'Unspecified')
-        const prevZ = zeroFundsByProvinceMap.get(provKey) || {
-          records: 0,
-          milkCost: 0,
-          center: String(r.center || ''),
-        }
-        prevZ.records += 1
-        prevZ.milkCost += milkCost
-        zeroFundsByProvinceMap.set(provKey, prevZ)
-      }
-
-      const rowVals = {
-        packs,
-        volume,
-        rawMilk,
-        beneficiaries,
-        milkCost,
-        serviceFee,
-        totalFunds: funds,
-        delivered,
-      }
-
-      if (r.center) {
-        addAgg(centersMap, String(r.center), rowVals)
-      }
-      if (r.region) {
-        const reg = String(r.region)
-        regionsSet.add(reg)
-        addAgg(regionsMap, reg, rowVals)
-      }
-      if (r.province) {
-        const prov = String(r.province)
-        provincesSet.add(prov)
-        addAgg(provincesMap, prov, rowVals)
-      }
-      if (r.funded_by) {
-        const fb = String(r.funded_by)
-        fundedBySet.add(fb)
-        addAgg(fundedByMap, fb, rowVals)
-      }
-      if (r.milk_type) {
-        milkTypesSet.add(String(r.milk_type))
-      }
-
-      const coopName = (r.cooperatives as any)?.name || (r.supplier_id ? `Supplier #${r.supplier_id}` : null)
-      if (coopName) {
-        addAgg(coopsMap, String(coopName), rowVals)
-      }
-    }
-
-    const fmtMoney = (n: number) =>
-      `₱${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-
-    const formatAggLine = (name: string, stat: GroupAgg) =>
-      `${name}: ${stat.records} rows | Col I Packs: ${stat.packs.toLocaleString('en-US')} | Col J Vol: ${stat.volume.toLocaleString('en-US')} L | Col K Raw Milk: ${stat.rawMilk.toLocaleString('en-US')} L | Col Q Benef: ${stat.beneficiaries.toLocaleString('en-US')} | Col U Milk Cost: ${fmtMoney(stat.milkCost)} | Col V Service Fee: ${fmtMoney(stat.serviceFee)} | Col W Total Funds: ${fmtMoney(stat.totalFunds)}`
-
-    const coopsList = Array.from(coopsMap.entries())
-      .map(([name, stat]) => formatAggLine(name, stat))
-      .slice(0, 40)
-
-    const centersList = Array.from(centersMap.entries()).map(([name, stat]) => formatAggLine(name, stat))
-    const regionsBreakdown = Array.from(regionsMap.entries()).map(([name, stat]) => formatAggLine(`Region ${name}`, stat))
-    const provincesBreakdown = Array.from(provincesMap.entries())
-      .map(([name, stat]) => formatAggLine(name, stat))
-      .slice(0, 60)
-    const fundedByBreakdown = Array.from(fundedByMap.entries()).map(([name, stat]) => formatAggLine(name, stat))
-    const zeroFundsDetails = Array.from(zeroFundsByProvinceMap.entries()).map(
-      ([prov, info]) =>
-        `${prov}${info.center ? ` (${info.center})` : ''}: ${info.records} rows, Col U Milk Cost = ${fmtMoney(info.milkCost)}, Col W Total Funds = ₱0.00`,
-    )
-
-    return {
-      totalPacks,
-      totalDelivered,
-      totalTargetPacksToDeliver,
-      totalVolume,
-      totalRawMilkLiters,
-      totalWholeMilkKg,
-      totalSkimmedMilkKg,
-      totalSugarKg,
-      totalBeneficiaries,
-      totalMilkCost,
-      totalServiceFee,
-      totalFunds,
-      zeroFundsWithMilkCostRows,
-      zeroFundsWithMilkCostSubtotal,
-      zeroFundsDetails,
-      centers: centersList,
-      regionsBreakdown,
-      provincesBreakdown,
-      fundedByBreakdown,
-      regions: Array.from(regionsSet).sort(),
-      provinces: Array.from(provincesSet).sort(),
-      fundedBy: Array.from(fundedBySet).sort(),
-      milkTypes: Array.from(milkTypesSet).sort(),
-      cooperatives: coopsList,
-    }
-  }, [records])
-
-  // Ultra-compact pipe-delimited sample rows including financial & volume columns
-  const compactTable = useMemo(() => {
-    const header =
-      'Year(A)|Funded(B)|Reg(C)|Center(D)|Prov(E)|Muni(G)|Packs(I)|VolL(J)|RawL(K)|Benef(Q)|MilkCost(U)|SvcFee(V)|TotalFunds(W)|Deliv(AE)|Coop(T)'
-    const rows = records.slice(0, 40).map(r => {
-      const coop = (r.cooperatives as any)?.name || r.supplier_id || '-'
-      return `${r.year || ''}|${r.funded_by || ''}|${r.region || ''}|${r.center || ''}|${r.province || ''}|${r.municipality || ''}|${r.milk_packs ?? 'N/A'}|${r.total_volume_requirements ?? 'N/A'}|${r.raw_milk_liters ?? 'N/A'}|${r.beneficiaries ?? 'N/A'}|${r.milk_cost ?? 'N/A'}|${r.service_fee ?? 'N/A'}|${r.total_funds_transferred ?? 'N/A'}|${r.total_milk_packs_delivered ?? 'N/A'}|${coop}`
-    })
-    const missingLinks = records.reduce((count, row) => count + (row.missing_source_links ?? (row.mfp_link_status === 'missing' ? 1 : 0)), 0)
-    const incompleteMoney = records.filter(row => row.mfp_link_status && (row.milk_cost == null || row.service_fee == null || row.total_funds_transferred == null)).length
-    return [
-      ...(records.some(row => row.source_contracts?.length) ? ['Matching school entries from original/Add contracts combine only within the same milk type. Beneficiaries use the original contract only; addition beneficiaries are excluded. When the original is absent from the filtered result, beneficiaries are unavailable, not zero; totals include known original counts only. Feeding days with differing values are Multiple. Contract delivery totals are counted once per contract.'] : []),
-      ...(missingLinks ? [`${missingLinks} SBFP source school(s) have no linked MFP record. Their source details are included in the count.`] : []),
-      ...(incompleteMoney ? [`${incompleteMoney} school(s) have incomplete financial values. Financial sums include known amounts only; N/A means unknown, not zero.`] : []),
-      header, ...rows,
-    ].join('\n')
-  }, [records])
-
-  // Send prompt to Groq API
+  // Counts and totals are computed by the authorized server; explanations use bounded facts.
   const handleSend = async (textToSend?: string) => {
     const prompt = (textToSend || inputMessage).trim()
-    if (!prompt || isLoading) return
-
-    setErrorMessage(null)
-    const userMsg: Message = {
-      id: `u-${Date.now()}`,
-      role: 'user',
-      content: prompt,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    if (!prompt || inFlight.current) return
+    if (!analysis) { setErrorMessage('Refresh MFP Data before analyzing its records.'); return }
+    if (!records.length) { setErrorMessage('No records are in this scope.'); return }
+    if (new TextEncoder().encode(prompt).byteLength > 2000) { setErrorMessage('Please keep the question under 2,000 UTF-8 bytes.'); return }
+    if (/\b(selected|checked)\b/i.test(prompt) && analysis.mode !== 'selected') {
+      setErrorMessage('Use the Analyze checkboxes and choose Selected records before asking about selected rows.'); return
     }
-
-    const newMessages = [...messages, userMsg]
-    setMessages(newMessages)
-    setInputMessage('')
-    setIsLoading(true)
-
+    if (/\b(all filtered|filtered rows|filtered records)\b/i.test(prompt) && analysis.mode !== 'filtered') {
+      setErrorMessage('Choose All filtered records to ask about the full filtered table.'); return
+    }
+    setErrorMessage(null); setNeedsRefresh(false)
+    const userMsg: Message = { id: crypto.randomUUID(), role: 'user', content: prompt, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
+    const next = [...messages, userMsg]
+    setMessages(next); setInputMessage(''); setIsLoading(true); inFlight.current = true
+    const controller = new AbortController()
+    requestRef.current = controller
+    const timer = setTimeout(() => controller.abort(), 45000)
     try {
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      }
-      if (apiKey.trim()) {
-        headers['x-groq-api-key'] = apiKey.trim()
-      }
-
-      // Send only last 4 messages to prevent token budget accumulation
-      const trimmedHistory = newMessages.slice(-4).map(m => ({ role: m.role, content: m.content }))
-
-      const res = await fetch('/api/ai/chat', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          messages: trimmedHistory,
-          model: selectedModel,
-          context: {
-            totalRecords: records.length,
-            activeFilters: {
-              ...activeFilters,
-              centerLabel,
-              yearLabel,
-            },
-            summaryMetrics,
-            compactTable,
-          },
-        }),
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (apiKey.trim()) headers['x-groq-api-key'] = apiKey.trim()
+      const res = await fetch('/api/ai/mfp', { method: 'POST', headers, signal: controller.signal,
+        body: JSON.stringify({ messages: next.slice(-8).map(message => ({ role: message.role, content: message.content })), model: selectedModel,
+          filters: analysis.filters, version: analysis.version, scope: analysis.mode, selectedIds: analysis.mode === 'selected' ? [...analysis.selectedIds] : [] }),
       })
-
       const data = await res.json()
-
+      if (controller.signal.aborted) return
       if (!res.ok) {
-        if (data.requiresKey) {
-          setShowSettings(true)
-        }
-        throw new Error(data.error || 'Failed to generate response from Groq AI.')
+        if (data.requiresKey) setShowSettings(true)
+        if (data.stale) setNeedsRefresh(true)
+        if (typeof data.retryAfter === 'number') { const now = Date.now(); setClock(now); setRetryUntil(now + data.retryAfter * 1000) }
+        throw new Error(typeof data.error === 'string' ? data.error : 'Analysis could not be completed.')
       }
-
-      const assistantMsg: Message = {
-        id: `a-${Date.now()}`,
-        role: 'assistant',
-        content: data.content,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      }
-
-      setMessages(prev => [...prev, assistantMsg])
-    } catch (err: any) {
-      console.error('AI chat error:', err)
-      setErrorMessage(err.message || 'Error communicating with Groq AI.')
+      if (typeof data.content !== 'string') throw new Error('The analysis response was invalid.')
+      setMessages(previous => [...previous, { id: crypto.randomUUID(), role: 'assistant', content: data.content,
+        basis: data.basis, origin: data.origin, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }])
+    } catch (error) {
+      setErrorMessage(controller.signal.aborted ? 'Analysis cancelled or timed out. You can retry the question.' : error instanceof Error ? error.message : 'Analysis could not be completed.')
     } finally {
-      setIsLoading(false)
+      clearTimeout(timer); if (requestRef.current === controller) requestRef.current = null
+      inFlight.current = false; setIsLoading(false)
     }
   }
 
@@ -432,6 +201,7 @@ export function MfpAiAgent({ records, centerLabel, yearLabel, activeFilters }: M
   }
 
   const clearChat = () => {
+    if (inFlight.current) return
     if (confirm('Clear chat conversation?')) {
       setMessages([])
       setErrorMessage(null)
@@ -483,7 +253,7 @@ export function MfpAiAgent({ records, centerLabel, yearLabel, activeFilters }: M
         <div style={{ position: 'fixed', inset: 0, zIndex: 70 }}>
           {/* Subtle backdrop overlay */}
           <div
-            onClick={() => setIsOpen(false)}
+            onClick={closeAssistant}
             style={{
               position: 'fixed',
               inset: 0,
@@ -555,7 +325,7 @@ export function MfpAiAgent({ records, centerLabel, yearLabel, activeFilters }: M
                     </span>
                   </div>
                   <p style={{ fontSize: '0.75rem', color: '#cbd5e1', margin: '0.1rem 0 0 0' }}>
-                    {records.length} record{records.length !== 1 ? 's' : ''} in filtered scope
+                    {records.length.toLocaleString()} {analysis?.mode === 'selected' ? 'selected' : 'filtered'} records
                   </p>
                 </div>
               </div>
@@ -583,6 +353,7 @@ export function MfpAiAgent({ records, centerLabel, yearLabel, activeFilters }: M
                   <button
                     type="button"
                     onClick={clearChat}
+                    disabled={isLoading}
                     title="Clear Conversation"
                     style={{
                       background: 'transparent',
@@ -600,7 +371,7 @@ export function MfpAiAgent({ records, centerLabel, yearLabel, activeFilters }: M
                 )}
                 <button
                   type="button"
-                  onClick={() => setIsOpen(false)}
+                  onClick={closeAssistant}
                   title="Close Assistant"
                   style={{
                     background: 'transparent',
@@ -618,42 +389,16 @@ export function MfpAiAgent({ records, centerLabel, yearLabel, activeFilters }: M
               </div>
             </div>
 
-            {/* Scope / Context Pill Banner */}
-            <div
-              style={{
-                background: '#f8fafc',
-                padding: '0.5rem 1rem',
-                borderBottom: '1px solid #e2e8f0',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                fontSize: '0.75rem',
-                color: '#64748b',
-                gap: '0.5rem',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                <span style={{ fontWeight: 600, color: 'var(--navy)' }}>Scope:</span>
-                <span>
-                  {summaryMetrics.centers.length > 0
-                    ? `${summaryMetrics.centers.length} center(s)`
-                    : 'All centers'}
-                  {summaryMetrics.fundedBy.length > 0 && ` · ${summaryMetrics.fundedBy.join(', ')}`}
-                  {summaryMetrics.regions.length > 0 && ` · Region ${summaryMetrics.regions.join(', ')}`}
-                </span>
-              </div>
-              <div
-                style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexShrink: 0 }}
-                title={`Col U Milk Cost: ₱${summaryMetrics.totalMilkCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} | Col V Service Fee: ₱${summaryMetrics.totalServiceFee.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} | Col W Total Funds: ₱${summaryMetrics.totalFunds.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-              >
-                <span style={{ fontWeight: 600, color: '#0f766e' }}>
-                  Col U: ₱{summaryMetrics.totalMilkCost > 0 ? (summaryMetrics.totalMilkCost / 1e6).toFixed(1) + 'M' : '0'}
-                </span>
-                <span style={{ color: '#cbd5e1' }}>·</span>
-                <span style={{ fontWeight: 600, color: '#2563eb' }}>
-                  Col W: ₱{summaryMetrics.totalFunds > 0 ? (summaryMetrics.totalFunds / 1e6).toFixed(1) + 'M' : '0'}
-                </span>
-              </div>
+            <div className="border-b bg-slate-50 px-4 py-3 text-xs text-slate-600">
+              <label className="flex flex-wrap items-center gap-2 font-semibold text-slate-900">Analyze
+                <select aria-label="Analysis scope" className="rounded border bg-white px-2 py-2" value={analysis?.mode || 'filtered'}
+                  onChange={event => analysis?.setMode(event.target.value === 'selected' ? 'selected' : 'filtered')}>
+                  <option value="filtered">All filtered records</option>
+                  <option value="selected" disabled={!analysis?.selectedIds.size}>Selected records ({analysis?.selectedIds.size || 0})</option>
+                </select>
+              </label>
+              <p className="mt-2">{records.length.toLocaleString()} rows ? {overview.centers.length} center(s) ? {overview.schools.count.toLocaleString()} identified {overview.schools.unit}</p>
+              <p className="mt-1">Use Analyze checkboxes in the school column. Changing selection or filters starts a new conversation. Answers are verified against the current source data.</p>
             </div>
 
             {/* Collapsible Groq Settings Bar */}
@@ -766,10 +511,10 @@ export function MfpAiAgent({ records, centerLabel, yearLabel, activeFilters }: M
                       <Bot size={24} color="white" />
                     </div>
                     <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--navy)', margin: '0 0 0.25rem 0' }}>
-                      Ask anything about this dataset
+                      Ask about this data scope
                     </h3>
                     <p style={{ fontSize: '0.8rem', color: '#64748b', margin: 0, lineHeight: 1.4 }}>
-                      Powered by Groq. Gathers insights, compares centers, sums deliverables, or spots issues across your {records.length} currently filtered rows.
+                      Exact counts, totals and supported breakdowns use system calculations. Groq provides explanations from verified aggregates.
                     </p>
                   </div>
 
@@ -843,7 +588,9 @@ export function MfpAiAgent({ records, centerLabel, yearLabel, activeFilters }: M
                       <div style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</div>
                     ) : (
                       <div>
+                        <div className="mb-2 text-[0.65rem] font-semibold text-blue-800">{msg.origin === 'computed' ? 'System calculation' : 'AI explanation'}</div>
                         <MarkdownText content={msg.content} />
+                        {msg.basis && <p className="mt-3 border-t pt-2 text-[0.65rem] text-slate-500">{msg.basis}</p>}
                         <div
                           style={{
                             display: 'flex',
@@ -906,7 +653,7 @@ export function MfpAiAgent({ records, centerLabel, yearLabel, activeFilters }: M
                     }}
                   >
                     <RotateCw size={14} className="animate-spin" color="#2563eb" />
-                    <span>Analyzing filtered table data...</span>
+                    <span>Verifying records and calculating the answer...</span><button type="button" className="underline" onClick={() => requestRef.current?.abort()}>Cancel</button>
                   </div>
                 </div>
               )}
@@ -927,7 +674,13 @@ export function MfpAiAgent({ records, centerLabel, yearLabel, activeFilters }: M
                   }}
                 >
                   <AlertCircle size={16} style={{ flexShrink: 0, marginTop: '0.1rem' }} />
-                  <div style={{ flex: 1 }}>{errorMessage}</div>
+                  <div style={{ flex: 1 }} role="alert">{errorMessage}
+                    {needsRefresh ? <button type="button" className="mt-2 block underline" onClick={() => window.location.reload()}>Refresh table</button>
+                      : <button type="button" className="mt-2 block underline disabled:opacity-50" disabled={isLoading || retrySeconds > 0}
+                        onClick={() => handleSend([...messages].reverse().find(message => message.role === 'user')?.content)}>
+                        {retrySeconds ? `Retry explanation in ${retrySeconds}s` : 'Retry last question'}
+                      </button>}
+                  </div>
                 </div>
               )}
 
@@ -958,7 +711,7 @@ export function MfpAiAgent({ records, centerLabel, yearLabel, activeFilters }: M
                   value={inputMessage}
                   onChange={(e) => setInputMessage(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder={`Ask about these ${records.length} records... (Enter to send)`}
+                  placeholder={`Ask about ${records.length} ${analysis?.mode === 'selected' ? 'selected' : 'filtered'} records...`}
                   rows={2}
                   style={{
                     flex: 1,
@@ -974,6 +727,7 @@ export function MfpAiAgent({ records, centerLabel, yearLabel, activeFilters }: M
                 />
                 <button
                   type="button"
+                  aria-label="Send analysis question"
                   onClick={() => handleSend()}
                   disabled={!inputMessage.trim() || isLoading}
                   style={{

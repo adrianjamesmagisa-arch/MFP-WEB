@@ -345,6 +345,7 @@ test('source school rows edit through SBFP and Select All uses only independentl
     },
   }
   const { DataTable } = load('src/components/DataTable.tsx', {
+    '@/components/MfpAnalysisScope': { useMfpAnalysisScope: () => null },
     react: hooks, 'next/link': { default: Link }, 'next/navigation': { useRouter: () => ({}) },
     '@/lib/supabase/client': { createClient: () => ({ from: () => { throw new Error('Unexpected database operation') } }) },
     '@/components/loading/AsyncFeedback': { useAsyncTask: () => async task => task() },
@@ -380,21 +381,14 @@ test('source school rows edit through SBFP and Select All uses only independentl
   assert.ok(combinedNodes.some(node => node.type === 'td' && node.props?.title?.startsWith('Target milk packs') && node.props.children === '6,000'))
 })
 
-test('AI counts contract deliveries once even when the contract also appears on another school row', async () => {
+test('shared analytics counts contract deliveries once even when another school references the contract', async () => {
   const result = await pageFixture(undefined, { tables: additionalSchoolFixture() })
-  const memoValues = []
-  const { MfpAiAgent } = load('src/components/MfpAiAgent.tsx', { react: {
-    useState: initial => [typeof initial === 'function' ? initial() : initial, () => {}],
-    useEffect: () => {}, useRef: initial => ({ current: initial }),
-    useMemo: factory => { const value = factory(); memoValues.push(value); return value },
-  } })
-  MfpAiAgent({ records: result.table.props.records })
-  const summary = memoValues.find(value => typeof value?.totalPacks === 'number')
-  assert.equal(summary.totalTargetPacksToDeliver, 6000)
-  assert.equal(summary.totalDelivered, 1500)
-  assert.equal(summary.totalPacks, 4970)
-  assert.equal(summary.totalBeneficiaries, 50)
-  assert.ok(memoValues.some(value => typeof value === 'string' && value.includes('original contract only')))
+  const { summarizeMfpRows } = load('src/lib/mfp-analytics.ts')
+  const summary = summarizeMfpRows(result.table.props.records)
+  assert.equal(summary.target.value, 6000)
+  assert.equal(summary.delivered.value, 1500)
+  assert.equal(summary.metrics.milk_packs.value, 4970)
+  assert.equal(summary.metrics.beneficiaries.value, 50)
 })
 
 test('orphan schools with unknown milk type keep milk-dependent formulations and missing metadata blank', () => {
@@ -409,18 +403,12 @@ test('orphan schools with unknown milk type keep milk-dependent formulations and
   }
 })
 
-test('AI reconciliation distinguishes unknown total funds from an explicitly encoded zero', () => {
-  const memoValues = []
-  const { MfpAiAgent } = load('src/components/MfpAiAgent.tsx', { react: {
-    useState: initial => [typeof initial === 'function' ? initial() : initial, () => {}],
-    useEffect: () => {}, useRef: initial => ({ current: initial }),
-    useMemo: factory => { const value = factory(); memoValues.push(value); return value },
-  } })
-  MfpAiAgent({ records: [
+test('shared analytics distinguishes unknown total funds from an explicitly encoded zero', () => {
+  const { summarizeMfpRows } = load('src/lib/mfp-analytics.ts')
+  const summary = summarizeMfpRows([
     { id: 'unknown', mfp_link_status: 'missing', milk_cost: 100, total_funds_transferred: null },
     { id: 'known-zero', mfp_link_status: 'linked', milk_cost: 50, total_funds_transferred: 0 },
-  ] })
-  const summary = memoValues.find(value => typeof value?.zeroFundsWithMilkCostRows === 'number')
-  assert.equal(summary.zeroFundsWithMilkCostRows, 1)
-  assert.equal(summary.zeroFundsWithMilkCostSubtotal, 50)
+  ])
+  assert.deepEqual(summary.metrics.total_funds_transferred, { value: 0, known: 1, missing: 1 })
+  assert.equal(summary.metrics.milk_cost.value, 150)
 })

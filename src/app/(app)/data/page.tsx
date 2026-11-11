@@ -4,39 +4,14 @@ import { DataFilters } from '@/components/DataFilters'
 import { DataTable } from '@/components/DataTable'
 import { ExportMfpCsvButton } from '@/components/ExportMfpCsvButton'
 import { MfpAiAgent } from '@/components/MfpAiAgent'
+import { MfpAnalysisScope } from '@/components/MfpAnalysisScope'
+import { loadMfpListRows, mfpListVersion } from '@/lib/mfp-list-data'
 import { REGIONS, PCC_CENTERS } from '@/lib/types'
 import { APP_YEAR_STRINGS, APP_YEARS, defaultReportYearString } from '@/lib/app-years'
-import { MFP_DATA_LIST_COLUMNS } from '@/lib/encoder-selects'
-import { fetchAllRows } from '@/lib/supabase-paginate'
 import { getCurrentUser } from '@/lib/auth-session'
-import { isNizFamily, mfpCenterAliases } from '@/lib/center-aliases'
-import { filterValues, mfpDateIntervals, type MfpListFilters } from '@/lib/mfp-list-filters'
-import { includesSbfpSource, is2026Deped, loadSbfpSourceRows, type MfpListRow } from '@/lib/mfp-sbfp-source'
-
-function applyDateRangeFilter(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  baseQuery: any,
-  field: 'date_started' | 'date_completed',
-  yearParam: string | undefined,
-  monthParam: string | undefined,
-  fallbackYears: number[],
-) {
-  const intervals = mfpDateIntervals(yearParam, monthParam, fallbackYears)
-
-  if (intervals.length === 0) return baseQuery
-
-  if (intervals.length === 1) {
-    return baseQuery
-      .gte(field, intervals[0].start)
-      .lt(field, intervals[0].end)
-  }
-
-  const orConditions = intervals
-    .map(iv => `and(${field}.gte.${iv.start},${field}.lt.${iv.end})`)
-    .join(',')
-
-  return baseQuery.or(orConditions)
-}
+import { isNizFamily } from '@/lib/center-aliases'
+import type { MfpListFilters } from '@/lib/mfp-list-filters'
+import { includesSbfpSource, type MfpListRow } from '@/lib/mfp-sbfp-source'
 
 export default async function DataPage({
   searchParams,
@@ -79,99 +54,10 @@ export default async function DataPage({
   // For display / date-range helpers, use the first selected year (or null)
   const listYear = listYears.length === 1 ? listYears[0] : null
 
-  function buildListQuery() {
-    let query = supabase
-      .from('mfp_data')
-      .select(MFP_DATA_LIST_COLUMNS)
-      .gte('year', APP_YEARS[0] ?? 2026)
-      .order('year', { ascending: false })
-      .order('created_at', { ascending: false })
-      .order('id', { ascending: false })
-
-    if (profile?.role === 'encoder' && profile?.center) {
-      const aliases = mfpCenterAliases(profile.center)
-      if (aliases.length === 1) query = query.eq('center', aliases[0])
-      else if (aliases.length > 1) query = query.in('center', aliases)
-    }
-
-    if (params.search) {
-      query = query.or(
-        `center.ilike.%${params.search}%,province.ilike.%${params.search}%,municipality.ilike.%${params.search}%,elementary_school.ilike.%${params.search}%,division.ilike.%${params.search}%`,
-      )
-    }
-
-    if (listYears.length === 1) {
-      query = query.eq('year', listYears[0])
-    } else if (listYears.length > 1) {
-      query = query.in('year', listYears)
-    }
-    const targetYears = listYears.length > 0 ? listYears : APP_YEARS
-
-    query = applyDateRangeFilter(
-      query,
-      'date_started',
-      params.date_started_year,
-      params.date_started_month,
-      targetYears,
-    )
-
-    query = applyDateRangeFilter(
-      query,
-      'date_completed',
-      params.date_completed_year,
-      params.date_completed_month,
-      targetYears,
-    )
-
-    const applyMulti = (col: string, val: string | undefined) => {
-      if (!val) return
-      const arr = val.split(',').map(s => s.trim()).filter(Boolean)
-      if (col === 'center') {
-        const expanded = Array.from(new Set(arr.flatMap(c => mfpCenterAliases(c))))
-        if (expanded.length === 1) {
-          query = query.eq(col, expanded[0])
-        } else if (expanded.length > 1) {
-          query = query.in(col, expanded)
-        }
-        return
-      }
-      if (arr.length === 1) {
-        query = query.eq(col, arr[0])
-      } else if (arr.length > 1) {
-        query = query.in(col, arr)
-      }
-    }
-
-    applyMulti('funded_by', params.funded_by)
-    applyMulti('region', params.region)
-    applyMulti('province', params.province)
-    applyMulti('division', params.division)
-    applyMulti('municipality', params.municipality)
-    applyMulti('milk_type', params.milk_type)
-    applyMulti('supplier_id', params.supplier)
-    if (profile?.role !== 'encoder') {
-      applyMulti('center', params.center)
-    }
-
-    if (params.input_month && params.input_year) {
-      const startDate = new Date(parseInt(params.input_year, 10), parseInt(params.input_month, 10) - 1, 1)
-      const endDate = new Date(parseInt(params.input_year, 10), parseInt(params.input_month, 10), 1)
-      query = query.gte('created_at', startDate.toISOString()).lt('created_at', endDate.toISOString())
-    }
-
-    return query
-  }
-
   const sourceBacked = includesSbfpSource(params)
-  const funders = filterValues(params.funded_by)
-  const onlySource = listYear === 2026 && funders.length === 1 && funders[0] === 'DepEd'
   let records: MfpListRow[] = []
   try {
-    const [persisted, schools] = await Promise.all([
-      onlySource ? Promise.resolve([]) : fetchAllRows<MfpListRow>(() => buildListQuery()),
-      sourceBacked ? loadSbfpSourceRows(supabase, profile, params, listYears.length ? listYears : APP_YEARS) : Promise.resolve([]),
-    ])
-    records = sourceBacked ? [...persisted.filter(row => !is2026Deped(row)), ...schools] : persisted
+    records = await loadMfpListRows(supabase, profile, params)
   } catch (err) {
     console.error('MFP list query failed:', err instanceof Error ? err.message : err)
     return <div className="p-6"><h1 className="page-title">MFP Data</h1><p role="alert" className="mt-3 text-red-700">Could not load MFP Data. Refresh to try again. No complete record count is available.</p></div>
@@ -206,7 +92,9 @@ export default async function DataPage({
         ? (isNizFamily(params.center) ? 'NHQ' : params.center)
         : null
 
+  const analysisVersion = mfpListVersion(records)
   return (
+    <MfpAnalysisScope key={JSON.stringify(params) + analysisVersion} filters={params} version={analysisVersion} rowIds={records.map(row => row.id)}>
     <div>
       <div className="page-header">
         <div>
@@ -308,5 +196,6 @@ export default async function DataPage({
         </div>
       )}
     </div>
+    </MfpAnalysisScope>
   )
 }
