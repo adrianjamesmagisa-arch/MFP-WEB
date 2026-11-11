@@ -841,8 +841,8 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
         stats.totalRemainingContract,
       ])
       return {
-        sheetName: 'Implementation Status',
-        filename: `${prefix}_implementation_${year}_${dateStr}.xlsx`,
+        sheetName: 'Payment and Implementation Status',
+        filename: `${prefix}_payment_and_implementation_${year}_${dateStr}.xlsx`,
         headers: [
           'Status',
           meta.entityPlural,
@@ -1167,7 +1167,6 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
           v.delivery_end === '—' ? '' : v.delivery_end,
           v.packs_to_deliver,
           v.delivered_packs,
-          v.status_of_payment === '—' ? '' : v.status_of_payment,
           v.remarks === '—' ? '' : v.remarks,
         ],
       ]
@@ -1194,7 +1193,6 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
       stats.totalPacks,
       stats.totalDelivered,
       '',
-      '',
     ])
     return {
       sheetName: meta.masterTabLabel,
@@ -1220,7 +1218,6 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
         'Delivery End',
         'Packs to Deliver',
         'Delivered Packs',
-        'Payment Status',
         'Remarks',
       ],
       rows,
@@ -1245,7 +1242,6 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
         'text',
         'num',
         'num',
-        'text',
         'text',
       ],
     }
@@ -1885,7 +1881,7 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
               [
                 ['master', meta.masterTabLabel, Table],
                 ['senate_perf', '1. Procurement & Delivery', CircleDollarSign],
-                ['senate_status', '2. Implementation Status', ClipboardList],
+                ['senate_status', '2. Payment and Implementation Status', ClipboardList],
                 ['senate_region', '3. Regional Distribution', MapPinned],
                 ['senate_center', '4. Center Distribution', Building2],
                 ['senate_delivery', '5. Contract & Delivery Details', CircleDollarSign],
@@ -2246,7 +2242,6 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
                           { label: 'Delivery End', w: 95, align: 'center' as const },
                           { label: 'Packs to Deliver', minW: 115, align: 'right' as const },
                           { label: 'Delivered Packs', minW: 115, align: 'right' as const },
-                          { label: 'Payment Status', w: 105, align: 'center' as const },
                           { label: 'Remarks', minW: 160, align: 'left' as const },
                         ].map(col => (
                           <th
@@ -2273,7 +2268,7 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
                       {filteredRecords.length === 0 && (
                         <tr>
                           <td
-                            colSpan={22}
+                            colSpan={21}
                             style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}
                           >
                             No records found matching the active filters.
@@ -2496,15 +2491,6 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
                                 textAlign: 'center',
                               }}
                             >
-                              {v.status_of_payment}
-                            </td>
-                            <td
-                              style={{
-                                border: '1px solid #cbd5e1',
-                                padding: '4px 8px',
-                                color: '#475569',
-                              }}
-                            >
                               {v.remarks}
                             </td>
                           </tr>
@@ -2579,7 +2565,7 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
                           >
                             {stats.totalDelivered.toLocaleString()}
                           </td>
-                          <td colSpan={2} style={{ border: '1px solid #93c5fd' }} />
+                          <td colSpan={1} style={{ border: '1px solid #93c5fd' }} />
                         </tr>
                       </tfoot>
                     )}

@@ -1273,7 +1273,6 @@ export default function SbfpSpreadsheetReport() {
       'Packs to Deliver',
       'Milk Type',
       'Delivered Packs',
-      'Payment Status',
       'Remarks'
     ]
 
@@ -1303,7 +1302,6 @@ export default function SbfpSpreadsheetReport() {
           v.packs_to_deliver,
           v.milk_type,
           v.delivered_packs,
-          v.status_of_payment === '—' ? '' : v.status_of_payment,
           v.remarks === '—' ? '' : v.remarks,
         ]]
       }),
@@ -1532,7 +1530,7 @@ export default function SbfpSpreadsheetReport() {
         'Milk Type', 'Amount (PHP)', 'Mode of Procurement', 'PR Date Received', 'PR Number',
         'ORS Date', 'PO Number', 'Batch', 'Beneficiaries', 'Contract Amount (PHP)',
         'Delivery Start', 'Delivery End', 'Packs to Deliver', 'Delivered Packs',
-        'Payment Status', 'Remarks',
+        'Remarks',
       ]
       rows = filteredRecords.flatMap((r, idx) => {
         const v = getViewForSource(r.id)
@@ -1558,16 +1556,15 @@ export default function SbfpSpreadsheetReport() {
           v.delivery_end === '—' ? '' : v.delivery_end,
           v.packs_to_deliver,
           v.delivered_packs,
-          v.status_of_payment === '—' ? '' : v.status_of_payment,
           v.remarks === '—' ? '' : v.remarks,
         ]]
       })
       rows.push([
         'TOTAL', '', `${stats.count} SDOs`, '', '', `${stats.rowCount} rows`,
         '', stats.totalAmount, '', '', '', '', '', '', stats.totalBeneficiaries,
-        stats.totalContractAmt, '', '', stats.totalPacks, stats.totalDelivered, '', '',
+        stats.totalContractAmt, '', '', stats.totalPacks, stats.totalDelivered, '',
       ])
-      colTypes = ['num','text','text','text','text','text','text','cur','text','text','text','text','text','text','num','cur','text','text','num','num','text','text']
+      colTypes = ['num','text','text','text','text','text','text','cur','text','text','text','text','text','text','num','cur','text','text','num','num','text']
 
     } else if (targetTab === 'monthly_cummulated') {
       sheetName = 'CDP Report'
@@ -2110,7 +2107,7 @@ export default function SbfpSpreadsheetReport() {
             {([
               ['master', 'SDO Masterlist', Table],
               ['senate_perf', '1. Procurement & Delivery', CircleDollarSign],
-              ['senate_status', '2. Implementation Status', ClipboardList],
+              ['senate_status', '2. Payment and Implementation Status', ClipboardList],
               ['senate_region', '3. Regional Distribution', MapPinned],
               ['senate_center', '4. Center Distribution', Building2],
               ['senate_delivery', '5. Contract & Delivery Details', CircleDollarSign],
@@ -2294,7 +2291,6 @@ export default function SbfpSpreadsheetReport() {
                         <th style={{ border: '1px solid #cbd5e1', padding: '6px 8px', width: 95, textAlign: 'center', fontWeight: 700, position: 'sticky', top: 0, background: '#e2e8f0', zIndex: 5 }}>Delivery End</th>
                         <th style={{ border: '1px solid #cbd5e1', padding: '6px 10px', minWidth: 115, textAlign: 'right', fontWeight: 700, position: 'sticky', top: 0, background: '#e2e8f0', zIndex: 5 }}>Packs to Deliver</th>
                         <th style={{ border: '1px solid #cbd5e1', padding: '6px 10px', minWidth: 115, textAlign: 'right', fontWeight: 700, position: 'sticky', top: 0, background: '#e2e8f0', zIndex: 5 }}>Delivered Packs</th>
-                        <th style={{ border: '1px solid #cbd5e1', padding: '6px 8px', width: 105, textAlign: 'center', fontWeight: 700, position: 'sticky', top: 0, background: '#e2e8f0', zIndex: 5 }}>Payment Status</th>
                         <th style={{ border: '1px solid #cbd5e1', padding: '6px 10px', minWidth: 160, textAlign: 'left', fontWeight: 700, position: 'sticky', top: 0, background: '#e2e8f0', zIndex: 5 }}>Remarks</th>
                       </tr>
                     </thead>
@@ -2368,7 +2364,6 @@ export default function SbfpSpreadsheetReport() {
                             <td style={{ border: '1px solid #cbd5e1', padding: '4px 8px', textAlign: 'right', fontWeight: 700, color: '#065f46', background: delivered > 0 ? '#f0fdf4' : undefined }}>
                               {delivered > 0 ? delivered.toLocaleString() : '—'}
                             </td>
-                            <td style={{ border: '1px solid #cbd5e1', padding: '4px 6px', textAlign: 'center' }}>{v.status_of_payment}</td>
                             <td style={{ border: '1px solid #cbd5e1', padding: '4px 8px', color: '#475569' }}>{v.remarks}</td>
                           </tr>
                         )
@@ -2399,7 +2394,7 @@ export default function SbfpSpreadsheetReport() {
                           <td style={{ border: '1px solid #93c5fd', padding: '8px', textAlign: 'right', color: '#047857' }}>
                             {stats.totalDelivered.toLocaleString()}
                           </td>
-                          <td colSpan={2} style={{ border: '1px solid #93c5fd' }}></td>
+                          <td colSpan={1} style={{ border: '1px solid #93c5fd' }}></td>
                         </tr>
                       </tfoot>
                     )}
@@ -2466,7 +2461,7 @@ export default function SbfpSpreadsheetReport() {
                 <div style={{ background: '#ffffff', borderRadius: 8, border: '1px solid #cbd5e1', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
                   <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
                     <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#1e293b' }}>
-                      2. Status of Implementation
+                      2. Payment and Implementation Status
                     </h3>
                     <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 2 }}>
                       Same Status values as the SDO procurement dropdown.

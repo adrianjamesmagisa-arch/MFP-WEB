@@ -313,7 +313,7 @@ export function ProgramSpreadsheetSecondaryTabs({
               }}
             >
               <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#1e293b' }}>
-                2. Status of Implementation
+                2. Payment and Implementation Status
               </h3>
               <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 2 }}>
                 Same Status values as the {meta.shortLabel} procurement dropdown.

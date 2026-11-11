@@ -88,7 +88,7 @@ const GROQ_MODELS = [
 const TAB_LABELS: Record<string, string> = {
   master: 'SDO Masterlist',
   senate_perf: '1. Procurement & Delivery',
-  senate_status: '2. Implementation Status',
+  senate_status: '2. Payment and Implementation Status',
   senate_region: '3. Regional Distribution',
   senate_center: '4. Center Distribution',
   senate_delivery: '5. Contract & Delivery Details',
