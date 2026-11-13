@@ -1,4 +1,5 @@
 import type { MfpListFilters } from '@/lib/mfp-list-filters'
+import { ALL_MFP_ANALYSIS_COLUMNS, isMfpAnalysisColumnId } from '@/lib/mfp-analysis-columns'
 
 export const AI_MODELS = ['openai/gpt-oss-120b', 'qwen/qwen3.8-27b', 'openai/gpt-oss-20b'] as const
 export type AiModel = typeof AI_MODELS[number]
@@ -75,6 +76,12 @@ export function readMfpAnalysisRequest(body: unknown) {
   }
   const selectedIds = [...new Set(body.selectedIds as string[])]
   if (body.scope === 'selected' && !selectedIds.length) throw new AnalysisRequestError('Select records using the Analyze checkboxes first.')
-  return { filters, version: body.version, scope: body.scope, selectedIds,
+  const requestedColumns = body.columns === undefined ? ALL_MFP_ANALYSIS_COLUMNS : body.columns
+  if (!Array.isArray(requestedColumns) || !requestedColumns.length || requestedColumns.length > ALL_MFP_ANALYSIS_COLUMNS.length || !requestedColumns.every(isMfpAnalysisColumnId)) {
+    throw new AnalysisRequestError('Choose supported analysis columns or use All supported columns.')
+  }
+  if (body.action !== undefined && body.action !== 'question' && body.action !== 'columns') throw new AnalysisRequestError('Invalid analysis action.')
+  const columns = [...new Set(requestedColumns)]
+  return { filters, version: body.version, scope: body.scope, selectedIds, columns, action: body.action || 'question',
     messages: readMessages(body.messages), model: readModel(body.model) }
 }

@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import type { MfpListRow } from '@/lib/mfp-sbfp-source'
 import { summarizeMfpRows } from '@/lib/mfp-analytics'
 import { useMfpAnalysisScope } from '@/components/MfpAnalysisScope'
+import { MfpAnalysisColumnSelection } from '@/components/MfpAnalysisColumns'
 import {
   Sparkles,
   Bot,
@@ -57,7 +58,7 @@ export function MfpAiAgent(props: MfpAiAgentProps) {
   const analysis = useMfpAnalysisScope()
   const [isOpen, setIsOpen] = useState(false)
   const records = analysis?.mode === 'selected' ? props.records.filter(row => analysis.selectedIds.has(row.id)) : props.records
-  const scopeKey = analysis ? `${analysis.version}:${analysis.mode}:${[...analysis.selectedIds].sort().join('|')}` : 'unavailable'
+  const scopeKey = analysis ? `${analysis.version}:${analysis.mode}:${[...analysis.selectedIds].sort().join('|')}:${[...analysis.selectedColumns].sort().join('|')}` : 'unavailable'
   return <MfpAiConversation key={scopeKey} {...props} records={records} analysis={analysis} isOpen={isOpen} setIsOpen={setIsOpen} />
 }
 
@@ -142,13 +143,14 @@ function MfpAiConversation({ records, analysis, isOpen, setIsOpen }: MfpAiAgentP
   const overview = useMemo(() => summarizeMfpRows(records), [records])
 
   // Counts and totals are computed by the authorized server; explanations use bounded facts.
-  const handleSend = async (textToSend?: string) => {
+  const handleSend = async (textToSend?: string, action: 'question' | 'columns' = 'question') => {
     const prompt = (textToSend || inputMessage).trim()
     if (!prompt || inFlight.current) return
     if (!analysis) { setErrorMessage('Refresh MFP Data before analyzing its records.'); return }
+    if (!analysis.selectedColumns.size) { setErrorMessage('Choose analysis columns in the table headers or use All supported columns.'); return }
     if (!records.length) { setErrorMessage('No records are in this scope.'); return }
     if (new TextEncoder().encode(prompt).byteLength > 2000) { setErrorMessage('Please keep the question under 2,000 UTF-8 bytes.'); return }
-    if (/\b(selected|checked)\b/i.test(prompt) && analysis.mode !== 'selected') {
+    if (action === 'question' && /\b(selected|checked)\s+(rows?|records?|schools?)\b/i.test(prompt) && analysis.mode !== 'selected') {
       setErrorMessage('Use the Analyze checkboxes and choose Selected records before asking about selected rows.'); return
     }
     if (/\b(all filtered|filtered rows|filtered records)\b/i.test(prompt) && analysis.mode !== 'filtered') {
@@ -165,8 +167,11 @@ function MfpAiConversation({ records, analysis, isOpen, setIsOpen }: MfpAiAgentP
       const headers: Record<string, string> = { 'Content-Type': 'application/json' }
       if (apiKey.trim()) headers['x-groq-api-key'] = apiKey.trim()
       const res = await fetch('/api/ai/mfp', { method: 'POST', headers, signal: controller.signal,
-        body: JSON.stringify({ messages: next.slice(-8).map(message => ({ role: message.role, content: message.content })), model: selectedModel,
-          filters: analysis.filters, version: analysis.version, scope: analysis.mode, selectedIds: analysis.mode === 'selected' ? [...analysis.selectedIds] : [] }),
+        body: JSON.stringify({ messages: next.slice(-8).map(message => ({ role: message.role,
+          content: message.role === 'assistant' && message.content.length > 5000
+            ? message.content.slice(0, 5000) + '\n[Earlier response abbreviated. Use the current verified facts for calculations.]' : message.content })), model: selectedModel,
+          filters: analysis.filters, version: analysis.version, scope: analysis.mode, selectedIds: analysis.mode === 'selected' ? [...analysis.selectedIds] : [],
+          columns: [...analysis.selectedColumns], action }),
       })
       const data = await res.json()
       if (controller.signal.aborted) return
@@ -397,8 +402,12 @@ function MfpAiConversation({ records, analysis, isOpen, setIsOpen }: MfpAiAgentP
                   <option value="selected" disabled={!analysis?.selectedIds.size}>Selected records ({analysis?.selectedIds.size || 0})</option>
                 </select>
               </label>
-              <p className="mt-2">{records.length.toLocaleString()} rows ? {overview.centers.length} center(s) ? {overview.schools.count.toLocaleString()} identified {overview.schools.unit}</p>
-              <p className="mt-1">Use Analyze checkboxes in the school column. Changing selection or filters starts a new conversation. Answers are verified against the current source data.</p>
+              <p className="mt-2">{records.length.toLocaleString()} rows{analysis?.selectedColumns.has('center') ? ` · ${overview.centers.length} center(s)` : ''}{analysis?.selectedColumns.has('elementary_school') ? ` · ${overview.schools.count.toLocaleString()} identified ${overview.schools.unit}` : ''}</p>
+              <MfpAnalysisColumnSelection />
+              <button type="button" className="btn btn-primary" style={{ marginTop: 8, fontSize: '0.75rem' }}
+                disabled={isLoading || !records.length || !analysis?.selectedColumns.size}
+                onClick={() => void handleSend('Analyze selected columns', 'columns')}>Analyze selected columns</button>
+              <p className="mt-1">Choose rows in the school column and columns in the table headers. Changing rows, columns, or filters starts a new conversation. Selecting columns does not send a request.</p>
             </div>
 
             {/* Collapsible Groq Settings Bar */}

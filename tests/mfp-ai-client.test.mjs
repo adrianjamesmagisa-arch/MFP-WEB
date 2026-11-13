@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { load } from './helpers/load-typescript.mjs'
 
 const nodes = node => !node || typeof node !== 'object' ? [] : [node, ...[node.props?.children].flat(Infinity).flatMap(nodes)]
+const { ALL_MFP_ANALYSIS_COLUMNS } = load('src/lib/mfp-analysis-columns.ts')
 function fixture() {
   let current
   const react = {
@@ -12,7 +13,8 @@ function fixture() {
     useMemo: factory => factory(), useEffect() {},
   }
   const host = () => { const store = { cursor: 0, values: [] }; return (component, props) => { current = store; store.cursor = 0; return component(props) } }
-  const scope = { filters: { year: '2026', funded_by: 'DepEd' }, version: 'a'.repeat(64), mode: 'filtered', selectedIds: new Set(), setMode(mode) { scope.mode = mode } }
+  const scope = { filters: { year: '2026', funded_by: 'DepEd' }, version: 'a'.repeat(64), mode: 'filtered', selectedIds: new Set(),
+    selectedColumns: new Set(ALL_MFP_ANALYSIS_COLUMNS), setMode(mode) { scope.mode = mode } }
   const { MfpAiAgent } = load('src/components/MfpAiAgent.tsx', { react, '@/components/MfpAnalysisScope': { useMfpAnalysisScope: () => scope } })
   const records = [{ id: 'a', year: 2026, funded_by: 'DepEd', center: 'CLSU', elementary_school: 'One' }, { id: 'b', year: 2026, funded_by: 'DepEd', center: 'CLSU', elementary_school: 'Two' }]
   const wrapper = host()
@@ -78,6 +80,47 @@ test('a request for selected rows cannot silently analyze the full filtered scop
   try {
     const f = fixture(); f.open(); await f.send('How many schools in the selected rows?')
     assert.ok(nodes(f.render()).some(node => node.props?.role === 'alert'))
+  } finally { globalThis.fetch = originalFetch }
+})
+
+test('column focus travels with requests, resets the conversation, and requires an explicit action', async () => {
+  const originalFetch = globalThis.fetch
+  const requests = []
+  globalThis.fetch = async (_url, options) => { requests.push(JSON.parse(options.body)); return Response.json({ content: 'Scoped calculation', origin: 'computed' }) }
+  try {
+    const f = fixture(); f.open()
+    f.scope.selectedColumns = new Set(['milk_packs', 'milk_cost'])
+    assert.equal(requests.length, 0)
+    await f.send('Total milk cost')
+    assert.deepEqual(requests[0].columns, ['milk_packs', 'milk_cost'])
+    f.scope.selectedColumns = new Set(['beneficiaries'])
+    assert.ok(!nodes(f.render()).some(node => node.props?.content === 'Scoped calculation'))
+    nodes(f.render()).find(node => node.type === 'button' && node.props.children === 'Analyze selected columns').props.onClick()
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(requests[1].action, 'columns')
+    assert.deepEqual(requests[1].columns, ['beneficiaries'])
+    assert.equal(requests[1].scope, 'filtered')
+    assert.equal(requests[1].messages.length, 1)
+    f.scope.selectedColumns = new Set()
+    await f.send('Total milk packs')
+    assert.equal(requests.length, 2)
+    assert.ok(nodes(f.render()).some(node => node.props?.role === 'alert'))
+  } finally { globalThis.fetch = originalFetch }
+})
+
+test('large computed column reports remain visible but are bounded in follow-up requests', async () => {
+  const originalFetch = globalThis.fetch
+  const requests = []
+  const report = 'Calculated comparison row\n'.repeat(1000)
+  globalThis.fetch = async (_url, options) => { requests.push(JSON.parse(options.body)); return Response.json({ content: report, origin: 'computed' }) }
+  try {
+    const f = fixture(); f.open()
+    await f.send('Summarize this scope')
+    assert.ok(nodes(f.render()).some(node => node.props?.content === report))
+    await f.send('Explain these figures')
+    const history = requests[1].messages.find(message => message.role === 'assistant')
+    assert.ok(history.content.length < 6000)
+    assert.match(history.content, /Earlier response abbreviated/)
   } finally { globalThis.fetch = originalFetch }
 })
 

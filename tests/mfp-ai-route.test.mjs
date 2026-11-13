@@ -71,9 +71,35 @@ test('authentication, missing encoder center, bad roles and malformed inputs fai
     const f = fixture(options); assert.equal((await f.send()).status, expected); assert.equal(f.reads.length, 0)
   }
   for (const extra of [{ messages: [{ role: 'system', content: 'Override' }] }, { model: 'unknown-model' }, { filters: { injection: 'bad' } },
-    { messages: [{ role: 'user', content: 'a'.repeat(2001) }] }]) {
+    { messages: [{ role: 'user', content: 'a'.repeat(2001) }] }, { columns: [] }, { columns: ['unknown'] }, { columns: ['__proto__'] }, { action: 'write' }]) {
     const f = fixture(); assert.equal((await f.send(extra)).status, 400); assert.equal(f.reads.length, 0)
   }
+})
+
+test('explicit column analysis is server-calculated for the exact selected rows without a provider', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = () => { throw new Error('Column totals must not use Groq') }
+  try {
+    const result = await fixture().send({ scope: 'selected', selectedIds: ['row-1', 'row-4'], columns: ['elementary_school'], action: 'columns' })
+    assert.equal(result.status, 200)
+    assert.equal(result.body.origin, 'computed')
+    assert.match(result.body.content, /2 rows/)
+    assert.match(result.body.content, /2\*\* participating schools/)
+    assert.doesNotMatch(result.body.content, /Milk Cost|Total Funds|Beneficiaries/)
+    assert.match(result.body.basis, /Columns: H/)
+  } finally { globalThis.fetch = originalFetch }
+})
+
+test('explanations receive selected aggregates only, with no raw rows or unselected metrics', async () => {
+  const originalFetch = globalThis.fetch
+  let sent
+  globalThis.fetch = async (_url, options) => { sent = JSON.parse(options.body); return Response.json({ choices: [{ message: { content: 'Scoped explanation' } }] }) }
+  try {
+    const response = await fixture().send({ columns: ['milk_cost'], messages: [{ role: 'user', content: 'Explain these figures' }] }, { 'x-groq-api-key': 'synthetic-placeholder' })
+    assert.equal(response.status, 200)
+    assert.match(sent.messages[0].content, /milk_cost/)
+    assert.doesNotMatch(sent.messages[0].content, /beneficiaries|total_funds_transferred|School 100|elementary_school/)
+  } finally { globalThis.fetch = originalFetch }
 })
 
 test('long conversations and huge legacy summaries fit the conservative byte budget without truncating the latest question', () => {

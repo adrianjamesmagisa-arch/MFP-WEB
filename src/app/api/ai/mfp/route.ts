@@ -3,7 +3,9 @@ import { getCurrentUser } from '@/lib/auth-session'
 import { createClient } from '@/lib/supabase/server'
 import { loadMfpListRows, mfpListVersion } from '@/lib/mfp-list-data'
 import { AnalysisRequestError, readAnalysisBody, readMfpAnalysisRequest } from '@/lib/mfp-analysis-request'
-import { answerMfpQuestion, mfpExplanationFacts, summarizeMfpRows } from '@/lib/mfp-analytics'
+import { summarizeMfpRows } from '@/lib/mfp-analytics'
+import { analyzeMfpColumns, answerMfpColumnQuestion, mfpColumnExplanationFacts } from '@/lib/mfp-column-analytics'
+import { analysisColumnLabel } from '@/lib/mfp-analysis-columns'
 import { GroqChatError, requestGroq } from '@/lib/groq-chat'
 
 export const dynamic = 'force-dynamic'
@@ -29,15 +31,16 @@ export async function POST(request: Request) {
     const question = input.messages.at(-1)!.content
     const effectiveFilters = profile.role === 'encoder' ? { ...input.filters, center: profile.center } : input.filters
     const filterText = Object.entries(effectiveFilters).filter(([, value]) => value).map(([name, value]) => `${name.replaceAll('_', ' ')}: ${value}`).join('; ')
-    const basis = `Scope: ${input.scope === 'selected' ? 'selected' : 'all filtered'} records (${scopedRows.length.toLocaleString()} rows). ${filterText || 'All authorized records'}. Verified against the current MFP Data source on ${new Date().toISOString()}.`
-    const exact = answerMfpQuestion(scopedRows, question, summary)
+    const basis = `Scope: ${input.scope === 'selected' ? 'selected' : 'all filtered'} records (${scopedRows.length.toLocaleString()} rows). Columns: ${input.columns.map(analysisColumnLabel).join('; ')}. ${filterText || 'All authorized records'}. Verified against the current MFP Data source on ${new Date().toISOString()}.`
+    if (input.action === 'columns') return NextResponse.json({ content: analyzeMfpColumns(scopedRows, input.columns, summary), basis, origin: 'computed' })
+    const exact = answerMfpColumnQuestion(scopedRows, question, input.columns, summary)
     if (exact) return NextResponse.json({ content: exact, basis, origin: 'computed' })
     // Never let the LLM substitute a broad aggregate for a narrower, unimplemented operation.
     if (/\b(how many|count|total|sum|list|which schools?|number of|how much)\b/i.test(question)) {
       return NextResponse.json({ origin: 'computed', basis,
         content: 'I cannot calculate that specific condition from the available analysis operations. Apply the matching table filters, then ask “How many schools are participating in the filtered rows?”, “Total milk cost”, or “Break down milk packs and funds by center”. I will not substitute the full scope total for a narrower question.' })
     }
-    const facts = mfpExplanationFacts(summary)
+    const facts = mfpColumnExplanationFacts(scopedRows, input.columns, summary)
     const system = 'Explain the verified MFP aggregates below concisely. You cannot see individual school rows. Do not apply extra name, year, geographic or financial conditions; ask the user to filter the table when needed.\n' +
       Object.entries(facts).map(([name, value]) => `${name}: ${JSON.stringify(value)}`).join('\n')
     const reply = await requestGroq({ request, messages: input.messages, model: input.model, system })

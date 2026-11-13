@@ -12,6 +12,7 @@ import { logCenterActivity } from '@/lib/center-activity'
 import { sbfpNavCenter } from '@/lib/center-aliases'
 import { sumContractValue, type SchoolContractSource } from '@/lib/mfp-school-aggregation'
 import { useMfpAnalysisScope } from '@/components/MfpAnalysisScope'
+import { MfpAnalysisColumnCheckbox, MfpAnalysisColumnSelection } from '@/components/MfpAnalysisColumns'
 
 function EditableCell({ id, field, value, type = 'text', className, style, format, render, onSave, readOnly = false, mixed = false }: { id: string, field: string, value: any, type?: string, className?: string, style?: any, format?: (v: any) => any, render?: (v: any) => any, onSave?: (id: string, field: string, oldVal: any, newVal: any) => void, readOnly?: boolean, mixed?: boolean }) {
   const [isEditing, setIsEditing] = useState(false);
@@ -476,10 +477,11 @@ export function DataTable({
     <>
       <div className="card" style={{ overflow: 'hidden' }}>
         {analysis && <div className="flex flex-wrap items-center gap-3 border-b px-4 py-2 text-xs text-slate-600">
-          <span>Use the Analyze checkboxes in the school column to select records for the AI Agent.</span>
+          <span>Choose records in the school column and analysis columns in the table headers.</span>
           <strong>{analysis.selectedIds.size.toLocaleString()} selected for analysis</strong>
           {analysis.selectedIds.size > 0 && <button type="button" className="underline" onClick={analysis.clear}>Clear analysis selection</button>}
         </div>}
+        {analysis && <div style={{ padding: '8px 16px', borderBottom: '1px solid #e2e8f0' }}><MfpAnalysisColumnSelection /></div>}
         <div style={{ overflow: 'auto', maxHeight: 'calc(100vh - 260px)' }}>
           <table
             className="data-table mfp-data-table"
@@ -495,36 +497,37 @@ export function DataTable({
                 )}
                 {/* A-G */}
                 <th className="col-year" style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 60 }}>A — Year</th>
-                <th className="col-funded" style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 80 }}>B — Funded By</th>
-                <th className="col-region" style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 70 }}>C — Region</th>
-                <th className="col-center" style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 70 }}>D — Center</th>
-                <th className="col-prov" style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 100 }}>E — Province</th>
-                <th className="col-div" style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 100 }}>F — Division</th>
-                <th className="col-muni" style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 120 }}>G — Municipality</th>
+                <th className="col-funded" style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 80 }}>B — Funded By<MfpAnalysisColumnCheckbox column="funded_by" /></th>
+                <th className="col-region" style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 70 }}>C — Region<MfpAnalysisColumnCheckbox column="region" /></th>
+                <th className="col-center" style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 70 }}>D — Center<MfpAnalysisColumnCheckbox column="center" /></th>
+                <th className="col-prov" style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 100 }}>E — Province<MfpAnalysisColumnCheckbox column="province" /></th>
+                <th className="col-div" style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 100 }}>F — Division<MfpAnalysisColumnCheckbox column="division" /></th>
+                <th className="col-muni" style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 120 }}>G — Municipality<MfpAnalysisColumnCheckbox column="municipality" /></th>
                 <th className="col-school" style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 160 }}>H — Elementary School
+                  <MfpAnalysisColumnCheckbox column="elementary_school" />
                   {analysis && <label className="mt-2 flex items-center gap-2 text-[0.65rem] font-normal">
                     <input type="checkbox" aria-label="Select all filtered records for analysis" checked={records.length > 0 && analysis.selectedIds.size === records.length}
-                      disabled={!records.length} onChange={analysis.toggleAll} /> Analyze all filtered rows
+                      disabled={!records.length} onChange={analysis.toggleAll} /> Select all filtered rows
                   </label>}
                 </th>
                 {/* I-N auto-calc */}
-                <th style={{ width: 90, minWidth: 90, whiteSpace: 'normal', lineHeight: 1.2 }}>I — Milk Packs</th>
-                <th style={{ width: 90, minWidth: 90, whiteSpace: 'normal', lineHeight: 1.2 }}>J — Total Vol. Req (L)</th>
-                <th style={{ width: 90, minWidth: 90, whiteSpace: 'normal', lineHeight: 1.2 }}>K — Raw Milk (L)</th>
-                <th style={{ width: 90, minWidth: 90, whiteSpace: 'normal', lineHeight: 1.2 }}>L — Whole Milk (kg)</th>
-                <th style={{ width: 90, minWidth: 90, whiteSpace: 'normal', lineHeight: 1.2 }}>M — Skimmed Milk (kg)</th>
-                <th style={{ width: 90, minWidth: 90, whiteSpace: 'normal', lineHeight: 1.2 }}>N — Sugar (kg)</th>
+                <th style={{ width: 90, minWidth: 90, whiteSpace: 'normal', lineHeight: 1.2 }}>I — Milk Packs<MfpAnalysisColumnCheckbox column="milk_packs" /></th>
+                <th style={{ width: 90, minWidth: 90, whiteSpace: 'normal', lineHeight: 1.2 }}>J — Total Vol. Req (L)<MfpAnalysisColumnCheckbox column="total_volume_requirements" /></th>
+                <th style={{ width: 90, minWidth: 90, whiteSpace: 'normal', lineHeight: 1.2 }}>K — Raw Milk (L)<MfpAnalysisColumnCheckbox column="raw_milk_liters" /></th>
+                <th style={{ width: 90, minWidth: 90, whiteSpace: 'normal', lineHeight: 1.2 }}>L — Whole Milk (kg)<MfpAnalysisColumnCheckbox column="whole_milk_kg" /></th>
+                <th style={{ width: 90, minWidth: 90, whiteSpace: 'normal', lineHeight: 1.2 }}>M — Skimmed Milk (kg)<MfpAnalysisColumnCheckbox column="skimmed_milk_kg" /></th>
+                <th style={{ width: 90, minWidth: 90, whiteSpace: 'normal', lineHeight: 1.2 }}>N — Sugar (kg)<MfpAnalysisColumnCheckbox column="sugar" /></th>
                 {/* O-S user inputs */}
                 <th style={{ width: 90, minWidth: 90, whiteSpace: 'normal', lineHeight: 1.2 }}>O — Feeding Days</th>
                 <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 80 }}>P — Batch</th>
-                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 90 }}>Q — Beneficiaries</th>
-                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 90 }}>R — Milk Type</th>
+                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 90 }}>Q — Beneficiaries<MfpAnalysisColumnCheckbox column="beneficiaries" /></th>
+                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 90 }}>R — Milk Type<MfpAnalysisColumnCheckbox column="milk_type" /></th>
                 <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 90 }}>S — Price (₱)</th>
-                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 160 }}>T — Supplier</th>
+                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 160 }}>T — Supplier<MfpAnalysisColumnCheckbox column="supplier_id" /></th>
                 {/* U-X financial & mode */}
-                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 90 }}>U — Milk Cost (₱)</th>
-                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 90 }}>V — Service Fee (₱)</th>
-                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 100 }}>W — Total Funds (₱)</th>
+                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 90 }}>U — Milk Cost (₱)<MfpAnalysisColumnCheckbox column="milk_cost" /></th>
+                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 90 }}>V — Service Fee (₱)<MfpAnalysisColumnCheckbox column="service_fee" /></th>
+                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 100 }}>W — Total Funds (₱)<MfpAnalysisColumnCheckbox column="total_funds_transferred" /></th>
                 <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 120 }}>X — Mode of Procurement</th>
                 {/* Y-AC Dates */}
                 <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 100 }}>Y — MOA Signing</th>
@@ -533,8 +536,8 @@ export function DataTable({
                 <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 100 }}>AB — Date Completed</th>
                 <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 100 }}>AC — Liquidation</th>
                 {/* AD-AE Delivery tracking */}
-                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 110 }}>AD — Target Milk Packs to Deliver</th>
-                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 110 }}>AE — Total Milk Packs Delivered</th>
+                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 110 }}>AD — Target Milk Packs to Deliver<MfpAnalysisColumnCheckbox column="target_milk_packs_to_deliver" /></th>
+                <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 110 }}>AE — Total Milk Packs Delivered<MfpAnalysisColumnCheckbox column="total_milk_packs_delivered" /></th>
                 {!readOnly && <th style={{ whiteSpace: 'normal', lineHeight: 1.2, minWidth: 80 }}>Actions</th>}
               </tr>
             </thead>
