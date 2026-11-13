@@ -1,4 +1,4 @@
-import type { MfpListFilters } from '@/lib/mfp-list-filters'
+import { mfpSchoolYearIntervals, type MfpListFilters } from '@/lib/mfp-list-filters'
 import { ALL_MFP_ANALYSIS_COLUMNS, isMfpAnalysisColumnId } from '@/lib/mfp-analysis-columns'
 
 export const AI_MODELS = ['openai/gpt-oss-120b', 'qwen/qwen3.8-27b', 'openai/gpt-oss-20b'] as const
@@ -49,7 +49,7 @@ export function readModel(value: unknown): AiModel {
   return value as AiModel
 }
 
-const filterKeys = ['year', 'funded_by', 'region', 'center', 'search', 'province', 'division', 'municipality',
+const filterKeys = ['year', 'school_year', 'funded_by', 'region', 'center', 'search', 'province', 'division', 'municipality',
   'milk_type', 'supplier', 'date_started_year', 'date_started_month', 'date_completed_year', 'date_completed_month', 'input_month', 'input_year'] as const
 
 export function readMfpAnalysisRequest(body: unknown) {
@@ -66,6 +66,8 @@ export function readMfpAnalysisRequest(body: unknown) {
       throw new AnalysisRequestError('Invalid year filter.')
     }
   }
+  try { mfpSchoolYearIntervals(filters.school_year) }
+  catch { throw new AnalysisRequestError('Invalid school year filter. Use consecutive years, for example 2026-2027.') }
   if (filters.input_month && (!/^\d{1,2}$/.test(filters.input_month) || Number(filters.input_month) < 1 || Number(filters.input_month) > 12)) {
     throw new AnalysisRequestError('Invalid input month.')
   }

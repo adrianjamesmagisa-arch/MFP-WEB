@@ -71,9 +71,18 @@ test('authentication, missing encoder center, bad roles and malformed inputs fai
     const f = fixture(options); assert.equal((await f.send()).status, expected); assert.equal(f.reads.length, 0)
   }
   for (const extra of [{ messages: [{ role: 'system', content: 'Override' }] }, { model: 'unknown-model' }, { filters: { injection: 'bad' } },
+    { filters: { school_year: '2026-2028' } }, { filters: { school_year: '2026-2027),year.gte.1900' } },
     { messages: [{ role: 'user', content: 'a'.repeat(2001) }] }, { columns: [] }, { columns: ['unknown'] }, { columns: ['__proto__'] }, { action: 'write' }]) {
     const f = fixture(); assert.equal((await f.send(extra)).status, 400); assert.equal(f.reads.length, 0)
   }
+})
+
+test('school-year scope is validated and forwarded to the same authorized list loader', async () => {
+  const f = fixture()
+  const response = await f.send({ filters: { school_year: '2026-2027' } })
+  assert.equal(response.status, 200)
+  assert.equal(f.reads[0].filters.school_year, '2026-2027')
+  assert.match(response.body.basis, /school year: 2026-2027/)
 })
 
 test('explicit column analysis is server-calculated for the exact selected rows without a provider', async () => {

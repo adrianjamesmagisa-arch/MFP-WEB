@@ -231,6 +231,43 @@ test('search, SDO, geography, delivery dates, supplier and input dates use resol
   assert.deepEqual(input.table.props.records.map(row => row.source_dropoff_id), ['s2'])
 })
 
+test('school year filters both source and stored records by June-through-April starts and keeps CSV and AI aligned', async () => {
+  const tables = defaults()
+  tables.sbfp_dropoff_points = []
+  tables.sbfp_data = []
+  tables.mfp_data = []
+  const dates = ['2026-05-31', '2026-06-01', '2027-01-01', '2027-04-30', '2027-05-01', null]
+  dates.forEach((date, index) => {
+    tables.sbfp_data.push({ id: `p${index}`, year: 2026, center: 'CLSU', sdo: `Division ${index} - PM`, milk_type: 'PM', delivery_start: date })
+    tables.sbfp_dropoff_points.push({ id: `s${index}`, year: 2026, center: 'CLSU', sbfp_data_id: `p${index}`,
+      dropoff_name: `School ${index}`, include_in_masterlist: true, beneficiaries: 2, feeding_days: 10 })
+    tables.mfp_data.push({ id: `stored${index}`, year: date?.startsWith('2027') ? 2027 : 2026,
+      funded_by: 'DSWD', center: 'CLSU', date_started: date })
+  })
+  const result = await pageFixture({ school_year: '2026-2027' }, { tables, profile: { role: 'encoder', center: 'CLSU' } })
+  const rows = result.table.props.records
+  assert.deepEqual(rows.map(row => row.id).sort(), ['sbfp-school:s1', 'sbfp-school:s2', 'sbfp-school:s3', 'stored1', 'stored2', 'stored3'])
+  assert.deepEqual(result.csv.props.records, rows)
+  assert.deepEqual(result.ai.props.records, rows)
+  assert.equal(result.ai.props.activeFilters.school_year, '2026-2027')
+  assert.ok(result.table.key.startsWith('2026-2027:'))
+  // With no school year selected, missing dates and May entries remain available.
+  assert.equal((await pageFixture({}, { tables })).table.props.records.length, 12)
+})
+
+test('school-year filtering happens before original/Add aggregation', async () => {
+  const tables = additionalSchoolFixture()
+  tables.sbfp_data[1].delivery_start = '2027-05-01'
+  let rows = (await pageFixture({ school_year: '2026-2027', funded_by: 'DepEd' }, { tables })).table.props.records
+  assert.equal(rows.find(row => row.source_dropoff_id === 's1').milk_packs, 48 * 25)
+  tables.sbfp_data[0].delivery_start = '2026-05-31'
+  tables.sbfp_data[1].delivery_start = '2027-04-30'
+  rows = (await pageFixture({ school_year: '2026-2027', funded_by: 'DepEd' }, { tables })).table.props.records
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].beneficiaries, null)
+  assert.equal(rows[0].milk_packs, 123 * 30)
+})
+
 test('encoder scope is enforced before lookup, including NHQ aliases; missing profiles fail closed', async () => {
   const tables = defaults()
   tables.sbfp_dropoff_points.push({ id: 'nhq-school', year: 2026, center: 'NHQ', sdo: 'Batanes - CM',

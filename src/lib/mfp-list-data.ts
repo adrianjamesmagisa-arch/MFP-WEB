@@ -4,7 +4,7 @@ import { APP_YEARS } from '@/lib/app-years'
 import { mfpCenterAliases } from '@/lib/center-aliases'
 import { MFP_DATA_LIST_COLUMNS } from '@/lib/encoder-selects'
 import { fetchAllRows } from '@/lib/supabase-paginate'
-import { filterValues, filterYears, mfpDateIntervals, type MfpListFilters } from '@/lib/mfp-list-filters'
+import { filterValues, filterYears, mfpDateIntervals, mfpSchoolYearIntervals, type MfpListFilters } from '@/lib/mfp-list-filters'
 import { includesSbfpSource, is2026Deped, loadSbfpSourceRows, type MfpListRow } from '@/lib/mfp-sbfp-source'
 
 /** The page and analytics use the same authorized, source-backed list. No privileged client. */
@@ -12,6 +12,7 @@ export async function loadMfpListRows(supabase: SupabaseClient,
   profile: { role: string; center?: string | null }, params: MfpListFilters): Promise<MfpListRow[]> {
   if (profile.role === 'encoder' && !profile.center?.trim()) throw new Error('An encoder center is required.')
   const years = filterYears(params.year)
+  const schoolYears = mfpSchoolYearIntervals(params.school_year)
   const buildQuery = () => {
     let query = supabase.from('mfp_data').select(MFP_DATA_LIST_COLUMNS)
       .gte('year', APP_YEARS[0] ?? 2026).order('year', { ascending: false })
@@ -24,6 +25,8 @@ export async function loadMfpListRows(supabase: SupabaseClient,
         .map(field => `${field}.ilike."%${term}%"`).join(','))
     }
     if (years.length) query = query.in('year', years)
+    if (schoolYears.length === 1) query = query.gte('date_started', schoolYears[0].start).lt('date_started', schoolYears[0].end)
+    else if (schoolYears.length) query = query.or(schoolYears.map(iv => `and(date_started.gte.${iv.start},date_started.lt.${iv.end})`).join(','))
     const dateFilter = (field: 'date_started' | 'date_completed', year?: string, month?: string) => {
       const intervals = mfpDateIntervals(year, month, years.length ? years : APP_YEARS)
       if (intervals.length === 1) query = query.gte(field, intervals[0].start).lt(field, intervals[0].end)

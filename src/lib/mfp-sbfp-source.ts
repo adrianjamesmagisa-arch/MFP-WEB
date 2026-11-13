@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { mfpCenterAliases } from '@/lib/center-aliases'
 import { MFP_DATA_LIST_COLUMNS } from '@/lib/encoder-selects'
-import { filterValues, filterYears, mfpDateIntervals, type MfpListFilters } from '@/lib/mfp-list-filters'
+import { filterValues, filterYears, mfpDateIntervals, mfpSchoolYearIntervals, type MfpListFilters } from '@/lib/mfp-list-filters'
 import { buildMasterlistIdentity, type MfpMasterRow, type SbfpDropoffRow, type SbfpParentSdo } from '@/lib/sbfp-dropoff-sync'
 import { inferSbfpMilkType, normalizeSbfpMilkType } from '@/lib/sbfp-pack-price'
 import { calcMilkFormulationsFromPacks } from '@/lib/mfp-formulas'
@@ -101,6 +101,9 @@ export function projectSbfpSchools(schools: School[], parents: Parent[], mirrors
 }
 
 export function matchesSourceFilters(row: MfpListRow, filters: MfpListFilters, fallbackYears: number[]): boolean {
+  const schoolYears = mfpSchoolYearIntervals(filters.school_year)
+  const started = row.date_started
+  if (schoolYears.length && (!started || !schoolYears.some(iv => started >= iv.start && started < iv.end))) return false
   for (const key of ['funded_by', 'region', 'province', 'division', 'municipality', 'milk_type', 'supplier'] as const) {
     const values = filterValues(filters[key])
     if (values.length && !values.includes(String(row[key === 'supplier' ? 'supplier_id' : key] ?? ''))) return false

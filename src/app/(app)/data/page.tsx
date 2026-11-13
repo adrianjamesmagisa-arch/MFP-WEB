@@ -32,6 +32,7 @@ export default async function DataPage({
   if (
     profile?.role === 'encoder' &&
     !params.year &&
+    !params.school_year &&
     !params.date_started_year &&
     !params.date_completed_year
   ) {
@@ -103,6 +104,7 @@ export default async function DataPage({
             {records?.length ?? 0} record(s) found
             {profile?.role === 'encoder' && profile?.center && ` · ${profile.center} only`}
             {listYears.length > 0 ? ` · year${listYears.length > 1 ? 's' : ''} ${listYears.join(', ')}` : ''}
+            {params.school_year ? ` · SY ${params.school_year.replaceAll(',', ', ')}` : ''}
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
@@ -116,6 +118,7 @@ export default async function DataPage({
             yearLabel={listYear}
             activeFilters={{
               year: params.year,
+              school_year: params.school_year,
               funded_by: params.funded_by,
               region: params.region,
               center: params.center,
@@ -143,6 +146,9 @@ export default async function DataPage({
       </div>
 
       <DataFilters filterOptions={filterOptions} />
+      {params.school_year && <p role="status" className="mb-3 text-xs text-slate-600">
+        School year filter uses Date Started: June 1 through April 30 of the next year. May and records without a start date are excluded.
+      </p>}
 
       {sourceBacked && (
         <p role="status" className="mb-3 rounded-md border bg-blue-50 px-3 py-2 text-xs text-blue-900">
@@ -154,7 +160,7 @@ export default async function DataPage({
       )}
 
       <DataTable
-        key={`${params.year ?? 'all'}:${params.search ?? ''}:${params.funded_by ?? ''}:${params.center ?? ''}:${params.region ?? ''}:${params.province ?? ''}:${params.division ?? ''}:${params.municipality ?? ''}:${params.milk_type ?? ''}:${params.supplier ?? ''}:${params.date_started_year ?? ''}:${params.date_started_month ?? ''}:${params.date_completed_year ?? ''}:${params.date_completed_month ?? ''}`}
+        key={`${params.school_year ?? ''}:${params.year ?? 'all'}:${params.search ?? ''}:${params.funded_by ?? ''}:${params.center ?? ''}:${params.region ?? ''}:${params.province ?? ''}:${params.division ?? ''}:${params.municipality ?? ''}:${params.milk_type ?? ''}:${params.supplier ?? ''}:${params.date_started_year ?? ''}:${params.date_started_month ?? ''}:${params.date_completed_year ?? ''}:${params.date_completed_month ?? ''}`}
         records={records ?? []}
         readOnly={profile?.role === 'viewer'}
         userRole={profile?.role ?? 'viewer'}

@@ -34,6 +34,7 @@ const MONTH_OPTIONS = [
 
 const ALL_FILTER_KEYS = [
   'year',
+  'school_year',
   'date_started_year',
   'date_started_month',
   'date_completed_year',
@@ -92,6 +93,7 @@ export function DataFilters({ filterOptions }: { filterOptions?: FilterOptions }
 
   const standardGroups = [
     { key: 'year', label: 'Year', options: filterOptions?.year || [] },
+    { key: 'school_year', label: 'School Year', options: dateYearOptions.map(year => `${year}-${Number(year) + 1}`) },
     { key: 'funded_by', label: 'Funded By', options: filterOptions?.funded_by || ['DepEd', 'DSWD', 'LDS'] },
     { key: 'center', label: 'Center', options: filterOptions?.center || [] },
     { key: 'region', label: 'Region', options: filterOptions?.region || [] },
@@ -148,6 +150,8 @@ export function DataFilters({ filterOptions }: { filterOptions?: FilterOptions }
       }
 
       const next = { ...prev }
+      if (name === 'school_year' && set.size) delete next.year
+      if (name === 'year' && set.size) delete next.school_year
       if (set.size === 0) {
         delete next[name]
       } else {
@@ -244,6 +248,7 @@ export function DataFilters({ filterOptions }: { filterOptions?: FilterOptions }
   // Count active filters (ignoring search)
   let activeFiltersCount = 0
   if (searchParams.has('year')) activeFiltersCount++
+  if (searchParams.has('school_year')) activeFiltersCount++
   if (searchParams.has('date_started_year') || searchParams.has('date_started_month')) activeFiltersCount++
   if (searchParams.has('date_completed_year') || searchParams.has('date_completed_month')) activeFiltersCount++
   ;['funded_by', 'center', 'region', 'province', 'division', 'municipality', 'milk_type'].forEach(k => {
@@ -616,6 +621,9 @@ export function DataFilters({ filterOptions }: { filterOptions?: FilterOptions }
         {/* Expandable Options List */}
         {isExpanded && (
           <div style={{ padding: '0.5rem 1rem', background: '#f8fafc' }}>
+            {group.key === 'school_year' && <p style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: 8 }}>
+              Uses Date Started: June 1 of the first year through April 30 of the next year. May and records without a start date are excluded. Replaces the calendar Year selection.
+            </p>}
             {activeValue instanceof Set && activeValue.size > 1 && (
               <div style={{ fontSize: '0.72rem', color: '#64748b', marginBottom: '0.4rem', fontStyle: 'italic' }}>
                 {activeValue.size} selected
@@ -675,7 +683,8 @@ export function DataFilters({ filterOptions }: { filterOptions?: FilterOptions }
 
   // Find standard groups
   const yearGroup = standardGroups.find(g => g.key === 'year')
-  const otherGroups = standardGroups.filter(g => g.key !== 'year')
+  const schoolYearGroup = standardGroups.find(g => g.key === 'school_year')
+  const otherGroups = standardGroups.filter(g => g.key !== 'year' && g.key !== 'school_year')
 
   return (
     <div className="data-filters-toolbar" style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.25rem', position: 'relative' }}>
@@ -729,6 +738,7 @@ export function DataFilters({ filterOptions }: { filterOptions?: FilterOptions }
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               {/* 1. Year */}
               {yearGroup && renderStandardGroup(yearGroup)}
+              {schoolYearGroup && renderStandardGroup(schoolYearGroup)}
 
               {/* 2. Date Started (Year & Month) */}
               {renderDateFilterGroup('date_started', 'Date Started (Year & Month)')}
