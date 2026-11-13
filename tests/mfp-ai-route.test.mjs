@@ -53,6 +53,19 @@ test('selection is exact, stale rows/version fail, and unknown conditions never 
   assert.match(unsupported.body.content, /cannot calculate that specific condition/)
 })
 
+test('the reported polite question returns the verified selected-school count without Groq', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = () => { throw new Error('Exact counts must not use Groq') }
+  try {
+    const response = await fixture().send({ scope: 'selected', selectedIds: ['row-1', 'row-4'],
+      messages: [{ role: 'user', content: 'please check how many schools participating into the selected rows' }] })
+    assert.equal(response.status, 200)
+    assert.equal(response.body.origin, 'computed')
+    assert.match(response.body.content, /2 participating schools/)
+    assert.match(response.body.basis, /selected records \(2 rows\)/)
+  } finally { globalThis.fetch = originalFetch }
+})
+
 test('authentication, missing encoder center, bad roles and malformed inputs fail before data reads', async () => {
   for (const [options, expected] of [[{ user: null }, 401], [{ profile: null }, 403], [{ profile: { role: 'encoder' } }, 403], [{ profile: { role: 'unknown' } }, 403]]) {
     const f = fixture(options); assert.equal((await f.send()).status, expected); assert.equal(f.reads.length, 0)

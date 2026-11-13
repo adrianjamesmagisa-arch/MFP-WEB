@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { PCC_CENTERS } from '@/lib/types'
-import { isNizFamily } from '@/lib/center-aliases'
+import { loadCenterActivitySummaries } from '@/lib/center-activity'
 import Link from 'next/link'
 import { Building2, Calendar, CheckCircle2, Clock } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
@@ -10,38 +10,16 @@ export default async function CentersPage() {
   const supabase = await createClient()
 
   const { data: { user } } = await supabase.auth.getUser()
-  const { data: profile } = await supabase.from('profiles').select('*').eq('id', user?.id).single()
+  if (!user) redirect('/login')
+  const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single()
 
   if (profile?.role === 'encoder') {
     redirect('/dashboard')
   }
 
-  // Get the latest input date for each center to determine active status
-  const { data: latestInputs } = await supabase
-    .from('mfp_data')
-    .select('center, created_at')
-    .gte('year', 2026)
-    .order('created_at', { ascending: false })
+  const centerStats = await loadCenterActivitySummaries(supabase, PCC_CENTERS)
 
-  // Aggregate to find the most recent created_at per center
-  const centerStats = PCC_CENTERS.reduce((acc, center) => {
-    acc[center] = { lastInput: null }
-    return acc
-  }, {} as Record<string, { lastInput: string | null }>)
-
-  if (latestInputs) {
-    latestInputs.forEach(row => {
-      // Ignore initial seeded data (which has exactly 12:00:00 UTC timestamp on the 15th)
-      const isSeededData = row.created_at.includes('T12:00:00+00:00')
-      const targetCenter = isNizFamily(row.center) ? 'NHQGP (NIZ)' : row.center
-
-      if (!isSeededData && centerStats[targetCenter] && !centerStats[targetCenter]?.lastInput) {
-        centerStats[targetCenter] = { lastInput: row.created_at }
-      }
-    })
-  }
-
-  // A center is considered "active" if they inputted something in the last 30 days
+  // Activity uses the same create/edit/log sources as each center's timeline.
   const thirtyDaysAgo = new Date()
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
 
@@ -56,8 +34,11 @@ export default async function CentersPage() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
         {PCC_CENTERS.map(center => {
-          const lastInputDate = centerStats[center]?.lastInput
+          const lastInputDate = centerStats[center]?.at
+          const incomplete = centerStats[center]?.hasReadErrors
           const isActive = lastInputDate ? new Date(lastInputDate) > thirtyDaysAgo : false
+          const activityStatus = incomplete ? lastInputDate ? 'Activity incomplete' : 'Activity unavailable'
+            : isActive ? 'Active recently' : 'Inactive'
 
           return (
             <Link
@@ -72,18 +53,18 @@ export default async function CentersPage() {
                 </div>
                 <div>
                   <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#1e293b', margin: 0 }}>{center}</h3>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.25rem', fontSize: '0.75rem', color: isActive ? '#16a34a' : '#64748b' }}>
-                    {isActive ? <CheckCircle2 size={12} /> : <Clock size={12} />}
-                    {isActive ? 'Active recently' : 'Inactive'}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.25rem', fontSize: '0.75rem', color: incomplete ? '#92400e' : isActive ? '#16a34a' : '#64748b' }}>
+                    {isActive && !incomplete ? <CheckCircle2 size={12} /> : <Clock size={12} />}
+                    {activityStatus}
                   </div>
                 </div>
               </div>
 
               <div style={{ padding: '0.75rem', background: '#f8fafc', borderRadius: '0.375rem', fontSize: '0.75rem', color: '#475569', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <Calendar size={14} style={{ color: '#94a3b8' }} />
-                <span>Last activity: </span>
+                <span>{incomplete ? 'Last known activity: ' : 'Last activity: '}</span>
                 <strong style={{ color: '#1e293b' }}>
-                  {lastInputDate ? formatDistanceToNow(new Date(lastInputDate), { addSuffix: true }) : 'Never'}
+                  {lastInputDate ? formatDistanceToNow(new Date(lastInputDate), { addSuffix: true }) : incomplete ? 'Unavailable' : 'No activity found'}
                 </strong>
               </div>
             </Link>

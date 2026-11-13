@@ -2,7 +2,7 @@
  * Center activity: explicit log rows + derived create/update timestamps.
  */
 
-import { fetchAllRows } from '@/lib/supabase-paginate'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { mfpCenterAliases, sbfpCenterAliases } from '@/lib/center-aliases'
 
 export type CenterActivityAction = 'created' | 'updated' | 'deleted'
@@ -21,10 +21,14 @@ export type CenterActivityEvent = {
   fromLog?: boolean
 }
 
-type SupabaseLike = { from: (table: string) => any; auth?: { getUser: () => Promise<{ data: { user: { id: string } | null } }> } }
+type SupabaseLike = Pick<SupabaseClient, 'from'> & { auth?: { getUser: () => Promise<{ data: { user: { id: string } | null } }> } }
 
-function isMissingRelation(message: string | undefined) {
-  return /mfp_center_activity/i.test(message || '') || /schema cache/i.test(message || '') || /does not exist/i.test(message || '')
+function isMissingRelation(error: unknown) {
+  if (!error || typeof error !== 'object') return false
+  const code = 'code' in error ? error.code : null
+  if (code === '42P01' || code === 'PGRST205') return true
+  const message = 'message' in error && typeof error.message === 'string' ? error.message : ''
+  return /mfp_center_activity/i.test(message) && /does not exist|could not find.*table/i.test(message)
 }
 
 export async function logCenterActivity(
@@ -62,7 +66,7 @@ export async function logCenterActivity(
       summary: input.summary,
       detail: input.detail || null,
     })
-    if (error && !isMissingRelation(error.message)) {
+    if (error && !isMissingRelation(error)) {
       console.warn('center activity log failed:', error.message)
     }
   } catch (e) {
@@ -119,7 +123,8 @@ async function loadActorNames(
   const unique = [...new Set(ids.filter(Boolean))]
   for (let i = 0; i < unique.length; i += 200) {
     const chunk = unique.slice(i, i + 200)
-    const { data } = await supabase.from('profiles').select('id,full_name,email').in('id', chunk)
+    const { data, error } = await supabase.from('profiles').select('id,full_name,email').in('id', chunk)
+    if (error) throw new Error(error.message)
     for (const row of data || []) {
       const name = String(row.full_name || row.email || '').trim()
       if (name) map.set(row.id, name)
@@ -138,6 +143,97 @@ function pushEvent(
   })
 }
 
+const activitySources = [
+  { table: 'mfp_data', label: 'MFP record' },
+  { table: 'sbfp_data', label: 'SBFP procurement' },
+  { table: 'sbfp_dropoff_points', label: 'drop-off' },
+] as const
+
+type ActivityRecord = {
+  id: string
+  created_at: string | null
+  updated_at: string | null
+  created_by?: string | null
+  funded_by?: string | null
+  elementary_school?: string | null
+  municipality?: string | null
+  sdo?: string | null
+  dropoff_name?: string | null
+}
+
+function selectActivityRecords(supabase: SupabaseLike, source: typeof activitySources[number]) {
+  const query = supabase.from(source.table)
+  if (source.table === 'mfp_data') return query.select('id,center,funded_by,elementary_school,municipality,created_at,updated_at,created_by')
+  if (source.table === 'sbfp_data') return query.select('id,center,sdo,created_at,updated_at')
+  return query.select('id,center,dropoff_name,sdo,created_at,updated_at')
+}
+
+function recordEvent(row: ActivityRecord, center: string, source: typeof activitySources[number], action: 'created' | 'updated', at: string): CenterActivityEvent {
+  const label = source.table === 'mfp_data' ? row.elementary_school || row.municipality || 'record'
+    : source.table === 'sbfp_data' ? row.sdo || 'SDO' : row.dropoff_name || 'school'
+  return {
+    id: `${source.table}:${row.id}:${action}`,
+    center, source: source.table, sourceId: row.id, action,
+    summary: `${action === 'created' ? 'Created' : 'Updated'} ${source.label} · ${label.trim()}`,
+    detail: source.table === 'mfp_data' ? row.funded_by : source.table === 'sbfp_dropoff_points' ? row.sdo : null,
+    at,
+    actorId: action === 'created' && source.table === 'mfp_data' ? row.created_by : null,
+  }
+}
+
+/** Read only candidates that can enter the newest `limit` events for this source. */
+async function loadRecordActivity(supabase: SupabaseLike, center: string, aliases: string[], source: typeof activitySources[number], limit: number) {
+  const events: CenterActivityEvent[] = []
+  let hasReadErrors = false
+  const { data, error } = await selectActivityRecords(supabase, source)
+    .in('center', aliases).order('created_at', { ascending: false, nullsFirst: false })
+    .order('id', { ascending: true }).limit(limit)
+  if (error) {
+    hasReadErrors = true
+    console.warn('load activity creations:', error.message)
+  }
+  for (const row of data || []) {
+    if (row.created_at && Number.isFinite(Date.parse(row.created_at))) events.push(recordEvent(row, center, source, 'created', row.created_at))
+  }
+  // Older updates cannot enter the result once `limit` newer creations exist.
+  const cutoff = events.length >= limit ? events[events.length - 1].at : null
+  const pageSize = Math.min(1000, Math.max(limit, 50))
+  let updates = 0
+  for (let from = 0; updates < limit; from += pageSize) {
+    let query = selectActivityRecords(supabase, source).in('center', aliases)
+      .not('updated_at', 'is', null)
+    if (cutoff) query = query.gt('updated_at', cutoff)
+    const { data: edited, error: editError } = await query
+      .order('updated_at', { ascending: false, nullsFirst: false })
+      .order('id', { ascending: true }).range(from, from + pageSize - 1)
+    if (editError) {
+      hasReadErrors = true
+      console.warn('load activity edits:', editError.message)
+      break
+    }
+    for (const row of edited || []) {
+      if (row.updated_at && row.created_at && Date.parse(row.updated_at) - Date.parse(row.created_at) > 2000) {
+        events.push(recordEvent(row, center, source, 'updated', row.updated_at))
+        if (++updates >= limit) break
+      }
+    }
+    if (!edited || edited.length < pageSize) break
+  }
+  return { events, hasReadErrors }
+}
+
+/** The overview uses exactly the timeline's newest event, with three centers in flight. */
+export async function loadCenterActivitySummaries(supabase: SupabaseLike, centers: readonly string[]) {
+  const summaries: Record<string, { at: string | null; hasReadErrors: boolean }> = {}
+  for (let from = 0; from < centers.length; from += 3) {
+    await Promise.all(centers.slice(from, from + 3).map(async center => {
+      const result = await loadCenterActivityLog(supabase, center, { limit: 1, includeActors: false })
+      summaries[center] = { at: result.events[0]?.at ?? null, hasReadErrors: result.hasReadErrors }
+    }))
+  }
+  return summaries
+}
+
 /**
  * Load explicit activity log (if migrated) plus derived create/update events
  * from operational tables so admins can track encoder work times.
@@ -145,11 +241,12 @@ function pushEvent(
 export async function loadCenterActivityLog(
   supabase: SupabaseLike,
   center: string,
-  options?: { limit?: number },
-): Promise<{ events: CenterActivityEvent[]; logReady: boolean }> {
+  options?: { limit?: number; includeActors?: boolean },
+): Promise<{ events: CenterActivityEvent[]; logReady: boolean; hasReadErrors: boolean }> {
   const limit = options?.limit ?? 400
   const events: CenterActivityEvent[] = []
   let logReady = true
+  let hasReadErrors = false
   const mfpAliases = mfpCenterAliases(center)
   const sbfpAliases = sbfpCenterAliases(center)
 
@@ -158,10 +255,11 @@ export async function loadCenterActivityLog(
       .from('mfp_center_activity')
       .select('id,center,actor_id,action,source,source_id,summary,detail,created_at')
       .in('center', mfpAliases)
-      .order('created_at', { ascending: false })
+      .order('created_at', { ascending: false, nullsFirst: false })
+      .order('id', { ascending: true })
       .limit(limit)
     if (error) {
-      if (isMissingRelation(error.message)) logReady = false
+      if (isMissingRelation(error)) logReady = false
       else throw new Error(error.message)
     } else {
       for (const row of data || []) {
@@ -181,138 +279,27 @@ export async function loadCenterActivityLog(
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
-    if (isMissingRelation(msg)) logReady = false
-    else console.warn('load activity log:', msg)
+    if (isMissingRelation(e)) logReady = false
+    else {
+      hasReadErrors = true
+      console.warn('load activity log:', msg)
+    }
   }
 
-  // Derived timeline from record stamps (capped to recent items for high performance).
-  const fetchLimit = Math.max(limit * 2, 50)
-
-  try {
-    const { data: mfpRows } = await supabase
-      .from('mfp_data')
-      .select(
-        'id,center,funded_by,elementary_school,municipality,created_at,updated_at,created_by',
+  // Each center reads its newest creations and edits separately. Creation order
+  // alone misses a recently edited older record after the API row limit.
+  for (const source of activitySources) {
+    const aliases = source.table === 'mfp_data' ? mfpAliases : sbfpAliases
+    try {
+      const { events: sourceEvents, hasReadErrors: sourceFailed } = await loadRecordActivity(
+        supabase, center, aliases, source, limit,
       )
-      .in('center', mfpAliases)
-      .order('created_at', { ascending: false })
-      .limit(fetchLimit)
-
-    for (const row of mfpRows || []) {
-      const label =
-        String(row.elementary_school || row.municipality || 'record').trim() || 'record'
-      const funded = String(row.funded_by || '').trim()
-      if (row.created_at) {
-        pushEvent(events, {
-          center,
-          action: 'created',
-          source: 'mfp_data',
-          sourceId: row.id,
-          summary: `Created MFP record · ${label}`,
-          detail: funded || null,
-          at: row.created_at,
-          actorId: row.created_by || null,
-        })
-      }
-      if (
-        row.updated_at &&
-        row.created_at &&
-        new Date(row.updated_at).getTime() - new Date(row.created_at).getTime() > 2000
-      ) {
-        pushEvent(events, {
-          center,
-          action: 'updated',
-          source: 'mfp_data',
-          sourceId: row.id,
-          summary: `Updated MFP record · ${label}`,
-          detail: funded || null,
-          at: row.updated_at,
-          actorId: null,
-        })
-      }
+      events.push(...sourceEvents)
+      hasReadErrors ||= sourceFailed
+    } catch (e) {
+      hasReadErrors = true
+      console.warn('load record activity:', e instanceof Error ? e.message : e)
     }
-  } catch (e) {
-    console.warn('derive mfp activity:', e instanceof Error ? e.message : e)
-  }
-
-  try {
-    const { data: sbfpRows } = await supabase
-      .from('sbfp_data')
-      .select('id,center,sdo,created_at,updated_at')
-      .in('center', sbfpAliases)
-      .order('created_at', { ascending: false })
-      .limit(fetchLimit)
-
-    for (const row of sbfpRows || []) {
-      const label = String(row.sdo || 'SDO').trim() || 'SDO'
-      if (row.created_at) {
-        pushEvent(events, {
-          center,
-          action: 'created',
-          source: 'sbfp_data',
-          sourceId: row.id,
-          summary: `Created SBFP procurement · ${label}`,
-          at: row.created_at,
-        })
-      }
-      if (
-        row.updated_at &&
-        row.created_at &&
-        new Date(row.updated_at).getTime() - new Date(row.created_at).getTime() > 2000
-      ) {
-        pushEvent(events, {
-          center,
-          action: 'updated',
-          source: 'sbfp_data',
-          sourceId: row.id,
-          summary: `Updated SBFP procurement · ${label}`,
-          at: row.updated_at,
-        })
-      }
-    }
-  } catch (e) {
-    console.warn('derive sbfp activity:', e instanceof Error ? e.message : e)
-  }
-
-  try {
-    const { data: dropRows } = await supabase
-      .from('sbfp_dropoff_points')
-      .select('id,center,dropoff_name,sdo,created_at,updated_at')
-      .in('center', sbfpAliases)
-      .order('created_at', { ascending: false })
-      .limit(fetchLimit)
-
-    for (const row of dropRows || []) {
-      const label = String(row.dropoff_name || 'school').trim() || 'school'
-      if (row.created_at) {
-        pushEvent(events, {
-          center,
-          action: 'created',
-          source: 'sbfp_dropoff_points',
-          sourceId: row.id,
-          summary: `Created drop-off · ${label}`,
-          detail: row.sdo ? String(row.sdo) : null,
-          at: row.created_at,
-        })
-      }
-      if (
-        row.updated_at &&
-        row.created_at &&
-        new Date(row.updated_at).getTime() - new Date(row.created_at).getTime() > 2000
-      ) {
-        pushEvent(events, {
-          center,
-          action: 'updated',
-          source: 'sbfp_dropoff_points',
-          sourceId: row.id,
-          summary: `Updated drop-off · ${label}`,
-          detail: row.sdo ? String(row.sdo) : null,
-          at: row.updated_at,
-        })
-      }
-    }
-  } catch (e) {
-    console.warn('derive dropoff activity:', e instanceof Error ? e.message : e)
   }
 
   // Merge explicit log + derived stamps; dedupe near-identical events.
@@ -332,15 +319,19 @@ export async function loadCenterActivityLog(
     if (deduped.length >= limit) break
   }
 
-  const actorNames = await loadActorNames(
-    supabase,
-    deduped.map(e => e.actorId || '').filter(Boolean),
-  )
-  for (const event of deduped) {
-    if (event.actorId && actorNames.has(event.actorId)) {
-      event.actorName = actorNames.get(event.actorId) || null
+  if (options?.includeActors !== false) {
+    try {
+      const actorNames = await loadActorNames(
+        supabase, deduped.map(event => event.actorId || '').filter(Boolean),
+      )
+      for (const event of deduped) {
+        if (event.actorId) event.actorName = actorNames.get(event.actorId) || null
+      }
+    } catch (e) {
+      hasReadErrors = true
+      console.warn('load activity actors:', e instanceof Error ? e.message : e)
     }
   }
 
-  return { events: deduped, logReady }
+  return { events: deduped, logReady, hasReadErrors }
 }

@@ -44,7 +44,7 @@ export default async function CenterDetailPage({ params }: { params: Promise<{ c
     redirect('/dashboard')
   }
 
-  const { events, logReady } = await loadCenterActivityLog(supabase, decodedCenter, { limit: 500 })
+  const { events, logReady, hasReadErrors } = await loadCenterActivityLog(supabase, decodedCenter, { limit: 500 })
   const groups = groupActivityByDay(events)
 
   return (
@@ -67,7 +67,7 @@ export default async function CenterDetailPage({ params }: { params: Promise<{ c
           </Link>
           <h1 className="page-title">{decodedCenter} activity</h1>
           <p className="page-subtitle">
-            Track when this center created or edited records · {events.length} event
+            Track when this center created or edited records · Showing {events.length === 500 ? 'latest ' : ''}{events.length} event
             {events.length === 1 ? '' : 's'}
           </p>
         </div>
@@ -99,6 +99,12 @@ export default async function CenterDetailPage({ params }: { params: Promise<{ c
         </div>
       )}
 
+      {hasReadErrors && (
+        <p role="status" style={{ color: '#92400e', marginBottom: '1rem' }}>
+          Some activity could not be loaded. The history below may be incomplete. Refresh to try again.
+        </p>
+      )}
+
       <div
         className="card"
         style={{
@@ -126,7 +132,7 @@ export default async function CenterDetailPage({ params }: { params: Promise<{ c
 
         {groups.length === 0 ? (
           <div style={{ padding: '2.5rem 1.25rem', textAlign: 'center', color: '#94a3b8' }}>
-            No create or edit activity found for this center yet.
+            {hasReadErrors ? 'Activity history is temporarily unavailable.' : 'No create or edit activity found for this center yet.'}
           </div>
         ) : (
           <div>

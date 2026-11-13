@@ -135,8 +135,10 @@ function groupedAnswer(rows: MfpListRow[], group: Group, question: string) {
 
 /** Exact supported operations bypass the LLM; conditional questions never receive an unfiltered total. */
 export function answerMfpQuestion(rows: MfpListRow[], question: string, summary = summarizeMfpRows(rows)): string | null {
-  const q = question.toLowerCase().replace(/[?!.]/g, '').trim()
-    .replace(/\s+(in|across|from|for)\s+((the|this|these|all|current|currently|selected|checked|filtered)\s+)*(rows|records|entries|data|dataset|scope)$/, '')
+  const q = question.toLowerCase().replace(/[?!.]/g, '').trim().replace(/\s+/g, ' ')
+    // Normalize only an opening courtesy phrase; keep every substantive constraint.
+    .replace(/^(?:(?:please|kindly)\s+)?(?:(?:can|could|would) you\s+)?(?:(?:please|kindly)\s+)?(?:(?:check|tell me|show me)\s+)?(?=(?:how many|how much|what is|what are|count|number of|total|sum|summarize|summary|break down|breakdown|compare|top|highest|largest|most|rank)\b)/, '')
+    .replace(/\s+(in|into|across|from|for)\s+((the|this|these|all|current|currently|selected|checked|filtered)\s+)*(rows|records|entries|data|dataset|scope)$/, '')
   // Only the current table scope is supported. Unknown words (e.g. a center name),
   // numbers or extra predicates must not turn into an answer for all rows.
   const scopeVocabulary = new Set(('how many what is the a an are of in from for across this these those current currently show selected checked filtered all scope rows row records record entries entry data dataset '

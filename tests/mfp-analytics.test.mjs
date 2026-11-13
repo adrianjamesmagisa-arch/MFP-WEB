@@ -32,6 +32,24 @@ test('school identity respects centers, SDOs, known geography, years, exclusions
   assert.match(answerMfpQuestion(rows, 'How many schools are in this scope?'), /exact unique-school count is unresolved/)
 })
 
+test('polite school-count questions accept the reported selected-row wording', () => {
+  const rows = [school('original'), school('add'), school('other', { elementary_school: 'Other ES' })]
+  for (const question of ['please check how many schools participating into the selected rows',
+    'Please tell me how many schools are participating in the selected rows?',
+    'Can you check how many elementary schools are participating in these records?',
+    'Could you please tell me how many schools are participating?',
+    'Kindly check how many schools are participating in the filtered rows']) {
+    assert.match(answerMfpQuestion(rows, question) ?? '', /2 participating schools/, question)
+  }
+  for (const question of ['Please check how many schools in Bataan?',
+    'Can you tell me how many DSWD schools are participating in the selected rows?',
+    'Please check how many schools with zero deliveries into the selected rows',
+    'Please check how many schools in 2025?',
+    'Please check how many schools in Bataan into the selected rows']) {
+    assert.equal(answerMfpQuestion(rows, question), null, question)
+  }
+})
+
 test('unknown finances and beneficiaries remain missing while encoded zero is included', () => {
   const summary = summarizeMfpRows([school('original', { beneficiaries: 48 }), school('addition-only', { beneficiaries: null, service_fee: 0, total_funds_transferred: 0 })])
   assert.deepEqual(summary.metrics.service_fee, { value: 0, known: 1, missing: 1 })
