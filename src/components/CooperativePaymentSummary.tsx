@@ -2,17 +2,24 @@
 
 import { Download } from 'lucide-react'
 import { cooperativePaymentsCsv, type CooperativePayments } from '@/lib/cooperative-payments'
+import type { MonitoringProgramId } from '@/lib/monitoring-programs'
 import styles from './CooperativePaymentSummary.module.css'
 
 const peso = (value: number | null) => value == null ? 'N/A' : `₱${value.toLocaleString('en-PH', { maximumFractionDigits: 2 })}`
 
-export function CooperativePaymentSummary({ summary, year }: { summary: CooperativePayments; year: string }) {
+export function CooperativePaymentSummary({ summary, year, programId = 'sbfp', entitySingular = 'SDO', entityPlural = 'SDOs' }: {
+  summary: CooperativePayments
+  year: string
+  programId?: 'sbfp' | MonitoringProgramId
+  entitySingular?: string
+  entityPlural?: string
+}) {
   function download() {
-    const blob = new Blob([cooperativePaymentsCsv(summary)], { type: 'text/csv;charset=utf-8;' })
+    const blob = new Blob([cooperativePaymentsCsv(summary, { entitySingular, entityPlural })], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const anchor = document.createElement('a')
     anchor.href = url
-    anchor.download = `sbfp_cooperative_payments_${year}.csv`
+    anchor.download = `${programId}_cooperative_payments_${year}.csv`
     document.body.appendChild(anchor)
     anchor.click()
     anchor.remove()
@@ -35,7 +42,7 @@ export function CooperativePaymentSummary({ summary, year }: { summary: Cooperat
       {summary.unassignedCount > 0 && <p role="status" className={styles.warning}>{summary.unassignedCount} contract(s) with recorded payments totaling {peso(summary.unassignedPaid)} have no assigned cooperative. They are included in total recorded payments, but excluded from the cooperative count and list.</p>}
       <div className={styles.scroll} role="region" aria-label="Cooperative payments table" tabIndex={0}>
         <table className={styles.table}>
-          <thead><tr><th scope="col">Cooperative / contracts</th><th scope="col">Center(s)</th><th scope="col">SDOs</th><th scope="col">Contracted amount</th><th scope="col">Amount paid</th><th scope="col">Remaining to pay</th><th scope="col">Payment status</th></tr></thead>
+          <thead><tr><th scope="col">Cooperative / contracts</th><th scope="col">Center(s)</th><th scope="col">{entityPlural}</th><th scope="col">Contracted amount</th><th scope="col">Amount paid</th><th scope="col">Remaining to pay</th><th scope="col">Payment status</th></tr></thead>
           <tbody>{summary.rows.length === 0 ? <tr><td colSpan={7} className={styles.empty}>No cooperatives with recorded payments in the current selection.</td></tr> : summary.rows.map(row => (
             <tr key={row.id}>
               <td><strong>{row.name}</strong><details><summary>{row.contracts.length} contract(s)</summary><ul>{row.contracts.map(contract => <li key={contract.id}><strong>{contract.sdo}</strong> · {contract.center}<br />Paid: {peso(contract.paid)} · Balance: {peso(contract.balance)}</li>)}</ul></details></td>

@@ -34,6 +34,7 @@ const reportItems = [
   { href: '/reports/dswd-narrative', icon: FileBarChart2,  label: 'DSWD Report' },
   { href: '/reports/lds-narrative',  icon: Church,         label: 'LDS Report' },
   { href: '/reports/lgu-narrative',  icon: FileBarChart2,  label: 'LGU Report' },
+  { href: '/reports/others-narrative', icon: Layers, label: 'Others Report' },
   { href: '/reports/summary-deped',  icon: BookOpenCheck,  label: 'Summary DepEd' },
   { href: '/reports/summary-lds',    icon: Church,         label: 'Summary LDS' },
   { href: '/reports/summary-dswd',   icon: HeartHandshake, label: 'Summary DSWD' },

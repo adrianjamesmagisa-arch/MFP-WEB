@@ -20,6 +20,8 @@ import {
   type MajorTargetsBySchoolYear,
 } from '@/lib/sbfp-major-accomplishments'
 import { getIslandCluster, type ProgramReportMeta } from '@/lib/program-spreadsheet-report'
+import { CooperativePaymentSummary } from '@/components/CooperativePaymentSummary'
+import type { CooperativePayments } from '@/lib/cooperative-payments'
 
 const PESO = '\u20B1'
 const fmtPeso = (n: number) =>
@@ -142,6 +144,7 @@ export function ProgramSpreadsheetSecondaryTabs({
   centerSummary,
   deliveryDetailsRows,
   implSummary,
+  cooperativePayments,
   milkAsOfMonth,
   setMilkAsOfMonth,
   milkAsOfYear,
@@ -175,6 +178,7 @@ export function ProgramSpreadsheetSecondaryTabs({
   centerSummary: Array<ProgramGroupRow & { center: string }>
   deliveryDetailsRows: ProgramDeliveryDetailRow[]
   implSummary: ProgramImplSummary
+  cooperativePayments: CooperativePayments
   milkAsOfMonth: string
   setMilkAsOfMonth: (v: string) => void
   milkAsOfYear: string
@@ -296,6 +300,13 @@ export function ProgramSpreadsheetSecondaryTabs({
 
       {activeTab === 'senate_status' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <CooperativePaymentSummary
+            summary={cooperativePayments}
+            year={year}
+            programId={meta.id}
+            entitySingular={meta.entitySingular}
+            entityPlural={meta.entityPlural}
+          />
           <div
             style={{
               background: '#ffffff',

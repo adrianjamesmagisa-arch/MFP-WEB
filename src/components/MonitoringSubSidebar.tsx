@@ -33,10 +33,10 @@ export function MonitoringSubSidebar({
     : [{ href: `${base}/overall`, icon: BarChart3, label: 'Dashboard' }]
 
   const navReports =
-    !encoderCenter && (programId === 'dswd' || programId === 'lgu')
+    !encoderCenter
       ? [
           {
-            href: programId === 'dswd' ? '/reports/dswd-narrative' : '/reports/lgu-narrative',
+            href: `/reports/${programId}-narrative`,
             icon: FileText,
             label: `${program.shortLabel} Report`,
           },

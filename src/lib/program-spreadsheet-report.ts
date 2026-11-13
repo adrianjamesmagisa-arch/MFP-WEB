@@ -15,8 +15,9 @@ import {
 } from '@/lib/sbfp-dropoff-sync'
 import { sbfpCenterAliases } from '@/lib/center-aliases'
 import { REPORT_MIN_YEAR } from '@/lib/app-years'
+import type { MonitoringProgramId } from '@/lib/monitoring-programs'
 
-export type ProgramReportId = 'lgu' | 'dswd' | 'lds'
+export type ProgramReportId = MonitoringProgramId
 
 export interface ProgramReportMeta {
   id: ProgramReportId
@@ -35,6 +36,21 @@ export interface ProgramReportMeta {
 }
 
 export const PROGRAM_REPORT_META: Record<ProgramReportId, ProgramReportMeta> = {
+  others: {
+    id: 'others',
+    shortLabel: 'Others',
+    masterTabLabel: 'Others Masterlist',
+    entitySingular: 'Area',
+    entityPlural: 'Areas',
+    filteredKpiLabel: 'Filtered Areas',
+    searchLabel: 'Search Area',
+    searchPlaceholder: 'Search area or PO...',
+    printTitle: 'Other Funders Feeding Program — Milk Procurement Monitoring Report',
+    senatePrintTitle: 'Other Funders Milk Component — PCC Procurement & Delivery Monitoring Figures',
+    cdpBannerTitle: 'OTHER FUNDERS MILK FEEDING PROGRAM',
+    majorSubtitle: 'Other Funders Feeding Program – Milk Proponent',
+    majorEntityCountLabel: 'No. of Areas',
+  },
   lgu: {
     id: 'lgu',
     shortLabel: 'LGU',

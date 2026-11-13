@@ -83,14 +83,17 @@ export function summarizeCooperativePayments(records: SbfpReportSourceRow[]): Co
 }
 
 /** Spreadsheet-safe CSV for the exact cooperative rows shown in the report. */
-export function cooperativePaymentsCsv(summary: CooperativePayments): string {
+export function cooperativePaymentsCsv(summary: CooperativePayments, { entitySingular = 'SDO', entityPlural = 'SDOs' }: {
+  entitySingular?: string
+  entityPlural?: string
+} = {}): string {
   const escape = (value: unknown) => {
     let text = value == null ? '' : String(value)
     if (typeof value === 'string' && /^[\s]*[=+@-]/.test(text)) text = `'${text}`
     return `"${text.replace(/"/g, '""')}"`
   }
   const rows = [
-    ['Cooperative', 'Centers', 'SDOs', 'Contracts', 'Contracted amount (PHP)', 'Amount paid (PHP)', 'Remaining to pay (PHP)', 'Payment status', 'SDO contracts'],
+    ['Cooperative', 'Centers', entityPlural, 'Contracts', 'Contracted amount (PHP)', 'Amount paid (PHP)', 'Remaining to pay (PHP)', 'Payment status', `${entitySingular} contracts`],
     ...summary.rows.map(row => [row.name, row.centers.join('; '), row.sdoCount, row.contracts.length,
       row.contractAmount, row.paid, row.balance, row.status, row.contracts.map(contract => `${contract.center}: ${contract.sdo}`).join('; ')]),
   ]

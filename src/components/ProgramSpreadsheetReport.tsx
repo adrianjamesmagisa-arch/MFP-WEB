@@ -48,6 +48,7 @@ import { sbfpNavCenter } from '@/lib/center-aliases'
 import { milkTypeLabel } from '@/lib/sbfp-pack-price'
 import { rawMilkUtilizedLiters, packsForMonth } from '@/lib/sbfp-raw-milk'
 import { SbfpAiAgent } from '@/components/SbfpAiAgent'
+import { summarizeCooperativePayments } from '@/lib/cooperative-payments'
 import {
   MAJOR_INDICATORS,
   computeLiveMajorAccomplishments,
@@ -102,6 +103,7 @@ function todayIso(): string {
 
 export function ProgramSpreadsheetReport({ programId }: { programId: ProgramReportId }) {
   const meta = PROGRAM_REPORT_META[programId]
+  const supportsMajorAccomplishments = programId !== 'others'
   const supabase = useMemo(() => createClient(), [])
 
   const initialYear = defaultReportYearString()
@@ -234,6 +236,7 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
 
   // Load saved Major Accomplishments targets
   useEffect(() => {
+    if (!supportsMajorAccomplishments) return
     let cancelled = false
     void (async () => {
       try {
@@ -247,7 +250,7 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [supportsMajorAccomplishments])
 
   const handleYearChange = (nextYear: string) => {
     setLoading(true)
@@ -455,6 +458,8 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
       return rowMatchesSbfpStatusFilter(effectiveStatus, filterStatus)
     })
   }, [preStatusFilteredRecords, filterStatus, sdoHierarchyStatusMap, statusCutoffOpts])
+
+  const cooperativePayments = useMemo(() => summarizeCooperativePayments(filteredRecords), [filteredRecords])
 
   const viewRows = useMemo(() => {
     const dbY = Number.isFinite(dbYearNum) ? dbYearNum : undefined
@@ -1284,7 +1289,7 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
     const dateStr = new Date().toISOString().split('T')[0]
     await exportMultiTabWorkbook(
       `${programId}_all_tabs_complete_${year}_${dateStr}.xlsx`,
-      allTabIds.map(id => getTabExportData(id)),
+      allTabIds.filter(id => supportsMajorAccomplishments || id !== 'major_accomplishments').map(id => getTabExportData(id)),
     )
   }
 
@@ -1889,7 +1894,7 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
                 ['monthly_cummulated', '7. CDP Report', BarChart2],
                 ['major_accomplishments', '8. Major Accomplishments', Layers],
               ] as const
-            ).map(([id, label, Icon]) => (
+            ).filter(([id]) => supportsMajorAccomplishments || id !== 'major_accomplishments').map(([id, label, Icon]) => (
               <button
                 key={id}
                 onClick={() => handleTabChange(id)}
@@ -2586,6 +2591,7 @@ export function ProgramSpreadsheetReport({ programId }: { programId: ProgramRepo
               centerSummary={centerSummary}
               deliveryDetailsRows={deliveryDetailsRows}
               implSummary={implSummary}
+              cooperativePayments={cooperativePayments}
               milkAsOfMonth={milkAsOfMonth}
               setMilkAsOfMonth={setMilkAsOfMonth}
               milkAsOfYear={milkAsOfYear}
