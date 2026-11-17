@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useCallback, Fragment, type CSSProperties } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Printer, Download, Filter, Search, RotateCcw, Table, BarChart2, Layers, Building2, FileSpreadsheet, CircleDollarSign, ClipboardList, MapPinned, FileDown } from 'lucide-react'
+import { fetchAllRows } from '@/lib/supabase-paginate'
 import { SBFP_DATA_ENCODER_COLUMNS } from '@/lib/encoder-selects'
 import { dbYearToSchoolYear, FALLBACK_SCHOOL_YEARS, schoolYearToDbYear } from '@/lib/sbfp-year'
 import {
@@ -20,7 +21,6 @@ import {
   senateMetricsForRow,
   addSbfpSenateMetrics,
   emptySbfpSenateMetrics,
-  officialSbfpStatusLabel,
   effectiveSbfpRowStatus,
   isRowCompletedOnOrBefore,
   resolveCompletionCutoffIso,
@@ -42,8 +42,9 @@ import {
 } from '@/lib/sbfp-dropoff-sync'
 import { excludeAuxSbfp, isSbfpAuxRow, SBFP_HIRING_TYPE, SBFP_PPMP_TYPE, toHiringRow, toPpmpRow } from '@/lib/sbfp-aux'
 import { sbfpCenterAliases, sbfpNavCenter } from '@/lib/center-aliases'
-import { milkTypeLabel } from '@/lib/sbfp-pack-price'
-import { rawMilkUtilizedLiters, packsForMonth } from '@/lib/sbfp-raw-milk'
+import { SbfpGraphModeToggle, SbfpReportGraphView } from '@/components/SbfpReportGraphs'
+import { cdpGraphData, milkProcurementRows } from '@/lib/sbfp-report-graphs'
+import { overallGraphs, implementationGraphs, distributionGraphs, contractGraphs, majorGraphs, milkGraphs, cdpGraphs } from '@/lib/sbfp-report-chart-models'
 import { SbfpAiAgent } from '@/components/SbfpAiAgent'
 import { CooperativePaymentSummary } from '@/components/CooperativePaymentSummary'
 import { summarizeCooperativePayments } from '@/lib/cooperative-payments'
@@ -168,6 +169,11 @@ export default function SbfpSpreadsheetReport() {
   const [filterMonth, setFilterMonth]       = useState('')
   const [searchQuery, setSearchQuery]       = useState('')
   const [activeTab, setActiveTab]           = useState<ReportTab>('master')
+  const [graphMode, setGraphMode] = useState(false)
+  const [graphStatusMeasure, setGraphStatusMeasure] = useState<'sdoCount' | 'contractAmt' | 'undeliveredL'>('sdoCount')
+  const [cdpMeasure, setCdpMeasure] = useState<'packs' | 'beneficiaries' | 'coops' | 'rawMilkLiters' | 'contractAmount'>('packs')
+  const [majorIndicator, setMajorIndicator] = useState<MajorIndicatorKey>('milk_packs')
+  const [majorGraphYear, setMajorGraphYear] = useState('')
   const [progressReportMonth, setProgressReportMonth] = useState(currentYearMonth)
   const [progressPpmp, setProgressPpmp] = useState<ProgressPpmpRow[]>([])
   const [progressHiring, setProgressHiring] = useState<ProgressHiringRow[]>([])
@@ -194,7 +200,8 @@ export default function SbfpSpreadsheetReport() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   }
   const [majorAsOf, setMajorAsOf] = useState<string>(todayIso())
-  const [majorRecords, setMajorRecords] = useState<any[]>([])
+  const [majorRecords, setMajorRecords] = useState<SbfpReportSourceRow[]>([])
+  const [majorError, setMajorError] = useState<string | null>(null)
   const [majorLoading, setMajorLoading] = useState(false)
   const [majorTargets, setMajorTargets] = useState<MajorTargetsBySchoolYear>({})
   const [showHistTargets, setShowHistTargets] = useState(false)
@@ -214,18 +221,19 @@ export default function SbfpSpreadsheetReport() {
 
   useEffect(() => {
     if (activeTab !== 'major_accomplishments') return
+    let cancelled = false
     setMajorLoading(true)
-    let q = supabase.from('sbfp_data').select(SBFP_DATA_ENCODER_COLUMNS).in('year', liveDbYears)
-    if (lockedCenter) {
-      const aliases = sbfpCenterAliases(lockedCenter)
-      if (aliases.length === 1) q = q.eq('center', aliases[0])
-      else if (aliases.length > 1) q = q.in('center', aliases)
-    }
-    q.then(({ data, error }) => {
-      if (error) console.error('Error fetching Major Accomplishments data:', error)
-      setMajorRecords(excludeAuxSbfp((data || []) as any[]))
-      setMajorLoading(false)
-    })
+    setMajorError(null)
+    fetchAllRows<SbfpReportSourceRow>(() => {
+      let query = supabase.from('sbfp_data').select(SBFP_DATA_ENCODER_COLUMNS).in('year', liveDbYears).order('id')
+      if (lockedCenter) query = query.in('center', sbfpCenterAliases(lockedCenter))
+      return query
+    }).then(data => {
+      if (!cancelled) setMajorRecords(excludeAuxSbfp(data))
+    }).catch((error: unknown) => {
+      if (!cancelled) setMajorError(error instanceof Error ? error.message : 'Could not load live accomplishments.')
+    }).finally(() => { if (!cancelled) setMajorLoading(false) })
+    return () => { cancelled = true }
   }, [activeTab, liveDbYears, lockedCenter])
 
   useEffect(() => {
@@ -827,6 +835,7 @@ export default function SbfpSpreadsheetReport() {
   }, [filteredRecords, rowSenate, statusCutoffOpts])
 
   const cooperativePayments = useMemo(() => summarizeCooperativePayments(filteredRecords), [filteredRecords])
+  const graphScope = `SBFP SY ${dbYearToSchoolYear(Number(year))} | Center: ${lockedCenter || filterCenter} | Region: ${filterRegion} | Status: ${filterStatus} | Delivery month: ${filterMonth || 'all'} | Delivered packs: ${effectiveDeliveredRange.from} through ${effectiveDeliveredRange.to} | Search: ${searchQuery || 'none'} | Include excluded: ${includeExcluded ? 'yes' : 'no'}. Payments include all recorded payment dates for selected contracts.`
 
   type GroupAgg = SbfpSenateMetrics & {
     sdoCount: number
@@ -1574,64 +1583,9 @@ export default function SbfpSpreadsheetReport() {
         'MILK PACKS', 'CONTRACT AMOUNT'
       ]
 
-      const getCluster = (region: string) => {
-        const r = (region || '').toUpperCase().trim();
-        if (['NCR', 'NATIONAL CAPITAL REGION', 'CAR', 'CORDILLERA ADMINISTRATIVE REGION', 'I', 'II', 'III', 'IV-A', 'IVA', 'CALABARZON', 'IV-B', 'IVB', 'MIMAROPA', 'V'].includes(r)) return 'Luzon';
-        if (['VI', 'VII', 'VIII', 'NIR'].includes(r)) return 'Visayas';
-        if (['IX', 'X', 'XI', 'XII', 'XIII', 'CARAGA', 'BARMM'].includes(r)) return 'Mindanao';
-        return 'Unknown';
-      }
-
-      const clusterMap: Record<string, { regions: Set<string>; beneficiaries: number; coops: Set<string>; rawMilkLiters: number; packs: number; contractAmount: number }> = {
-        Luzon: { regions: new Set(), beneficiaries: 0, coops: new Set(), rawMilkLiters: 0, packs: 0, contractAmount: 0 },
-        Visayas: { regions: new Set(), beneficiaries: 0, coops: new Set(), rawMilkLiters: 0, packs: 0, contractAmount: 0 },
-        Mindanao: { regions: new Set(), beneficiaries: 0, coops: new Set(), rawMilkLiters: 0, packs: 0, contractAmount: 0 },
-        Unknown: { regions: new Set(), beneficiaries: 0, coops: new Set(), rawMilkLiters: 0, packs: 0, contractAmount: 0 },
-      }
-
-      const hasDeliveryInRange = (r: any) => {
-        const start = Math.min(mcFromMonth, mcToMonth)
-        const end = Math.max(mcFromMonth, mcToMonth)
-        for (let m = start; m <= end; m++) {
-          if (packsForMonth(r as any, m, { year: Number(year) }) > 0) return true
-        }
-        return false
-      }
-
-      filteredRecords.forEach(r => {
-        if (!hasDeliveryInRange(r)) return
-        const cluster = getCluster(r.region || '')
-        const group = clusterMap[cluster]
-        if (!group) return
-        if (r.region && r.region !== '—') group.regions.add(r.region)
-        group.beneficiaries += (Number(r.beneficiaries_pm) || 0) + (Number(r.beneficiaries_sm) || 0) + (Number(r.beneficiaries_cm) || 0)
-        if (r.supplier_id) group.coops.add(String(r.supplier_id))
-        const start = Math.min(mcFromMonth, mcToMonth)
-        const end = Math.max(mcFromMonth, mcToMonth)
-        let deliveredPacksInRange = 0
-        for (let m = start; m <= end; m++) {
-          deliveredPacksInRange += packsForMonth(r as any, m, { year: Number(year) })
-        }
-        
-        group.packs += deliveredPacksInRange
-        group.rawMilkLiters += rawMilkUtilizedLiters(deliveredPacksInRange)
-        group.contractAmount += (Number(r.contract_amount) || 0)
-      })
-
-      const clusterRows = ['Luzon', 'Visayas', 'Mindanao']
-        .filter(c => clusterMap[c].packs > 0 || clusterMap[c].contractAmount > 0)
-        .map(c => {
-          const g = clusterMap[c]
-          return [
-            c,
-            Array.from(g.regions).join(', '),
-            g.beneficiaries,
-            g.coops.size,
-            g.rawMilkLiters,
-            g.packs,
-            g.contractAmount
-          ]
-        })
+      const clusterRows = cdpGraphData(filteredRecords, Number(year), mcFromMonth, mcToMonth).clusters
+        .filter(row => row.packs > 0 || row.contractAmount > 0)
+        .map(row => [row.cluster, row.region, row.beneficiaries, row.coops, row.rawMilkLiters, row.packs, row.contractAmount])
 
       rows = clusterRows
       rows.push([
@@ -1918,6 +1872,7 @@ export default function SbfpSpreadsheetReport() {
 
           {/* Right Action Buttons */}
           <div className="narrative-report-actions" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <SbfpGraphModeToggle enabled={graphMode} onChange={setGraphMode} />
             <SbfpAiAgent
               filteredRecords={filteredRecords}
               getViewForSource={getViewForSource}
@@ -2417,6 +2372,10 @@ export default function SbfpSpreadsheetReport() {
             )}
 
             {activeTab === 'senate_perf' && (
+              <SbfpReportGraphView key="senate_perf"
+                  enabled={graphMode}
+                  graphs={overallGraphs(stats)}
+                  scope={graphScope} >
               <div style={{ background: '#ffffff', borderRadius: 8, border: '1px solid #cbd5e1', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', maxWidth: 920 }}>
                 <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
                   <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#1e293b' }}>
@@ -2453,9 +2412,15 @@ export default function SbfpSpreadsheetReport() {
                   </tbody>
                 </table>
               </div>
+              </SbfpReportGraphView>
             )}
 
             {activeTab === 'senate_status' && (
+              <SbfpReportGraphView key="senate_status"
+                  enabled={graphMode}
+                  graphs={implementationGraphs(cooperativePayments, SBFP_PROCUREMENT_STATUSES.map(label => ({ label, ...implSummary.buckets[label] })), graphStatusMeasure)}
+                  scope={graphScope}
+                  controls={<label>Implementation measure<select value={graphStatusMeasure} onChange={event => setGraphStatusMeasure(event.target.value as typeof graphStatusMeasure)}><option value="sdoCount">SDOs</option><option value="contractAmt">Contracted amount</option><option value="undeliveredL">Undelivered liters</option></select></label>}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 <CooperativePaymentSummary summary={cooperativePayments} year={year} />
                 <div style={{ background: '#ffffff', borderRadius: 8, border: '1px solid #cbd5e1', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
@@ -2572,9 +2537,14 @@ export default function SbfpSpreadsheetReport() {
                   </div>
                 </div>
               </div>
+              </SbfpReportGraphView>
             )}
 
             {activeTab === 'senate_region' && (
+              <SbfpReportGraphView key="senate_region"
+                  enabled={graphMode}
+                  graphs={distributionGraphs(regionalSummary.map(row => ({ ...row, label: row.region })), 'region')}
+                  scope={graphScope} >
               <div style={{ background: '#ffffff', borderRadius: 8, border: '1px solid #cbd5e1', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
                 <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
                   <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#1e293b' }}>
@@ -2635,9 +2605,14 @@ export default function SbfpSpreadsheetReport() {
                   </table>
                 </div>
               </div>
+              </SbfpReportGraphView>
             )}
 
             {activeTab === 'senate_center' && (
+              <SbfpReportGraphView key="senate_center"
+                  enabled={graphMode}
+                  graphs={distributionGraphs(centerSummary.map(row => ({ ...row, label: row.center })), 'center')}
+                  scope={graphScope} >
               <div style={{ background: '#ffffff', borderRadius: 8, border: '1px solid #cbd5e1', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
                 <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
                   <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#1e293b' }}>
@@ -2698,9 +2673,14 @@ export default function SbfpSpreadsheetReport() {
                   </table>
                 </div>
               </div>
+              </SbfpReportGraphView>
             )}
 
             {activeTab === 'senate_delivery' && (
+              <SbfpReportGraphView key="senate_delivery"
+                  enabled={graphMode}
+                  graphs={contractGraphs(deliveryDetailsRows)}
+                  scope={graphScope} >
               <div style={{ background: '#ffffff', borderRadius: 8, border: '1px solid #cbd5e1', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
                 <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
                   <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#1e293b' }}>
@@ -2774,69 +2754,16 @@ export default function SbfpSpreadsheetReport() {
                   </table>
                 </div>
               </div>
+              </SbfpReportGraphView>
             )}
 
             {activeTab === 'milk_procurement' && (() => {
-              // Build per-SDO rows for Table 1
-              const milkRows = filteredRecords.map((r, idx) => {
-                const view = getViewForSource(r.id)
-                const packsToDeliver = view?.packs_to_deliver ?? Number(r.packs_to_deliver) ?? 0
+              const milkRows = milkProcurementRows(filteredRecords, getViewForSource, Number(year), milkAsOfMonth, Number(milkAsOfYear))
+                .map(row => ({ ...row, meta: sdoIndexMeta[row.index] }))
 
-                let deliveredPacks = 0
-                if (milkAsOfMonth === 'ALL') {
-                  deliveredPacks = view?.delivered_packs ?? Number(r.packs_delivered) ?? 0
-                } else {
-                  // Cumulative sum up-to-and-including the selected month.
-                  // School Year sequence: Aug(8) → Sep(9) → … → Dec(12) → Jan(1) → … → Jul(7)
-                  // Use packsForMonth (not readMonthlyMap) so delivery_snapshots are included.
-                  const asOfMonthSequence = [8, 9, 10, 11, 12, 1, 2, 3, 4, 5, 6, 7]
-                  const dbYearNum = Number(year)
-                  const targetMonth = parseInt(milkAsOfMonth, 10)
-                  const targetIdx = asOfMonthSequence.indexOf(targetMonth)
-                  if (targetIdx !== -1 && Number.isFinite(dbYearNum)) {
-                    const useSnapshots = Array.isArray((r as any).delivery_snapshots) &&
-                      (r as any).delivery_snapshots.some((s: any) => Number(s?.packs) > 0)
-                    const monthOpts = {
-                      year: dbYearNum,
-                      preferSnapshotsOverMonthly: useSnapshots,
-                    }
-                    for (let i = 0; i <= targetIdx; i++) {
-                      deliveredPacks += packsForMonth(r as any, asOfMonthSequence[i], monthOpts)
-                    }
-                  } else {
-                    deliveredPacks = view?.delivered_packs ?? Number(r.packs_delivered) ?? 0
-                  }
-                }
-
-                const balance = Math.max(0, packsToDeliver - deliveredPacks)
-                const milkTypeStr = view?.milk_type ?? milkTypeLabel(r.milk_type ?? '')
-                const packLabel = milkTypeStr
-                  ? `${packsToDeliver.toLocaleString()} (${milkTypeStr})`
-                  : packsToDeliver.toLocaleString()
-
-                // Build delivery schedule string from delivery_start / delivery_end
-                const fmt = (d: string | null | undefined) => {
-                  if (!d) return ''
-                  const dt = new Date(d)
-                  if (isNaN(dt.getTime())) return d
-                  return dt.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-                }
-                const startFmt = fmt(r.delivery_start)
-                const endFmt = fmt(r.delivery_end)
-                let schedule = ''
-                if (startFmt && endFmt && startFmt !== endFmt) schedule = `${startFmt} to ${endFmt}`
-                else if (startFmt) schedule = startFmt
-                else if (endFmt) schedule = endFmt
-
-                const status = officialSbfpStatusLabel(view?.procurement_status ?? r.procurement_status)
-                // sdoIndexMeta[idx]: { number, rowSpan } — rowSpan>0 = first row of SDO group
-                const meta = sdoIndexMeta[idx]
-                return { meta, r, status, packsToDeliver, packLabel, schedule, deliveredPacks, balance }
-              })
-
-              const totalPacksToDeliver = milkRows.reduce((s, x) => s + x.packsToDeliver, 0)
-              const totalDelivered = milkRows.reduce((s, x) => s + x.deliveredPacks, 0)
-              const totalBalance = milkRows.reduce((s, x) => s + x.balance, 0)
+              const totalPacksToDeliver = milkRows.reduce((s, x) => s + (x.packsToDeliver ?? 0), 0)
+              const totalDelivered = milkRows.reduce((s, x) => s + (x.deliveredPacks ?? 0), 0)
+              const totalBalance = milkRows.reduce((s, x) => s + (x.balance ?? 0), 0)
 
               // Compute the "as of" label for the table header default (when ALL is selected)
               const now = new Date()
@@ -2862,13 +2789,18 @@ export default function SbfpSpreadsheetReport() {
               const yearOpts = Array.from({ length: 5 }, (_, i) => String(Number(year) - 1 + i))
 
               return (
+                <SbfpReportGraphView key="milk_procurement"
+                  enabled={graphMode}
+                  graphs={milkGraphs(milkRows)}
+                  scope={`${graphScope} | Tab 6 cutoff: ${milkAsOfMonth === 'ALL' ? 'all saved deliveries' : `${milkAsOfYear}-${milkAsOfMonth}`}. Monthly maps use their stored data year; no next-year months are inferred.`}
+                  controls={<> <label>Delivered as of<select value={milkAsOfMonth} onChange={event => setMilkAsOfMonth(event.target.value)}>{monthOpts.map(option => <option key={option.val} value={option.val}>{option.label}</option>)}</select></label>{milkAsOfMonth !== "ALL" && <label>Cutoff year<select value={milkAsOfYear} onChange={event => setMilkAsOfYear(event.target.value)}>{yearOpts.map(value => <option key={value}>{value}</option>)}</select></label>}</>}>
                 <div style={{ background: '#ffffff', borderRadius: 8, border: '1px solid #cbd5e1', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
                   <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
                     <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#1e293b' }}>
                       Table 1. Milk Procurement Status
                     </h3>
                     <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 2 }}>
-                      Per-SDO delivery schedule, packs contracted, packs delivered, and remaining balance.
+                      Per-SDO delivery schedule, packs contracted, packs delivered, and remaining balance. Totals include known values only. {milkRows.filter(row => row.packsToDeliver == null || row.deliveredPacks == null).length} contract(s) have unavailable pack values.
                     </div>
                   </div>
                   <div style={{ overflowX: 'auto' }}>
@@ -2948,10 +2880,10 @@ export default function SbfpSpreadsheetReport() {
                                 {schedule || '—'}
                               </td>
                               <td style={{ border: cellBorder, padding: '6px 10px', textAlign: 'right', color: '#047857', fontWeight: 600 }}>
-                                {deliveredPacks > 0 ? deliveredPacks.toLocaleString() : ''}
+                                {deliveredPacks == null ? 'Unavailable' : deliveredPacks.toLocaleString()}
                               </td>
-                              <td style={{ border: cellBorder, padding: '6px 10px', textAlign: 'right', fontWeight: 700, color: balance > 0 ? '#b45309' : '#15803d' }}>
-                                {balance > 0 ? balance.toLocaleString() : '0'}
+                              <td style={{ border: cellBorder, padding: '6px 10px', textAlign: 'right', fontWeight: 700, color: balance != null && balance > 0 ? '#b45309' : '#15803d' }}>
+                                {balance == null ? 'Unavailable' : balance.toLocaleString()}
                               </td>
                             </tr>
                           )
@@ -2969,6 +2901,7 @@ export default function SbfpSpreadsheetReport() {
                     </table>
                   </div>
                 </div>
+                </SbfpReportGraphView>
               )
             })()}
 
@@ -2989,64 +2922,7 @@ export default function SbfpSpreadsheetReport() {
               ]
               const toMonthLabel = ALL_MONTHS.find(m => m.val === mcToMonth)?.label.toUpperCase() || 'AUGUST'
 
-              const getCluster = (region: string) => {
-                const r = (region || '').toUpperCase().trim();
-                if (['NCR', 'NATIONAL CAPITAL REGION', 'CAR', 'CORDILLERA ADMINISTRATIVE REGION', 'I', 'II', 'III', 'IV-A', 'IVA', 'CALABARZON', 'IV-B', 'IVB', 'MIMAROPA', 'V'].includes(r)) return 'Luzon';
-                if (['VI', 'VII', 'VIII', 'NIR'].includes(r)) return 'Visayas';
-                if (['IX', 'X', 'XI', 'XII', 'XIII', 'CARAGA', 'BARMM'].includes(r)) return 'Mindanao';
-                return 'Unknown';
-              }
-
-              const clusterMap: Record<string, { regions: Set<string>; beneficiaries: number; coops: Set<string>; rawMilkLiters: number; packs: number; contractAmount: number }> = {
-                Luzon: { regions: new Set(), beneficiaries: 0, coops: new Set(), rawMilkLiters: 0, packs: 0, contractAmount: 0 },
-                Visayas: { regions: new Set(), beneficiaries: 0, coops: new Set(), rawMilkLiters: 0, packs: 0, contractAmount: 0 },
-                Mindanao: { regions: new Set(), beneficiaries: 0, coops: new Set(), rawMilkLiters: 0, packs: 0, contractAmount: 0 },
-                Unknown: { regions: new Set(), beneficiaries: 0, coops: new Set(), rawMilkLiters: 0, packs: 0, contractAmount: 0 },
-              }
-
-              const hasDeliveryInRange = (r: any) => {
-                const start = Math.min(mcFromMonth, mcToMonth)
-                const end = Math.max(mcFromMonth, mcToMonth)
-                for (let m = start; m <= end; m++) {
-                  if (packsForMonth(r as any, m, { year: Number(year) }) > 0) return true
-                }
-                return false
-              }
-
-              filteredRecords.forEach(r => {
-                if (!hasDeliveryInRange(r)) return
-                const cluster = getCluster(r.region || '')
-                const group = clusterMap[cluster]
-                if (!group) return
-                if (r.region && r.region !== '—') group.regions.add(r.region)
-                group.beneficiaries += (Number(r.beneficiaries_pm) || 0) + (Number(r.beneficiaries_sm) || 0) + (Number(r.beneficiaries_cm) || 0)
-                if (r.supplier_id) group.coops.add(String(r.supplier_id))
-                const start = Math.min(mcFromMonth, mcToMonth)
-                const end = Math.max(mcFromMonth, mcToMonth)
-                let deliveredPacksInRange = 0
-                for (let m = start; m <= end; m++) {
-                  deliveredPacksInRange += packsForMonth(r as any, m, { year: Number(year) })
-                }
-                
-                group.packs += deliveredPacksInRange
-                group.rawMilkLiters += rawMilkUtilizedLiters(deliveredPacksInRange)
-                group.contractAmount += (Number(r.contract_amount) || 0)
-              })
-
-              const clusterRows = ['Luzon', 'Visayas', 'Mindanao']
-                // Only filter out rows if there's no data at all to match image closely
-                .map(c => {
-                  const g = clusterMap[c]
-                  return {
-                    cluster: c,
-                    region: Array.from(g.regions).join(', '),
-                    beneficiaries: g.beneficiaries,
-                    coops: g.coops.size,
-                    rawMilkLiters: g.rawMilkLiters,
-                    packs: g.packs,
-                    contractAmount: g.contractAmount
-                  }
-                })
+              const { clusters: clusterRows, trend } = cdpGraphData(filteredRecords, Number(year), mcFromMonth, mcToMonth)
 
               const totalBeneficiaries = clusterRows.reduce((s, r) => s + r.beneficiaries, 0)
               const totalCoops = clusterRows.reduce((s, r) => s + r.coops, 0)
@@ -3055,6 +2931,11 @@ export default function SbfpSpreadsheetReport() {
               const totalContractAmount = clusterRows.reduce((s, r) => s + r.contractAmount, 0)
 
               return (
+                <SbfpReportGraphView key="monthly_cummulated"
+                  enabled={graphMode}
+                  graphs={cdpGraphs({ clusters: clusterRows, trend }, cdpMeasure)}
+                  scope={`${graphScope} | CDP calendar-year data: ${year}, months ${Math.min(mcFromMonth, mcToMonth)} through ${Math.max(mcFromMonth, mcToMonth)}.`}
+                  controls={<> <label>From month<select value={mcFromMonth} onChange={event => setMcFromMonth(Number(event.target.value))}>{ALL_MONTHS.map(option => <option key={option.val} value={option.val}>{option.label}</option>)}</select></label><label>To month<select value={mcToMonth} onChange={event => setMcToMonth(Number(event.target.value))}>{ALL_MONTHS.map(option => <option key={option.val} value={option.val}>{option.label}</option>)}</select></label><label>Cluster measure<select value={cdpMeasure} onChange={event => setCdpMeasure(event.target.value as typeof cdpMeasure)}><option value="packs">Delivered packs</option><option value="beneficiaries">Beneficiaries</option><option value="coops">Cooperatives</option><option value="rawMilkLiters">Raw milk used (L)</option><option value="contractAmount">Contracted amount</option></select></label></>}>
                 <div style={{ background: '#ffffff', borderRadius: 8, border: '1px solid #cbd5e1', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
                   <div style={{ padding: '1rem', background: '#f8fafc', borderBottom: '1px solid #cbd5e1', display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
                     <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -3127,6 +3008,7 @@ export default function SbfpSpreadsheetReport() {
                     </table>
                   </div>
                 </div>
+                </SbfpReportGraphView>
               )
             })()}
 
@@ -3182,6 +3064,11 @@ export default function SbfpSpreadsheetReport() {
               }
 
               return (
+                <SbfpReportGraphView key="major_accomplishments"
+                  enabled={graphMode}
+                  graphs={majorLoading || majorError ? [] : majorGraphs(liveMajor, majorTargets, majorIndicator, majorGraphYear || schoolYearLabel(Number(year)), !lockedCenter)}
+                  scope={`Major Accomplishments | ${lockedCenter ? `Assigned center: ${lockedCenter}; national targets unavailable for comparison` : 'National figures across all centers'} | Live cutoff: ${majorAsOf}. This tab uses its own dataset and cutoff; main report region, status, month, search and center selections do not filter national historical figures.`}
+                  controls={<> <label>Accomplishment as of<input type="date" value={majorAsOf} onChange={event => event.target.value && setMajorAsOf(event.target.value)} /></label><label>Indicator<select value={majorIndicator} onChange={event => setMajorIndicator(event.target.value as MajorIndicatorKey)}>{MAJOR_INDICATORS.map(item => <option key={item.key} value={item.key}>{item.label}</option>)}</select></label><label>Attainment school year<select value={majorGraphYear || schoolYearLabel(Number(year))} onChange={event => setMajorGraphYear(event.target.value)}>{[...(!lockedCenter ? HISTORICAL_SCHOOL_YEARS : []), ...liveSchoolYears].map(value => <option key={value}>{value}</option>)}</select></label>{majorLoading && <p role="status">Loading live accomplishments...</p>}{majorError && <p role="alert">Could not load live accomplishments. Refresh to retry; no complete chart is available.</p>}</>}>
                 <div className="major-acc" style={{ background: '#fff', borderRadius: 12, border: '1px solid #cbd5e1', overflow: 'hidden', boxShadow: '0 4px 16px rgba(0,38,84,0.08)' }}>
                   <div className="no-print" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
                     <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569' }}>Accomplishment As Of:</label>
@@ -3267,6 +3154,7 @@ export default function SbfpSpreadsheetReport() {
                     </div>
                   </div>
                 </div>
+                </SbfpReportGraphView>
               )
             })()}
 
