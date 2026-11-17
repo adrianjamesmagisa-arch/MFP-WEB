@@ -12,22 +12,31 @@ export interface ReportGraphRow {
   start?: string
   end?: string
   status?: string
+  color?: string
 }
 export interface ReportGraph {
   title: string
   unit: GraphUnit
-  kind?: 'bars' | 'columns' | 'line' | 'timeline'
+  kind?: 'bars' | 'columns' | 'line' | 'timeline' | 'donut' | 'waffle' | 'heatmap' | 'dumbbell' | 'scatter' | 'lollipop' | 'dot' | 'step'
   stacked?: boolean
   filterable?: boolean
   rows: ReportGraphRow[]
-  series: Array<{ key: string; label: string; color: string }>
+  series: Array<{ key: string; label: string; color: string; dotsOnly?: boolean; dashed?: boolean }>
   note?: string
   reference?: number
+  center?: { value: string; label: string }
+  unavailableReason?: string
 }
 export const GRAPH_COLORS = { paid: '#15803d', remaining: '#d97706', delivered: '#2563eb', pending: '#94a3b8', extra: '#9333ea', adjustment: '#be123c' }
 
 export function graphNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+/** Recorded observations exclude blanks/nulls; a recorded numeric zero remains meaningful. */
+export function recordedMonthlyMap(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return readMonthlyMap(Object.fromEntries(Object.entries(value).filter(([, amount]) =>
+    typeof amount === 'number' || typeof amount === 'string' && amount.trim() !== '')))
 }
 export function graphFormat(value: number | null, unit: GraphUnit) {
   return value == null ? 'Unavailable' : `${unit === 'PHP' ? '\u20b1' : ''}${value.toLocaleString('en-PH', { maximumFractionDigits: unit === '%' ? 1 : unit === 'PHP' ? 2 : 3 })}${unit === 'PHP' || unit === 'count' ? '' : ` ${unit}`}`
@@ -117,7 +126,7 @@ export function cdpGraphData(records: SbfpReportSourceRow[], year: number, from:
     for (const row of records) {
       const cluster = sbfpCluster(row.region)
       coverage[cluster].total++
-      const monthly = readMonthlyMap(row.monthly_packs_delivered)
+      const monthly = recordedMonthlyMap(row.monthly_packs_delivered)
       const sameYearSnapshots = (row.delivery_snapshots || []).filter(snapshot => toDateInputValue(snapshot.date).startsWith(`${year}-`))
       const hasDated = sameYearSnapshots.some(snapshot => Number(toDateInputValue(snapshot.date).slice(5, 7)) === month)
       if (!Object.hasOwn(monthly, String(month)) && !hasDated) continue

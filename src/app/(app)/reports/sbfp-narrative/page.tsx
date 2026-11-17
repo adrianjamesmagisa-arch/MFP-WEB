@@ -2791,7 +2791,9 @@ export default function SbfpSpreadsheetReport() {
               return (
                 <SbfpReportGraphView key="milk_procurement"
                   enabled={graphMode}
-                  graphs={milkGraphs(milkRows)}
+                  graphs={milkGraphs(milkRows, { year: Number(year),
+                    from: milkAsOfMonth === 'ALL' ? effectiveDeliveredRange.from : `${year}-08-01`,
+                    to: milkAsOfMonth === 'ALL' ? effectiveDeliveredRange.to : new Date(Date.UTC(Number(milkAsOfYear), Number(milkAsOfMonth), 0)).toISOString().slice(0, 10) })}
                   scope={`${graphScope} | Tab 6 cutoff: ${milkAsOfMonth === 'ALL' ? 'all saved deliveries' : `${milkAsOfYear}-${milkAsOfMonth}`}. Monthly maps use their stored data year; no next-year months are inferred.`}
                   controls={<> <label>Delivered as of<select value={milkAsOfMonth} onChange={event => setMilkAsOfMonth(event.target.value)}>{monthOpts.map(option => <option key={option.val} value={option.val}>{option.label}</option>)}</select></label>{milkAsOfMonth !== "ALL" && <label>Cutoff year<select value={milkAsOfYear} onChange={event => setMilkAsOfYear(event.target.value)}>{yearOpts.map(value => <option key={value}>{value}</option>)}</select></label>}</>}>
                 <div style={{ background: '#ffffff', borderRadius: 8, border: '1px solid #cbd5e1', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
@@ -3066,7 +3068,7 @@ export default function SbfpSpreadsheetReport() {
               return (
                 <SbfpReportGraphView key="major_accomplishments"
                   enabled={graphMode}
-                  graphs={majorLoading || majorError ? [] : majorGraphs(liveMajor, majorTargets, majorIndicator, majorGraphYear || schoolYearLabel(Number(year)), !lockedCenter)}
+                  graphs={majorLoading || majorError ? [] : majorGraphs(liveMajor, majorTargets, majorIndicator, majorGraphYear || schoolYearLabel(Number(year)), !lockedCenter, majorAsOf)}
                   scope={`Major Accomplishments | ${lockedCenter ? `Assigned center: ${lockedCenter}; national targets unavailable for comparison` : 'National figures across all centers'} | Live cutoff: ${majorAsOf}. This tab uses its own dataset and cutoff; main report region, status, month, search and center selections do not filter national historical figures.`}
                   controls={<> <label>Accomplishment as of<input type="date" value={majorAsOf} onChange={event => event.target.value && setMajorAsOf(event.target.value)} /></label><label>Indicator<select value={majorIndicator} onChange={event => setMajorIndicator(event.target.value as MajorIndicatorKey)}>{MAJOR_INDICATORS.map(item => <option key={item.key} value={item.key}>{item.label}</option>)}</select></label><label>Attainment school year<select value={majorGraphYear || schoolYearLabel(Number(year))} onChange={event => setMajorGraphYear(event.target.value)}>{[...(!lockedCenter ? HISTORICAL_SCHOOL_YEARS : []), ...liveSchoolYears].map(value => <option key={value}>{value}</option>)}</select></label>{majorLoading && <p role="status">Loading live accomplishments...</p>}{majorError && <p role="alert">Could not load live accomplishments. Refresh to retry; no complete chart is available.</p>}</>}>
                 <div className="major-acc" style={{ background: '#fff', borderRadius: 12, border: '1px solid #cbd5e1', overflow: 'hidden', boxShadow: '0 4px 16px rgba(0,38,84,0.08)' }}>

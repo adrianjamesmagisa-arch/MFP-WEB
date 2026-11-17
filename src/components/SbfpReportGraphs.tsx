@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from 'react'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { graphFormat, type ReportGraph, type ReportGraphRow } from '@/lib/sbfp-report-graphs'
+import { SbfpReportChartVisual } from './SbfpReportChartVisuals'
 import styles from './SbfpReportGraphs.module.css'
 
 export function SbfpGraphModeToggle({ enabled, onChange }: { enabled: boolean; onChange: (enabled: boolean) => void }) {
@@ -32,9 +33,11 @@ function statusColor(status?: string) {
 }
 
 function GraphCard({ graph, rows }: { graph: ReportGraph; rows: ReportGraphRow[] }) {
-  const data = rows.map(row => ({ ...row.values, id: row.id, label: row.label }))
-  const chartHeight = graph.kind === 'line' || graph.kind === 'columns' ? 330 : Math.max(200, rows.length * Math.max(42, graph.stacked ? 42 : graph.series.length * 18) + 70)
-  const visibleSeries = graph.series.filter(series => graph.kind === 'line' || rows.some(row => row.values[series.key] != null && row.values[series.key] !== 0) || graph.series.length === 1)
+  const data = rows.map(row => ({ ...row.values, id: row.id, label: row.label, timestamp: graph.kind === 'step' ? Date.parse(row.label) : undefined }))
+  const line = graph.kind === 'line' || graph.kind === 'step'
+  const custom = ['donut', 'waffle', 'heatmap', 'dumbbell', 'scatter', 'lollipop', 'dot'].includes(graph.kind || '')
+  const chartHeight = line || graph.kind === 'columns' ? 330 : Math.max(200, rows.length * Math.max(42, graph.stacked ? 42 : graph.series.length * 18) + 70)
+  const visibleSeries = graph.series.filter(series => line || rows.some(row => row.values[series.key] != null && row.values[series.key] !== 0) || graph.series.length === 1)
   // Keep zero-valued primary series when the entire result is explicitly zero.
   const series = visibleSeries.length ? visibleSeries : graph.series.slice(0, 2)
   const tooltip = ({ label, payload }: { label?: ReactNode; payload?: ReadonlyArray<{ payload?: { id?: string } }> }) => {
@@ -43,16 +46,20 @@ function GraphCard({ graph, rows }: { graph: ReportGraph; rows: ReportGraphRow[]
       {Object.entries(row.details || {}).map(([key, value]) => <div key={key}>{key}: {value}</div>)}</div> : null
   }
   return <section className={styles.card} aria-label={graph.title}>
-    <h3>{graph.title}</h3><p className={styles.unit}>Unit: {graph.unit} · {rows.length} {graph.kind === 'line' ? 'month(s)' : 'row(s)'}</p>
+    <h3>{graph.title}</h3><p className={styles.unit}>Unit: {graph.unit} · {rows.length} {line ? 'observation period(s)' : 'row(s)'}</p>
     {rows.length === 1 && graph.kind !== 'timeline' && <p className={styles.note}>{Object.entries(rows[0].details || {}).map(([key, value]) => `${key}: ${value}`).join(' · ')}</p>}
     {rows.length > 0 && graph.kind !== 'timeline' && !rows.some(row => Object.values(row.values).some(value => value != null)) && <p role="status">No known values for this comparison. Missing figures remain unavailable.</p>}
     {!rows.length ? <p role="status">No records match this selection.</p> : graph.kind === 'timeline' ? <Timeline rows={rows} /> : <>
+      {graph.unavailableReason ? <p role="status">{graph.unavailableReason}</p> : custom ? <SbfpReportChartVisual graph={graph} rows={rows} /> : <>
       <div className={styles.legend}>{series.map(item => <span key={item.key}><i style={{ background: item.color }} />{item.label}</span>)}</div>
       <div className={styles.chartScroll}><div style={{ height: chartHeight, minWidth: 520 }}>
         <ResponsiveContainer width="100%" height="100%">
-          {graph.kind === 'line' ? <LineChart data={data} margin={{ top: 18, right: 25, bottom: 20, left: 20 }} accessibilityLayer>
-            <CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="label" /><YAxis domain={[0, 'auto']} tickFormatter={value => compact(Number(value))} /><Tooltip content={tooltip} />
-            {series.map(item => <Line key={item.key} dataKey={item.key} name={item.label} stroke={item.color} connectNulls={false} isAnimationActive={false} strokeWidth={2.5} dot={{ r: 4 }} />)}
+          {line ? <LineChart data={data} margin={{ top: 18, right: 25, bottom: 20, left: 20 }} accessibilityLayer>
+            <CartesianGrid strokeDasharray="3 3" />
+            {graph.kind === 'step' ? <XAxis dataKey="timestamp" type="number" scale="time" domain={['dataMin', 'dataMax']} tickFormatter={value => new Date(Number(value)).toISOString().slice(0, 10)} /> : <XAxis dataKey="label" />}
+            <YAxis domain={[0, 'auto']} tickFormatter={value => compact(Number(value))} /><Tooltip content={tooltip} />
+            {graph.reference != null && <ReferenceLine y={graph.reference} ifOverflow="extendDomain" stroke="#475569" strokeDasharray="4 4" label="Current target" />}
+            {series.map(item => <Line key={item.key} type={graph.kind === 'step' ? 'stepAfter' : 'linear'} dataKey={item.key} name={item.label} stroke={item.dotsOnly ? 'transparent' : item.color} strokeDasharray={item.dashed ? '5 4' : undefined} connectNulls={false} isAnimationActive={false} strokeWidth={2.5} dot={{ r: 4, fill: item.color, stroke: item.color }} />)}
           </LineChart> : <BarChart data={data} layout={graph.kind === 'columns' ? 'horizontal' : 'vertical'} stackOffset="sign" margin={{ top: 12, right: 70, bottom: 15, left: 8 }} accessibilityLayer>
             <CartesianGrid strokeDasharray="3 3" />
             {graph.kind === 'columns' ? <><XAxis type="category" dataKey="label" /><YAxis type="number" domain={[0, 'auto']} width={85} tickFormatter={value => `${graph.unit === 'PHP' ? '₱' : ''}${compact(Number(value))}`} /></> : <>
@@ -63,7 +70,7 @@ function GraphCard({ graph, rows }: { graph: ReportGraph; rows: ReportGraphRow[]
             {series.map(item => <Bar key={item.key} dataKey={item.key} name={item.label} fill={item.color} stackId={graph.stacked ? 'progress' : undefined} isAnimationActive={false} maxBarSize={25} />)}
           </BarChart>}
         </ResponsiveContainer>
-      </div></div>
+      </div></div></>}
       <details className={styles.exact}><summary>Exact chart values ({graph.unit})</summary><ul>{rows.map(row => <li key={row.id}><strong>{row.label}</strong>: {graph.series.map(item => `${item.label}: ${graphFormat(row.values[item.key], graph.unit)}`).join(' · ')}{Object.entries(row.details || {}).map(([key, value]) => ` · ${key}: ${value}`).join('')}</li>)}</ul></details>
     </>}
     {graph.note && <p className={styles.note}>{graph.note}</p>}
@@ -97,7 +104,7 @@ export function SbfpReportGraphView({ enabled, graphs, scope, children, controls
     </div>
     <div className={styles.grid}>{graphs.map((graph, index) => {
       const rows = selectedRows(graph)
-      return <div key={index}>{graph.filterable && <p className={styles.scope}>Showing {rows.length} of {graph.rows.length} rows. Visible bars are a subset; summary cards retain the full report totals. Sort: {sort}; search: {search || 'none'}.</p>}<GraphCard graph={graph} rows={rows} /></div>
+      return <div key={index}>{graph.filterable && <p className={styles.scope}>Showing {rows.length} of {graph.rows.length} rows. Visible chart rows are a subset; summary cards retain the full report totals. Sort: {sort}; search: {search || 'none'}.</p>}<GraphCard graph={graph} rows={rows} /></div>
     })}</div>
     {showData && <div className="no-print">{children}</div>}
   </div>
