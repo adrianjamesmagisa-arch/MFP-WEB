@@ -1138,6 +1138,7 @@ export default function SbfpSpreadsheetReport() {
         'Region',
         'SDOs',
         'Beneficiaries',
+        'Delivered packs',
         'Contracted value (PHP)',
         'Contracted volume (L)',
         'Amount paid (PHP)',
@@ -1150,6 +1151,7 @@ export default function SbfpSpreadsheetReport() {
           reg.region,
           reg.sdoCount,
           reg.beneficiaries,
+          reg.deliveredPacks,
           reg.contractAmt,
           reg.contractedL,
           reg.paidAmt,
@@ -1162,6 +1164,7 @@ export default function SbfpSpreadsheetReport() {
           'TOTAL',
           stats.count,
           stats.totalBeneficiaries,
+          stats.totalDelivered,
           stats.totalContractAmt,
           stats.totalContractedL,
           stats.totalPaid,
@@ -1179,6 +1182,7 @@ export default function SbfpSpreadsheetReport() {
         'Center',
         'SDOs',
         'Beneficiaries',
+        'Delivered packs',
         'Contracted value (PHP)',
         'Contracted volume (L)',
         'Amount paid (PHP)',
@@ -1191,6 +1195,7 @@ export default function SbfpSpreadsheetReport() {
           c.center,
           c.sdoCount,
           c.beneficiaries,
+          c.deliveredPacks,
           c.contractAmt,
           c.contractedL,
           c.paidAmt,
@@ -1203,6 +1208,7 @@ export default function SbfpSpreadsheetReport() {
           'TOTAL',
           stats.count,
           stats.totalBeneficiaries,
+          stats.totalDelivered,
           stats.totalContractAmt,
           stats.totalContractedL,
           stats.totalPaid,
@@ -1603,43 +1609,43 @@ export default function SbfpSpreadsheetReport() {
       sheetName = 'Regional Distribution'
       filename = `sbfp_regional_distribution_${year}_${dateStr}.xlsx`
       headers = [
-        'Region', 'SDOs', 'Beneficiaries', 'Contracted value (PHP)', 'Contracted volume (L)',
+        'Region', 'SDOs', 'Beneficiaries', 'Delivered packs', 'Contracted value (PHP)', 'Contracted volume (L)',
         'Amount paid (PHP)', 'Delivered volume (L)', 'Value delivered (PHP)',
         'Delivery rate (%)', 'Disbursement rate (%)',
       ]
       rows = regionalSummary.map(reg => [
-        reg.region, reg.sdoCount, reg.beneficiaries, reg.contractAmt, reg.contractedL,
+        reg.region, reg.sdoCount, reg.beneficiaries, reg.deliveredPacks, reg.contractAmt, reg.contractedL,
         reg.paidAmt, reg.deliveredL, reg.valueDelivered,
         Number(reg.pctDelivered.toFixed(1)), Number(reg.pctDisbursed.toFixed(1)),
       ])
       rows.push([
-        'TOTAL', stats.count, stats.totalBeneficiaries, stats.totalContractAmt, stats.totalContractedL,
+        'TOTAL', stats.count, stats.totalBeneficiaries, stats.totalDelivered, stats.totalContractAmt, stats.totalContractedL,
         stats.totalPaid, stats.totalDeliveredL, stats.totalValueDelivered,
         Number(stats.pctDelivered.toFixed(1)),
         stats.totalContractAmt > 0 ? Number(((stats.totalPaid / stats.totalContractAmt) * 100).toFixed(1)) : 0,
       ])
-      colTypes = ['text','num','num','cur','dec','cur','dec','cur','pct','pct']
+      colTypes = ['text','num','num','num','cur','dec','cur','dec','cur','pct','pct']
 
     } else if (targetTab === 'senate_center') {
       sheetName = 'Center Distribution'
       filename = `sbfp_center_distribution_${year}_${dateStr}.xlsx`
       headers = [
-        'Center', 'SDOs', 'Beneficiaries', 'Contracted value (PHP)', 'Contracted volume (L)',
+        'Center', 'SDOs', 'Beneficiaries', 'Delivered packs', 'Contracted value (PHP)', 'Contracted volume (L)',
         'Amount paid (PHP)', 'Delivered volume (L)', 'Value delivered (PHP)',
         'Delivery rate (%)', 'Disbursement rate (%)',
       ]
       rows = centerSummary.map(c => [
-        c.center, c.sdoCount, c.beneficiaries, c.contractAmt, c.contractedL,
+        c.center, c.sdoCount, c.beneficiaries, c.deliveredPacks, c.contractAmt, c.contractedL,
         c.paidAmt, c.deliveredL, c.valueDelivered,
         Number(c.pctDelivered.toFixed(1)), Number(c.pctDisbursed.toFixed(1)),
       ])
       rows.push([
-        'TOTAL', stats.count, stats.totalBeneficiaries, stats.totalContractAmt, stats.totalContractedL,
+        'TOTAL', stats.count, stats.totalBeneficiaries, stats.totalDelivered, stats.totalContractAmt, stats.totalContractedL,
         stats.totalPaid, stats.totalDeliveredL, stats.totalValueDelivered,
         Number(stats.pctDelivered.toFixed(1)),
         stats.totalContractAmt > 0 ? Number(((stats.totalPaid / stats.totalContractAmt) * 100).toFixed(1)) : 0,
       ])
-      colTypes = ['text','num','num','cur','dec','cur','dec','cur','pct','pct']
+      colTypes = ['text','num','num','num','cur','dec','cur','dec','cur','pct','pct']
 
     } else if (targetTab === 'senate_delivery') {
       sheetName = 'Contract & Delivery'
@@ -2551,7 +2557,7 @@ export default function SbfpSpreadsheetReport() {
                     3. Regional Distribution
                   </h3>
                   <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 2 }}>
-                    Contracted vs actual per region. Volume: PM/CM packs ÷ 5; SM packs ÷ 5.5555555556. Delivery % uses packs; disbursement % uses payments ÷ contract.
+                    Contracted vs actual per region. Volume: PM/CM packs ÷ 5; SM packs ÷ 5.5555555556. Delivered packs follow the delivered date range (same as the Delivered Packs card). Delivery % uses packs; disbursement % uses payments ÷ contract.
                   </div>
                 </div>
                 <div style={{ overflowX: 'auto' }}>
@@ -2561,6 +2567,7 @@ export default function SbfpSpreadsheetReport() {
                         <th style={thC}>Region</th>
                         <th style={th}>SDOs</th>
                         <th style={th}>Beneficiaries</th>
+                        <th style={th}>Delivered packs</th>
                         <th style={th}>Contracted value</th>
                         <th style={th}>Contracted volume</th>
                         <th style={th}>Amount paid</th>
@@ -2576,6 +2583,7 @@ export default function SbfpSpreadsheetReport() {
                           <td style={{ ...tdC, fontWeight: 800 }}>{reg.region}</td>
                           <td style={tdR}>{reg.sdoCount}</td>
                           <td style={tdR}>{reg.beneficiaries.toLocaleString()}</td>
+                          <td style={tdR}>{reg.deliveredPacks.toLocaleString()}</td>
                           <td style={tdR}>{fmtPeso(reg.contractAmt)}</td>
                           <td style={tdR}>{fmtL(reg.contractedL)} L</td>
                           <td style={tdR}>{fmtPeso(reg.paidAmt)}</td>
@@ -2591,6 +2599,7 @@ export default function SbfpSpreadsheetReport() {
                         <td style={tdC}>TOTAL</td>
                         <td style={tdR}>{stats.count}</td>
                         <td style={tdR}>{stats.totalBeneficiaries.toLocaleString()}</td>
+                        <td style={tdR}>{stats.totalDelivered.toLocaleString()}</td>
                         <td style={tdR}>{fmtPeso(stats.totalContractAmt)}</td>
                         <td style={tdR}>{fmtL(stats.totalContractedL)} L</td>
                         <td style={tdR}>{fmtPeso(stats.totalPaid)}</td>
@@ -2629,6 +2638,7 @@ export default function SbfpSpreadsheetReport() {
                         <th style={{ ...th, textAlign: 'left' }}>Center</th>
                         <th style={th}>SDOs</th>
                         <th style={th}>Beneficiaries</th>
+                        <th style={th}>Delivered packs</th>
                         <th style={th}>Contracted value</th>
                         <th style={th}>Contracted volume</th>
                         <th style={th}>Amount paid</th>
@@ -2644,6 +2654,7 @@ export default function SbfpSpreadsheetReport() {
                           <td style={{ ...tdR, textAlign: 'left', fontWeight: 800 }}>{c.center}</td>
                           <td style={tdR}>{c.sdoCount}</td>
                           <td style={tdR}>{c.beneficiaries.toLocaleString()}</td>
+                          <td style={tdR}>{c.deliveredPacks.toLocaleString()}</td>
                           <td style={tdR}>{fmtPeso(c.contractAmt)}</td>
                           <td style={tdR}>{fmtL(c.contractedL)} L</td>
                           <td style={tdR}>{fmtPeso(c.paidAmt)}</td>
@@ -2659,6 +2670,7 @@ export default function SbfpSpreadsheetReport() {
                         <td style={{ ...tdR, textAlign: 'left' }}>TOTAL</td>
                         <td style={tdR}>{stats.count}</td>
                         <td style={tdR}>{stats.totalBeneficiaries.toLocaleString()}</td>
+                        <td style={tdR}>{stats.totalDelivered.toLocaleString()}</td>
                         <td style={tdR}>{fmtPeso(stats.totalContractAmt)}</td>
                         <td style={tdR}>{fmtL(stats.totalContractedL)} L</td>
                         <td style={tdR}>{fmtPeso(stats.totalPaid)}</td>
