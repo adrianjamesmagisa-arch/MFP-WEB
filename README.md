@@ -84,9 +84,28 @@ A typical request follows this path:
 │   │   │   ├── centers/               # PCC center directory and per-center views
 │   │   │   ├── dashboard/             # Program KPI overview dashboard
 │   │   │   ├── data/                  # Unified MFP masterlist CRUD and bulk edit
-│   │   │   ├── monitoring/[program]/  # DSWD, LDS, LGU, Others year/month hubs
-│   │   │   ├── reports/               # Factsheet, narrative, spreadsheet, summary reports
-│   │   │   ├── sbfp/                  # SBFP (DepEd) center, NHQ, overall, budget, activities
+│   │   │   ├── monitoring/[program]/  # Shared dynamic route for DSWD, LDS, LGU & Others
+│   │   │   │   ├── center/[center]/   # Per-center monitoring workspace & monthly hubs
+│   │   │   │   ├── overall/           # National / overall monitoring dashboard
+│   │   │   │   └── page.tsx           # Program index (serves /monitoring/dswd, /lds, /lgu, /others)
+│   │   │   ├── reports/               # Program-specific reports and exports
+│   │   │   │   ├── pimd/              # Cross-program PIMD Factsheet (/reports/pimd)
+│   │   │   │   ├── sbfp-narrative/    # SBFP (DepEd) 9-tab narrative & Senate report
+│   │   │   │   ├── dswd-narrative/    # DSWD spreadsheet & distribution report
+│   │   │   │   ├── lds-narrative/     # LDS spreadsheet & distribution report
+│   │   │   │   ├── lgu-narrative/     # LGU spreadsheet & distribution report
+│   │   │   │   ├── others-narrative/  # Others spreadsheet & distribution report
+│   │   │   │   ├── packs/             # Milk packs breakdown report
+│   │   │   │   ├── summary-deped/     # DepEd program summary report
+│   │   │   │   ├── summary-dswd/      # DSWD program summary report
+│   │   │   │   └── summary-lds/       # LDS program summary report
+│   │   │   ├── sbfp/                  # SBFP (DepEd) dedicated workspace & sub-modules
+│   │   │   │   ├── activities/        # SBFP implementation activities checklist
+│   │   │   │   ├── budget/            # SBFP budget & capacity allocation
+│   │   │   │   ├── center/[center]/   # Per-center SBFP school-year workspace
+│   │   │   │   ├── nhq/               # National Headquarters (NHQ) SBFP view
+│   │   │   │   ├── overall/           # Overall SBFP monitoring dashboard
+│   │   │   │   └── summary/           # SBFP summary view
 │   │   │   ├── sbfp-data/             # SBFP masterlist views
 │   │   │   └── users/                 # User account management (super_admin)
 │   │   ├── api/
@@ -124,6 +143,18 @@ A typical request follows this path:
 ├── postcss.config.mjs                 # PostCSS Tailwind v4 plugin configuration
 └── tsconfig.json                      # TypeScript compiler config (`@/*` -> `./src/*`)
 ```
+
+### Program route and data map
+
+`sbfp/` has its own dedicated folder because DepEd SBFP uses school years, SDOs, PPMP items, staff hiring, and `sbfp_*` tables, whereas DSWD, LDS, LGU, and Others share the Next.js dynamic route `src/app/(app)/monitoring/[program]/` (configured in [monitoring-programs.ts](src/lib/monitoring-programs.ts)):
+
+| Program       | Monitoring URL        | Report URL(s)                                                                                                                                                           | Backing Supabase tables                                                                              |
+| ------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| SBFP (DepEd)  | `/sbfp`, `/sbfp-data` | `/reports/sbfp-narrative`, `/reports/summary-deped` ([sbfp-narrative](src/app/%28app%29/reports/sbfp-narrative/page.tsx), [summary-deped](src/app/%28app%29/reports/summary-deped/page.tsx)) | `sbfp_data`, `sbfp_dropoff_points`, `sbfp_school_years`, `sbfp_budget`, `sbfp_ppmp_items`, `mfp_data` |
+| DSWD          | `/monitoring/dswd`    | `/reports/dswd-narrative`, `/reports/summary-dswd` ([dswd-narrative](src/app/%28app%29/reports/dswd-narrative/page.tsx), [summary-dswd](src/app/%28app%29/reports/summary-dswd/page.tsx))     | `mfp_program_procurement`, `mfp_program_dropoffs`, `mfp_program_months`, `mfp_data`                  |
+| LDS           | `/monitoring/lds`     | `/reports/lds-narrative`, `/reports/summary-lds` ([lds-narrative](src/app/%28app%29/reports/lds-narrative/page.tsx), [summary-lds](src/app/%28app%29/reports/summary-lds/page.tsx))         | `mfp_program_procurement`, `mfp_program_dropoffs`, `mfp_program_months`, `mfp_data`                  |
+| LGU           | `/monitoring/lgu`     | `/reports/lgu-narrative` ([lgu-narrative](src/app/%28app%29/reports/lgu-narrative/page.tsx))                                                                            | `mfp_program_procurement`, `mfp_program_dropoffs`, `mfp_program_months`, `mfp_data`                  |
+| Others        | `/monitoring/others`  | `/reports/others-narrative`, `/reports/pimd` ([others-narrative](src/app/%28app%29/reports/others-narrative/page.tsx), [pimd](src/app/%28app%29/reports/pimd/page.tsx))                       | `mfp_program_procurement`, `mfp_program_dropoffs`, `mfp_program_months`, `mfp_data`                  |
 
 ## Core features and modules
 
