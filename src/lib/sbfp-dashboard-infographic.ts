@@ -5,15 +5,18 @@
 
 import { excludeAuxSbfp } from '@/lib/sbfp-aux'
 import { uniqueSdoCountKey } from '@/lib/sbfp-dropoff-sync'
-import { finishedMilkLiters } from '@/lib/sbfp-pack-price'
 import { parseSnapshotDate } from '@/lib/sbfp-raw-milk'
 import {
+  addSbfpSenateMetrics,
   buildSdoHierarchyStatusMap,
   cumulativeDeliveredPacksOnOrBefore,
   effectivePacksToDeliver,
+  emptySbfpSenateMetrics,
   rowMatchesReportCenterFilter,
   sbfpRowVisibleInReportDefault,
+  senateMetricsForRow,
   type SbfpReportSourceRow,
+  type SbfpSenateMetrics,
 } from '@/lib/sbfp-report-sync'
 
 const REGION_ORDER: Record<string, number> = {
@@ -43,28 +46,6 @@ const REGION_ORDER: Record<string, number> = {
 
 export function regionSortKey(region: string): number {
   return REGION_ORDER[region?.trim().toUpperCase()] ?? 99
-}
-
-function startOfDayMs(d: Date): number {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
-}
-
-/** Sum payment entries whose date is on or before `asOfIso` (undated entries always count). */
-export function sumPaymentEntriesAsOf(entries: unknown, asOfIso: string): number {
-  if (!Array.isArray(entries)) return 0
-  const cutoff = parseSnapshotDate(asOfIso)
-  const cutoffMs = cutoff ? startOfDayMs(cutoff) : null
-  return entries.reduce((sum, entry) => {
-    if (!entry || typeof entry !== 'object') return sum
-    const rec = entry as { date?: unknown; amount?: unknown }
-    const amt = Number(rec.amount)
-    if (!Number.isFinite(amt)) return sum
-    if (cutoffMs != null && rec.date) {
-      const entryDate = parseSnapshotDate(rec.date)
-      if (entryDate && startOfDayMs(entryDate) > cutoffMs) return sum
-    }
-    return sum + amt
-  }, 0)
 }
 
 export function formatAsOfDateLabel(isoDate: string): string {
@@ -189,46 +170,26 @@ export function computeMilkComponentDashboard(
     }
   }
 
-  type RegionAcc = {
+  type RegionAcc = SbfpSenateMetrics & {
     region: string
     sdoKeys: Set<string>
     beneficiaries: number
-    deliveredPacks: number
-    targetPacks: number
-    contractAmt: number
-    contractedL: number
-    paidAmt: number
-    deliveredL: number
-    valueDelivered: number
   }
 
   const regionMap = new Map<string, RegionAcc>()
   const totalSdoKeys = new Set<string>()
   let totalBeneficiaries = 0
-  let totalDeliveredPacks = 0
-  let totalTargetPacks = 0
-  let totalContractAmt = 0
-  let totalContractedL = 0
-  let totalPaidAmt = 0
-  let totalDeliveredL = 0
-  let totalValueDelivered = 0
-  let totalRemainingContract = 0
+  let totalsMetrics = emptySbfpSenateMetrics()
 
   for (const r of visibleRows) {
     const region = r.region?.trim() || 'UNASSIGNED'
     let acc = regionMap.get(region)
     if (!acc) {
       acc = {
+        ...emptySbfpSenateMetrics(),
         region,
         sdoKeys: new Set<string>(),
         beneficiaries: 0,
-        deliveredPacks: 0,
-        targetPacks: 0,
-        contractAmt: 0,
-        contractedL: 0,
-        paidAmt: 0,
-        deliveredL: 0,
-        valueDelivered: 0,
       }
       regionMap.set(region, acc)
     }
@@ -247,47 +208,19 @@ export function computeMilkComponentDashboard(
     const targetPacks = Math.max(0, effectivePacksToDeliver(r))
     const deliveredPacks = Math.max(0, cumulativeDeliveredPacksOnOrBefore(r, asOfIso, dbYear))
     const contractAmt = Math.max(0, Number(r.contract_amount) || 0)
-    const paidAmt = sumPaymentEntriesAsOf(r.payment_entries, asOfIso)
 
-    const undeliveredPacks = Math.max(0, targetPacks - deliveredPacks)
-    const valueDelivered = targetPacks > 0 ? contractAmt * (deliveredPacks / targetPacks) : 0
-    const remainingContract =
-      targetPacks > 0 ? contractAmt * (undeliveredPacks / targetPacks) : contractAmt
-    const pesoFallback = contractAmt > 0 ? contractAmt : Number(r.amount) || 0
-    const volumeOpts = { milkType: r.milk_type, packUnitPrice: r.pack_unit_price }
-
-    const contractedL = finishedMilkLiters({
-      ...volumeOpts,
-      packs: targetPacks,
-      peso: pesoFallback,
-    })
-    const deliveredL = finishedMilkLiters({
-      ...volumeOpts,
-      packs: deliveredPacks,
-      peso:
-        valueDelivered > 0
-          ? valueDelivered
-          : pesoFallback * (targetPacks > 0 ? deliveredPacks / targetPacks : 0),
+    // Matches SBFP Report Tab 2 (Payment and Implementation Status) and Tab 3 (Regional Distribution).
+    const rowMetrics = senateMetricsForRow(r, {
+      packs_to_deliver: targetPacks,
+      delivered_packs: deliveredPacks,
+      contract_amount: contractAmt,
     })
 
     acc.beneficiaries += beneficiaries
-    acc.deliveredPacks += deliveredPacks
-    acc.targetPacks += targetPacks
-    acc.contractAmt += contractAmt
-    acc.contractedL += contractedL
-    acc.paidAmt += paidAmt
-    acc.deliveredL += deliveredL
-    acc.valueDelivered += valueDelivered
+    Object.assign(acc, addSbfpSenateMetrics(acc, rowMetrics))
 
     totalBeneficiaries += beneficiaries
-    totalDeliveredPacks += deliveredPacks
-    totalTargetPacks += targetPacks
-    totalContractAmt += contractAmt
-    totalContractedL += contractedL
-    totalPaidAmt += paidAmt
-    totalDeliveredL += deliveredL
-    totalValueDelivered += valueDelivered
-    totalRemainingContract += remainingContract
+    totalsMetrics = addSbfpSenateMetrics(totalsMetrics, rowMetrics)
   }
 
   const regions: MilkComponentRegionRow[] = Array.from(regionMap.values())
@@ -303,8 +236,8 @@ export function computeMilkComponentDashboard(
       paidAmt: acc.paidAmt,
       deliveredL: acc.deliveredL,
       valueDelivered: acc.valueDelivered,
-      pctDelivered: acc.targetPacks > 0 ? (acc.deliveredPacks / acc.targetPacks) * 100 : 0,
-      pctDisbursed: acc.contractAmt > 0 ? (acc.paidAmt / acc.contractAmt) * 100 : 0,
+      pctDelivered: acc.pctDelivered,
+      pctDisbursed: acc.pctDisbursed,
     }))
 
   return {
@@ -314,17 +247,17 @@ export function computeMilkComponentDashboard(
     totals: {
       sdoCount: totalSdoKeys.size,
       beneficiaries: totalBeneficiaries,
-      deliveredPacks: totalDeliveredPacks,
-      targetPacks: totalTargetPacks,
-      contractAmt: totalContractAmt,
-      contractedL: totalContractedL,
-      paidAmt: totalPaidAmt,
-      deliveredL: totalDeliveredL,
-      undeliveredL: Math.max(0, totalContractedL - totalDeliveredL),
-      valueDelivered: totalValueDelivered,
-      remainingContract: totalRemainingContract,
-      pctDelivered: totalTargetPacks > 0 ? (totalDeliveredPacks / totalTargetPacks) * 100 : 0,
-      pctDisbursed: totalContractAmt > 0 ? (totalPaidAmt / totalContractAmt) * 100 : 0,
+      deliveredPacks: totalsMetrics.deliveredPacks,
+      targetPacks: totalsMetrics.targetPacks,
+      contractAmt: totalsMetrics.contractAmt,
+      contractedL: totalsMetrics.contractedL,
+      paidAmt: totalsMetrics.paidAmt,
+      deliveredL: totalsMetrics.deliveredL,
+      undeliveredL: totalsMetrics.undeliveredL,
+      valueDelivered: totalsMetrics.valueDelivered,
+      remainingContract: totalsMetrics.remainingContract,
+      pctDelivered: totalsMetrics.pctDelivered,
+      pctDisbursed: totalsMetrics.pctDisbursed,
     },
     regions,
   }

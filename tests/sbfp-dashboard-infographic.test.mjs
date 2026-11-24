@@ -8,7 +8,6 @@ const {
   formatCompactLiters,
   formatCompactPeso,
   regionSortKey,
-  sumPaymentEntriesAsOf,
 } = load('src/lib/sbfp-dashboard-infographic.ts')
 
 test('formatAsOfDateLabel, compact liters, and compact peso formatters match infographic style', () => {
@@ -20,19 +19,7 @@ test('formatAsOfDateLabel, compact liters, and compact peso formatters match inf
   assert.equal(formatCompactPeso(850_000), '\u20B1850.0K')
 })
 
-test('sumPaymentEntriesAsOf includes entries on or before cutoff and undated entries', () => {
-  const entries = [
-    { date: '2026-10-15', amount: 5_000_000 },
-    { date: '2026-11-24', amount: 3_000_000 },
-    { date: '2026-12-01', amount: 4_000_000 },
-    { amount: 500_000 },
-  ]
-  assert.equal(sumPaymentEntriesAsOf(entries, '2026-10-31'), 5_500_000)
-  assert.equal(sumPaymentEntriesAsOf(entries, '2026-11-24'), 8_500_000)
-  assert.equal(sumPaymentEntriesAsOf(entries, '2026-12-31'), 12_500_000)
-})
-
-test('computeMilkComponentDashboard evaluates cumulative packs, payments, and SDO statuses as of cutoff date', () => {
+test('computeMilkComponentDashboard evaluates cumulative packs, Tab 2 payments, and SDO statuses as of cutoff date', () => {
   const rows = [
     {
       id: 'r1',
@@ -109,6 +96,7 @@ test('computeMilkComponentDashboard evaluates cumulative packs, payments, and SD
   ]
 
   // As of Oct 31 (past cutoff): Tarlac finished 60,000 packs & Leyte has future delivery_end -> Ongoing Delivery
+  // Payments match Tab 2 (all recorded payment entries on selected contracts, regardless of entry date)
   const oct = computeMilkComponentDashboard(rows, { dbYear: 2026, asOfIso: '2026-10-31', todayIso: '2026-11-24' })
   assert.equal(oct.asOfLabel, 'AS OF OCTOBER 31, 2026')
   assert.equal(oct.statusCounts.completed, 0)
@@ -116,7 +104,7 @@ test('computeMilkComponentDashboard evaluates cumulative packs, payments, and SD
   assert.equal(oct.statusCounts.forDelivery, 1)
   assert.equal(oct.totals.sdoCount, 3)
   assert.equal(oct.totals.deliveredPacks, 70_000)
-  assert.equal(oct.totals.paidAmt, 1_000_000)
+  assert.equal(oct.totals.paidAmt, 2_500_000)
   assert.deepEqual(oct.regions.map(r => r.region), ['CAR', 'III', 'VIII'])
 
   // As of Nov 24 (today): both Tarlac & Leyte count as Completed matching SBFP Report Tab 2

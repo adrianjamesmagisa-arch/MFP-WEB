@@ -705,7 +705,7 @@ export default function MilkComponentDashboardPage() {
               {/* 2. Top 3 KPI Cards */}
               <div
                 style={{
-                  padding: '8px 48px 0',
+                  padding: '12px 48px 0',
                   display: 'grid',
                   gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
                   gap: 18,
@@ -713,26 +713,26 @@ export default function MilkComponentDashboardPage() {
               >
                 {/* Card 1: Actual Volume Delivered */}
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                  <div style={{ position: 'relative', width: '100%', height: 200 }}>
+                  <div style={{ position: 'relative', width: '100%', height: 170 }}>
                     <div
                       style={{
                         position: 'absolute',
                         left: 0,
                         right: 0,
                         bottom: 0,
-                        height: 162,
+                        height: 124,
                         background: NAVY,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'flex-end',
-                        padding: '0 18px 0 156px',
+                        padding: '0 18px 0 152px',
                       }}
                     >
                       <FittedText
                         text={formatCompactLiters(totals.deliveredL, 3)}
-                        maxWidth={250}
-                        maxSize={96}
-                        minSize={46}
+                        maxWidth={254}
+                        maxSize={84}
+                        minSize={42}
                         weight={700}
                         color={GOLD}
                         align="center"
@@ -745,8 +745,8 @@ export default function MilkComponentDashboardPage() {
                         position: 'absolute',
                         left: 0,
                         bottom: 0,
-                        width: 150,
-                        height: 168,
+                        width: 146,
+                        height: 165,
                         objectFit: 'contain',
                         pointerEvents: 'none',
                       }}
@@ -769,26 +769,26 @@ export default function MilkComponentDashboardPage() {
 
                 {/* Card 2: Total Value of Milk Contracts */}
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                  <div style={{ position: 'relative', width: '100%', height: 200 }}>
+                  <div style={{ position: 'relative', width: '100%', height: 170 }}>
                     <div
                       style={{
                         position: 'absolute',
                         left: 0,
                         right: 0,
                         bottom: 0,
-                        height: 162,
+                        height: 124,
                         background: NAVY,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'flex-start',
-                        padding: '0 148px 0 16px',
+                        padding: '0 150px 0 16px',
                       }}
                     >
                       <FittedText
                         text={formatCompactPeso(totals.contractAmt)}
-                        maxWidth={260}
-                        maxSize={96}
-                        minSize={46}
+                        maxWidth={258}
+                        maxSize={84}
+                        minSize={42}
                         weight={700}
                         color={GOLD}
                         align="center"
@@ -801,8 +801,8 @@ export default function MilkComponentDashboardPage() {
                         position: 'absolute',
                         right: 0,
                         bottom: 0,
-                        width: 150,
-                        height: 158,
+                        width: 148,
+                        height: 155,
                         objectFit: 'contain',
                         pointerEvents: 'none',
                       }}
@@ -825,14 +825,14 @@ export default function MilkComponentDashboardPage() {
 
                 {/* Card 3: Total Contracted Volume */}
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                  <div style={{ position: 'relative', width: '100%', height: 200 }}>
+                  <div style={{ position: 'relative', width: '100%', height: 170 }}>
                     <div
                       style={{
                         position: 'absolute',
                         left: 0,
                         right: 0,
                         bottom: 0,
-                        height: 162,
+                        height: 124,
                         background: NAVY,
                         display: 'flex',
                         alignItems: 'center',
@@ -843,8 +843,8 @@ export default function MilkComponentDashboardPage() {
                       <FittedText
                         text={formatCompactLiters(totals.contractedL, 1)}
                         maxWidth={266}
-                        maxSize={96}
-                        minSize={46}
+                        maxSize={84}
+                        minSize={42}
                         weight={700}
                         color={GOLD}
                         align="center"
@@ -858,7 +858,7 @@ export default function MilkComponentDashboardPage() {
                         right: 0,
                         bottom: 0,
                         width: 139,
-                        height: 168,
+                        height: 165,
                         objectFit: 'contain',
                         pointerEvents: 'none',
                       }}
