@@ -30,6 +30,7 @@ const monitoringNavItems: { program: MonitoringProgramId; icon: typeof HeartHand
 
 const reportItems = [
   { href: '/reports/pimd',           icon: BarChart3,      label: 'Factsheet' },
+  { href: '/reports/sbfp-dashboard', icon: Milk,           label: 'Milk Component Dashboard' },
   { href: '/reports/sbfp-narrative', icon: FileBarChart2,  label: 'SBFP Report' },
   { href: '/reports/dswd-narrative', icon: FileBarChart2,  label: 'DSWD Report' },
   { href: '/reports/lds-narrative',  icon: Church,         label: 'LDS Report' },
