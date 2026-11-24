@@ -12,8 +12,9 @@ const {
 
 test('formatAsOfDateLabel, compact liters, and compact peso formatters match infographic style', () => {
   assert.equal(formatAsOfDateLabel('2026-11-24'), 'AS OF NOVEMBER 24, 2026')
-  assert.equal(formatCompactLiters(2_517_349.8, 3), '2.517M')
-  assert.equal(formatCompactLiters(7_809_035.3, 1), '7.8M')
+  assert.equal(formatCompactLiters(2_493_102.8, 2), '2.49M')
+  assert.equal(formatCompactLiters(7_977_128.3, 2), '7.97M')
+  assert.equal(formatCompactLiters(1_140_000, 2), '1.14M')
   assert.equal(formatCompactPeso(1_019_741_810), '\u20B11.0B')
   assert.equal(formatCompactPeso(349_403_024), '\u20B1349.4M')
   assert.equal(formatCompactPeso(850_000), '\u20B1850.0K')

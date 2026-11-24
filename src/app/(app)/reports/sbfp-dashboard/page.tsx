@@ -729,7 +729,7 @@ export default function MilkComponentDashboardPage() {
                       }}
                     >
                       <FittedText
-                        text={formatCompactLiters(totals.deliveredL, 3)}
+                        text={formatCompactLiters(totals.deliveredL, 2)}
                         maxWidth={254}
                         maxSize={84}
                         minSize={42}
@@ -841,7 +841,7 @@ export default function MilkComponentDashboardPage() {
                       }}
                     >
                       <FittedText
-                        text={formatCompactLiters(totals.contractedL, 1)}
+                        text={formatCompactLiters(totals.contractedL, 2)}
                         maxWidth={266}
                         maxSize={84}
                         minSize={42}

@@ -59,11 +59,20 @@ export function formatAsOfDateLabel(isoDate: string): string {
   return `AS OF ${label.toUpperCase()}`
 }
 
-export function formatCompactLiters(liters: number, decimals = 1): string {
+function truncateDecimals(value: number, decimals: number): string {
+  const d = Math.max(0, Math.floor(decimals))
+  const fixed = Math.abs(value).toFixed(d + 6)
+  const [intPart, fracPart = ''] = fixed.split('.')
+  const sign = value < 0 ? '-' : ''
+  if (d === 0) return `${sign}${intPart}`
+  return `${sign}${intPart}.${fracPart.slice(0, d).padEnd(d, '0')}`
+}
+
+export function formatCompactLiters(liters: number, decimals = 2): string {
   const n = Number(liters) || 0
-  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(decimals)}B`
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(decimals)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
+  if (n >= 1_000_000_000) return `${truncateDecimals(n / 1_000_000_000, decimals)}B`
+  if (n >= 1_000_000) return `${truncateDecimals(n / 1_000_000, decimals)}M`
+  if (n >= 1_000) return `${truncateDecimals(n / 1_000, 1)}K`
   return Math.round(n).toLocaleString('en-US')
 }
 
