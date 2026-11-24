@@ -76,21 +76,32 @@ export async function PUT(req: Request) {
   const nextFb = { ...fb.targets, [sy]: syTargets }
   let fbErr: unknown = null
   if (fb.id) {
-    const { error } = await supabaseAdmin.from('sbfp_data').update({ remarks: JSON.stringify(nextFb) }).eq('id', fb.id)
+    const { error } = await supabaseAdmin
+      .from('sbfp_data')
+      .update({ remarks: JSON.stringify(nextFb), updated_at: new Date().toISOString() })
+      .eq('id', fb.id)
     fbErr = error
   } else {
     const { error } = await supabaseAdmin.from('sbfp_data').insert({
       year: 0,
       center: '__CONFIG__',
+      region: '__CONFIG__',
       sdo: '—',
+      procurement_status: '__CONFIG__',
+      packs_to_deliver: 0,
+      packs_delivered: 0,
       milk_type: SBFP_MAJOR_TARGETS_TYPE,
+      delivery_schedule: '__CONFIG__',
+      include_in_report: false,
       remarks: JSON.stringify(nextFb),
     })
     fbErr = error
   }
 
   if (tblErr && fbErr) {
-    return NextResponse.json({ error: String((tblErr as { message?: string }).message || tblErr) }, { status: 500 })
+    const tblMsg = String((tblErr as { message?: string }).message || tblErr)
+    const fbMsg = String((fbErr as { message?: string }).message || fbErr)
+    return NextResponse.json({ error: `${tblMsg} (fallback failed: ${fbMsg})` }, { status: 500 })
   }
   return NextResponse.json({ targets: { ...all, [sy]: syTargets } })
 }
