@@ -7,6 +7,27 @@ import styles from './landing.module.css'
 export const metadata: Metadata = {
   title: 'DA-PCC MFP | Milk Feeding Program Monitoring',
   description: 'The DA-PCC Milk Feeding Program monitoring system. Manage SBFP, DSWD, LDS, and LGU procurement, school drop-offs, deliveries, and reports in one place.',
+  openGraph: {
+    type: 'website',
+    url: '/',
+    siteName: 'DA-PCC Milk Feeding Program',
+    title: 'DA-PCC Milk Feeding Program',
+    description: 'Operations Department · Philippine Carabao Center',
+    images: [
+      {
+        url: '/og-image.png',
+        width: 1200,
+        height: 630,
+        alt: 'DA-PCC Milk Feeding Program — Operations Department, Philippine Carabao Center',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'DA-PCC Milk Feeding Program',
+    description: 'Operations Department · Philippine Carabao Center',
+    images: ['/og-image.png'],
+  },
 }
 
 const programs = [
