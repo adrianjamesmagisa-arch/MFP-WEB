@@ -140,23 +140,34 @@ export type MilkComponentDashboardData = {
   regions: MilkComponentRegionRow[]
 }
 
+function localTodayIso(): string {
+  const now = new Date()
+  const y = now.getFullYear()
+  const m = String(now.getMonth() + 1).padStart(2, '0')
+  const d = String(now.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
 export function computeMilkComponentDashboard(
   rows: ReadonlyArray<SbfpReportSourceRow>,
   opts: {
     dbYear: number
     asOfIso: string
     lockedCenter?: string
+    todayIso?: string
   },
 ): MilkComponentDashboardData {
-  const { dbYear, asOfIso, lockedCenter } = opts
+  const { dbYear, asOfIso, lockedCenter, todayIso } = opts
+  const effectiveTodayIso = todayIso || localTodayIso()
   const visibleRows = excludeAuxSbfp(rows as SbfpReportSourceRow[]).filter(r => {
     if (!sbfpRowVisibleInReportDefault(r)) return false
     if (lockedCenter && !rowMatchesReportCenterFilter(r, lockedCenter)) return false
     return true
   })
 
+  const completionCutoffIso = asOfIso < effectiveTodayIso ? asOfIso : undefined
   const sdoStatusMap = buildSdoHierarchyStatusMap(visibleRows, {
-    completionCutoffIso: asOfIso,
+    completionCutoffIso,
     dbYear,
   })
 

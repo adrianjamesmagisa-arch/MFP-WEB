@@ -90,26 +90,42 @@ test('computeMilkComponentDashboard evaluates cumulative packs, payments, and SD
       packs_to_deliver: 50_000,
       contract_amount: 1_000_000,
     },
+    {
+      id: 'r3',
+      year: 2026,
+      center: 'VSU',
+      region: 'VIII',
+      sdo: 'Leyte',
+      procurement_status: 'Completed',
+      include_in_report: true,
+      milk_type: 'PM',
+      packs_to_deliver: 10_000,
+      packs_delivered: 10_000,
+      contract_amount: 250_000,
+      beneficiaries_pm: 500,
+      delivery_start: '2026-09-01',
+      delivery_end: '2026-12-15',
+    },
   ]
 
-  // As of Oct 31: Tarlac finished 60,000 packs (Nov 15 delivery hasn't happened yet) -> Ongoing Delivery
-  const oct = computeMilkComponentDashboard(rows, { dbYear: 2026, asOfIso: '2026-10-31' })
+  // As of Oct 31 (past cutoff): Tarlac finished 60,000 packs & Leyte has future delivery_end -> Ongoing Delivery
+  const oct = computeMilkComponentDashboard(rows, { dbYear: 2026, asOfIso: '2026-10-31', todayIso: '2026-11-24' })
   assert.equal(oct.asOfLabel, 'AS OF OCTOBER 31, 2026')
   assert.equal(oct.statusCounts.completed, 0)
-  assert.equal(oct.statusCounts.ongoingDelivery, 1)
+  assert.equal(oct.statusCounts.ongoingDelivery, 2)
   assert.equal(oct.statusCounts.forDelivery, 1)
-  assert.equal(oct.totals.sdoCount, 2)
-  assert.equal(oct.totals.deliveredPacks, 60_000)
+  assert.equal(oct.totals.sdoCount, 3)
+  assert.equal(oct.totals.deliveredPacks, 70_000)
   assert.equal(oct.totals.paidAmt, 1_000_000)
-  assert.deepEqual(oct.regions.map(r => r.region), ['CAR', 'III'])
+  assert.deepEqual(oct.regions.map(r => r.region), ['CAR', 'III', 'VIII'])
 
-  // As of Nov 24: Tarlac has all 100,000 packs + 2,500,000 payment -> Completed
-  const nov = computeMilkComponentDashboard(rows, { dbYear: 2026, asOfIso: '2026-11-24' })
-  assert.equal(nov.statusCounts.completed, 1)
+  // As of Nov 24 (today): both Tarlac & Leyte count as Completed matching SBFP Report Tab 2
+  const nov = computeMilkComponentDashboard(rows, { dbYear: 2026, asOfIso: '2026-11-24', todayIso: '2026-11-24' })
+  assert.equal(nov.statusCounts.completed, 2)
   assert.equal(nov.statusCounts.ongoingDelivery, 0)
-  assert.equal(nov.totals.deliveredPacks, 100_000)
+  assert.equal(nov.totals.deliveredPacks, 110_000)
   assert.equal(nov.totals.paidAmt, 2_500_000)
-  assert.equal(nov.totals.beneficiaries, 7_000)
+  assert.equal(nov.totals.beneficiaries, 7_500)
   assert.equal(
     nov.regions.reduce((s, r) => s + r.deliveredPacks, 0),
     nov.totals.deliveredPacks,
