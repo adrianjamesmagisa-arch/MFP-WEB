@@ -37,7 +37,7 @@ Versions below are recorded in [package.json](package.json) and [package-lock.js
 | Dates & formatting           | `date-fns` `4.4.0`                                                                                                                                |
 | AI analysis assistant        | Deterministic local KPI/column analytics ([mfp-analytics.ts](src/lib/mfp-analytics.ts), [mfp-column-analytics.ts](src/lib/mfp-column-analytics.ts)) with optional Groq chat explanations ([groq-chat.ts](src/lib/groq-chat.ts)) |
 | Tests & quality tools        | Node.js built-in test runner (`node:test`) with TypeScript VM loader ([load-typescript.mjs](tests/helpers/load-typescript.mjs)), ESLint `9.39.5` (`eslint-config-next` `16.3.0`), `tsc --noEmit` |
-| Deployment & process control | Self-hosted Linux GitHub Actions workflow ([deploy-pcc-server.yml](.github/workflows/deploy-pcc-server.yml)), Node.js 20+, PM2, Nginx ([pcc-server-bootstrap.sh](scripts/pcc-server-bootstrap.sh)) |
+| Deployment & process control | Vercel Git integration for `main` deployments; optional manual PCC server workflow ([deploy-pcc-server.yml](.github/workflows/deploy-pcc-server.yml), [pcc-server-bootstrap.sh](scripts/pcc-server-bootstrap.sh)) |
 
 See [package.json](package.json) for npm scripts and dependency declarations. A package being installed does not mean every module exercises all of its capabilities.
 
@@ -73,7 +73,7 @@ A typical request follows this path:
 .
 ├── .github/
 │   └── workflows/
-│       └── deploy-pcc-server.yml      # Self-hosted PM2/Nginx deploy workflow on main
+│       └── deploy-pcc-server.yml      # Manual workflow_dispatch deploy to PCC server (disabled on push)
 ├── docs/
 │   ├── adr/                           # Architectural Decision Records template and index
 │   └── agents/                        # Domain glossary, workflow, and issue-tracker rules
@@ -309,7 +309,7 @@ npm run start
 | `node --test tests/*.test.mjs`  | Run the Node.js unit/module test suite (see [Testing](#testing))      |
 | `npm run build`                 | Compile the production Next.js bundle and verify route builds         |
 
-[.github/workflows/deploy-pcc-server.yml](.github/workflows/deploy-pcc-server.yml) runs on pushes to `main` to deploy to the PCC server and does **not** run `npm run lint`, `npx tsc --noEmit`, or `node --test` automatically. Run those checks locally before committing or pushing.
+No GitHub Actions lint or unit-test workflow runs automatically on pull requests or pushes ([.github/workflows/deploy-pcc-server.yml](.github/workflows/deploy-pcc-server.yml) is manual-only via `workflow_dispatch`). Run `npm run lint`, `npx tsc --noEmit`, and `node --test` locally before committing or pushing.
 
 ## Testing
 
@@ -341,14 +341,14 @@ node --test tests/center-activity.test.mjs
 
 The repository supports two deployment patterns:
 
-1. **PCC Linux Server (PM2 + Nginx + Self-Hosted GitHub Actions Runner):**
-   - [scripts/pcc-server-bootstrap.sh](scripts/pcc-server-bootstrap.sh) provisions `/var/www/mfp-web`, Node.js 20, Nginx, and PM2 (`mfp-web`).
-   - [.github/workflows/deploy-pcc-server.yml](.github/workflows/deploy-pcc-server.yml) triggers on pushes to `main` (or manual `workflow_dispatch`) on a self-hosted runner labeled `[self-hosted, linux, pcc-mfp]`. It pulls `origin/main`, runs `npm ci` and `npm run build` using the server's `.env.local`, and restarts `mfp-web` via PM2.
-2. **Standard Node.js / Vercel-compatible hosting:**
-   - Configure `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, and optional `GROQ_API_KEY` at build and runtime, then run `npm ci && npm run build && npm run start`.
+1. **Vercel (active production deployment on `main`):**
+   - Configure `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, and optional `GROQ_API_KEY` in Vercel project settings; builds run `npm run build` automatically on pushes to `main`.
    - [src/app/api/health/route.ts](src/app/api/health/route.ts) exposes `GET /api/health` (`200 healthy`, `503 degraded`, `500 unhealthy`) for uptime monitors and reverse-proxy checks.
+2. **PCC Linux Server (optional / manual `workflow_dispatch`):**
+   - [scripts/pcc-server-bootstrap.sh](scripts/pcc-server-bootstrap.sh) provisions `/var/www/mfp-web`, Node.js 20, Nginx, and PM2 (`mfp-web`).
+   - [.github/workflows/deploy-pcc-server.yml](.github/workflows/deploy-pcc-server.yml) runs on manual `workflow_dispatch` only (automatic `push` triggers are disabled while Vercel serves `main`) and requires a self-hosted runner labeled `[self-hosted, linux, pcc-mfp]`.
 
-Database migrations in [supabase/migrations](supabase/migrations) are not executed automatically by the PM2 deployment workflow and must be applied separately to Supabase.
+Database migrations in [supabase/migrations](supabase/migrations) are not executed automatically by Vercel or the PM2 workflow and must be applied separately to Supabase.
 
 ## Troubleshooting
 
@@ -375,6 +375,6 @@ Database migrations in [supabase/migrations](supabase/migrations) are not execut
 
 - Foundational tables (`profiles`, `cooperatives`, and the initial `mfp_data` definition) pre-date [supabase/migrations](supabase/migrations), so provisioning a brand-new Supabase database from migrations alone requires recreating those base tables first. [supabase/pending](supabase/pending) also contains SQL files not yet folded into the main migration timeline.
 - Several tables use broad `authenticated` RLS policies combined with UI center scoping and service-role Route Handlers; verify server-side authorization and center ownership checks when adding new endpoints.
-- [.github/workflows/deploy-pcc-server.yml](.github/workflows/deploy-pcc-server.yml) deploys `main` directly without running `npm run lint`, `npx tsc --noEmit`, or `node --test` in CI, and does not apply database migrations automatically.
+- There is no automated CI test/lint workflow in `.github/workflows/` ([.github/workflows/deploy-pcc-server.yml](.github/workflows/deploy-pcc-server.yml) is manual-only via `workflow_dispatch`), and database migrations are not applied automatically on deploy.
 - `package.json` does not define a `"test"` script; tests are run via `node --test`, and there is no end-to-end browser suite against a live Supabase test instance.
 - Historical maintenance scripts in `scripts/` and legacy migration routes under `src/app/api/*migration*` reflect past data cleanups and environment setups; inspect them carefully before running, and supply any credentials via environment variables.

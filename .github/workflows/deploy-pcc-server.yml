@@ -1,6 +1,5 @@
-# Auto-deploy to PCC physical server (Vercel-style: push to main → build → restart).
-# Requires a GitHub Actions self-hosted runner installed ON the PCC server
-# with label: pcc-mfp
+# Manual deploy to PCC physical server (disabled on push while Vercel handles main).
+# Re-enable the push trigger when a GitHub Actions self-hosted runner with label `pcc-mfp` is online.
 #
 # IT setup once: https://docs.github.com/en/actions/hosting-your-own-runners
 # Then: Settings → Actions → Runners → New self-hosted runner (Linux)
@@ -8,9 +7,6 @@
 name: Deploy to PCC Server
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 concurrency:
