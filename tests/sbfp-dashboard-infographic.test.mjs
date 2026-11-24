@@ -8,6 +8,7 @@ const {
   formatCompactLiters,
   formatCompactPeso,
   regionSortKey,
+  sumPaymentEntriesAsOf,
 } = load('src/lib/sbfp-dashboard-infographic.ts')
 
 test('formatAsOfDateLabel, compact liters, and compact peso formatters match infographic style', () => {
@@ -20,7 +21,27 @@ test('formatAsOfDateLabel, compact liters, and compact peso formatters match inf
   assert.equal(formatCompactPeso(850_000), '\u20B1850.0K')
 })
 
-test('computeMilkComponentDashboard evaluates cumulative packs, Tab 2 payments, and SDO statuses as of cutoff date', () => {
+test('sumPaymentEntriesAsOf enforces strict cutoff across date formats and undated entries', () => {
+  assert.equal(sumPaymentEntriesAsOf(null, '2026-10-31'), 0)
+  assert.equal(sumPaymentEntriesAsOf([], '2026-10-31'), 0)
+
+  const entries = [
+    { date: 'Oct. 30, 2026', amount: 1_000_000 },
+    { date: '2026-10-31', amount: 500_000 },
+    { date: 'Nov. 15, 2026', amount: 250_000 },
+    { amount: 100_000 },
+    { date: 'unparseable-date', amount: 50_000 },
+  ]
+
+  // Exact cutoff date (2026-10-31) includes Oct 30, Oct 31, undated, and unparseable entries; excludes Nov 15
+  assert.equal(sumPaymentEntriesAsOf(entries, '2026-10-31'), 1_650_000)
+  // Later cutoff includes Nov 15 as well
+  assert.equal(sumPaymentEntriesAsOf(entries, '2026-11-24'), 1_900_000)
+  // Earlier cutoff excludes Oct 30 and later
+  assert.equal(sumPaymentEntriesAsOf(entries, '2026-10-29'), 150_000)
+})
+
+test('computeMilkComponentDashboard evaluates cumulative packs, date-filtered payments, and SDO statuses as of cutoff date', () => {
   const rows = [
     {
       id: 'r1',
@@ -93,11 +114,14 @@ test('computeMilkComponentDashboard evaluates cumulative packs, Tab 2 payments, 
       beneficiaries_pm: 500,
       delivery_start: '2026-09-01',
       delivery_end: '2026-12-15',
+      payment_entries: [
+        { date: '2026-12-05', amount: 250_000 },
+      ],
     },
   ]
 
   // As of Oct 31 (past cutoff): Tarlac finished 60,000 packs & Leyte has future delivery_end -> Ongoing Delivery
-  // Payments match Tab 2 (all recorded payment entries on selected contracts, regardless of entry date)
+  // Only payments on or before 2026-10-31 count
   const oct = computeMilkComponentDashboard(rows, { dbYear: 2026, asOfIso: '2026-10-31', todayIso: '2026-11-24' })
   assert.equal(oct.asOfLabel, 'AS OF OCTOBER 31, 2026')
   assert.equal(oct.statusCounts.completed, 0)
@@ -105,10 +129,13 @@ test('computeMilkComponentDashboard evaluates cumulative packs, Tab 2 payments, 
   assert.equal(oct.statusCounts.forDelivery, 1)
   assert.equal(oct.totals.sdoCount, 3)
   assert.equal(oct.totals.deliveredPacks, 70_000)
-  assert.equal(oct.totals.paidAmt, 2_500_000)
+  assert.equal(oct.totals.paidAmt, 1_000_000)
+  const octReg3 = oct.regions.find(r => r.region === 'III')
+  assert.equal(octReg3.paidAmt, 1_000_000)
+  assert.equal(octReg3.pctDisbursed, 40)
   assert.deepEqual(oct.regions.map(r => r.region), ['CAR', 'III', 'VIII'])
 
-  // As of Nov 24 (today): both Tarlac & Leyte count as Completed matching SBFP Report Tab 2
+  // As of Nov 24 (today): both Tarlac & Leyte count as Completed, and 2026-12-05 payment is still excluded
   const nov = computeMilkComponentDashboard(rows, { dbYear: 2026, asOfIso: '2026-11-24', todayIso: '2026-11-24' })
   assert.equal(nov.statusCounts.completed, 2)
   assert.equal(nov.statusCounts.ongoingDelivery, 0)
@@ -123,6 +150,10 @@ test('computeMilkComponentDashboard evaluates cumulative packs, Tab 2 payments, 
     nov.regions.reduce((s, r) => s + r.contractAmt, 0),
     nov.totals.contractAmt,
   )
+
+  // As of Dec 5: post-Nov-24 payment entry is included
+  const dec = computeMilkComponentDashboard(rows, { dbYear: 2026, asOfIso: '2026-12-05', todayIso: '2026-11-24' })
+  assert.equal(dec.totals.paidAmt, 2_750_000)
   assert.ok(regionSortKey('CAR') < regionSortKey('III'))
   assert.ok(regionSortKey('III') < regionSortKey('CARAGA'))
 })

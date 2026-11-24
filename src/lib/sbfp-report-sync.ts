@@ -668,6 +668,24 @@ export function sumPaymentEntries(entries: unknown): number {
   }, 0)
 }
 
+/** Sum payment entries whose date is on or before `asOfIso` (undated or unparseable entries always count). */
+export function sumPaymentEntriesAsOf(entries: unknown, asOfIso?: string | null): number {
+  if (!Array.isArray(entries)) return 0
+  const cutoff = asOfIso ? parseSnapshotDate(asOfIso) : null
+  const cutoffMs = cutoff ? startOfDay(cutoff).getTime() : null
+  return entries.reduce((sum, entry) => {
+    if (!entry || typeof entry !== 'object') return sum
+    const rec = entry as { date?: unknown; amount?: unknown }
+    const amt = Number(rec.amount)
+    if (!Number.isFinite(amt)) return sum
+    if (cutoffMs != null && rec.date) {
+      const entryDate = parseSnapshotDate(rec.date)
+      if (entryDate && startOfDay(entryDate).getTime() > cutoffMs) return sum
+    }
+    return sum + amt
+  }, 0)
+}
+
 export type SbfpSenateMetrics = {
   targetPacks: number
   deliveredPacks: number
@@ -714,12 +732,15 @@ export function senateMetricsForRow(
     packs_to_deliver: number
     delivered_packs: number
     contract_amount: number
+    payment_as_of_iso?: string | null
   },
 ): SbfpSenateMetrics {
   const targetPacks = Math.max(0, Number(overrides.packs_to_deliver) || 0)
   const deliveredPacks = Math.max(0, Number(overrides.delivered_packs) || 0)
   const contractAmt = Math.max(0, Number(overrides.contract_amount) || 0)
-  const paidAmt = sumPaymentEntries(row.payment_entries)
+  const paidAmt = overrides.payment_as_of_iso
+    ? sumPaymentEntriesAsOf(row.payment_entries, overrides.payment_as_of_iso)
+    : sumPaymentEntries(row.payment_entries)
   const undeliveredPacks = Math.max(0, targetPacks - deliveredPacks)
   const valueDelivered = targetPacks > 0 ? contractAmt * (deliveredPacks / targetPacks) : 0
   const remainingContract = targetPacks > 0 ? contractAmt * (undeliveredPacks / targetPacks) : contractAmt

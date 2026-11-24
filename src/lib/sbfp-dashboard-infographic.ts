@@ -15,9 +15,12 @@ import {
   rowMatchesReportCenterFilter,
   sbfpRowVisibleInReportDefault,
   senateMetricsForRow,
+  sumPaymentEntriesAsOf,
   type SbfpReportSourceRow,
   type SbfpSenateMetrics,
 } from '@/lib/sbfp-report-sync'
+
+export { sumPaymentEntriesAsOf }
 
 const REGION_ORDER: Record<string, number> = {
   CAR: 1,
@@ -218,11 +221,12 @@ export function computeMilkComponentDashboard(
     const deliveredPacks = Math.max(0, cumulativeDeliveredPacksOnOrBefore(r, asOfIso, dbYear))
     const contractAmt = Math.max(0, Number(r.contract_amount) || 0)
 
-    // Matches SBFP Report Tab 2 (Payment and Implementation Status) and Tab 3 (Regional Distribution).
+    // Payments are summed cumulatively on or before `asOfIso` (strict cutoff on all dates).
     const rowMetrics = senateMetricsForRow(r, {
       packs_to_deliver: targetPacks,
       delivered_packs: deliveredPacks,
       contract_amount: contractAmt,
+      payment_as_of_iso: asOfIso,
     })
 
     acc.beneficiaries += beneficiaries
