@@ -293,7 +293,7 @@ export default function MilkComponentDashboardPage() {
   const baseFilename = useCallback(() => {
     const sy = dbYearToSchoolYear(dbYearNum).replace(/\s+/g, '')
     const dateTag = asOfDate || todayLocalIso()
-    return `Milk_Component_Dashboard_${sy}_${dateTag}`
+    return `SBFP_Milk_Component_Dashboard_${sy}_${dateTag}`
   }, [dbYearNum, asOfDate])
 
   const handleDownloadPng = async () => {
@@ -653,8 +653,8 @@ export default function MilkComponentDashboardPage() {
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: '5rem', color: '#64748b', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
-          <Spinner size={36} label="Loading Milk Component Dashboard" />
-          <p style={{ fontWeight: 600 }}>Loading Milk Component Dashboard…</p>
+          <Spinner size={36} label="Loading SBFP Milk Component Dashboard" />
+          <p style={{ fontWeight: 600 }}>Loading SBFP Milk Component Dashboard…</p>
         </div>
       ) : (
         <div
