@@ -1,33 +1,55 @@
 import type { Metadata } from 'next'
+import { headers } from 'next/headers'
 import Image from 'next/image'
 import Link from 'next/link'
 import { ArrowDown, ArrowRight, Building2, ChartNoAxesCombined, ClipboardList, FileSpreadsheet, HeartHandshake, MapPin, Milk, School, ShieldCheck, Truck } from 'lucide-react'
 import styles from './landing.module.css'
 
-export const metadata: Metadata = {
-  title: 'DA-PCC MFP | Milk Feeding Program Monitoring',
-  description: 'The DA-PCC Milk Feeding Program monitoring system. Manage SBFP, DSWD, LDS, and LGU procurement, school drop-offs, deliveries, and reports in one place.',
-  openGraph: {
-    type: 'website',
-    url: '/',
-    siteName: 'DA-PCC Milk Feeding Program',
-    title: 'DA-PCC Milk Feeding Program',
-    description: 'Operations Department · Philippine Carabao Center',
-    images: [
-      {
-        url: '/og-image.png',
-        width: 1200,
-        height: 630,
-        alt: 'DA-PCC Milk Feeding Program — Operations Department, Philippine Carabao Center',
-      },
-    ],
-  },
-  twitter: {
-    card: 'summary_large_image',
-    title: 'DA-PCC Milk Feeding Program',
-    description: 'Operations Department · Philippine Carabao Center',
-    images: ['/og-image.png'],
-  },
+const FALLBACK_SITE_URL = 'https://mfp-web-beta.vercel.app'
+
+async function resolveOrigin(): Promise<string> {
+  try {
+    const h = await headers()
+    const rawHost = h.get('x-forwarded-host') || h.get('host') || ''
+    const host = rawHost.split(',')[0]?.trim()
+    if (!host) return FALLBACK_SITE_URL
+    const rawProto = h.get('x-forwarded-proto') || (host.startsWith('localhost') ? 'http' : 'https')
+    const proto = rawProto.split(',')[0]?.trim() || 'https'
+    return new URL(`${proto}://${host}`).origin
+  } catch {
+    return FALLBACK_SITE_URL
+  }
+}
+
+export async function generateMetadata(): Promise<Metadata> {
+  const origin = await resolveOrigin()
+  const ogImageUrl = `${origin}/og-image.png`
+  return {
+    metadataBase: new URL(origin),
+    title: 'DA-PCC MFP | Milk Feeding Program Monitoring',
+    description: 'The DA-PCC Milk Feeding Program monitoring system. Manage SBFP, DSWD, LDS, and LGU procurement, school drop-offs, deliveries, and reports in one place.',
+    openGraph: {
+      type: 'website',
+      url: origin,
+      siteName: 'DA-PCC Milk Feeding Program',
+      title: 'DA-PCC Milk Feeding Program',
+      description: 'Operations Department · Philippine Carabao Center',
+      images: [
+        {
+          url: ogImageUrl,
+          width: 1200,
+          height: 630,
+          alt: 'DA-PCC Milk Feeding Program — Operations Department, Philippine Carabao Center',
+        },
+      ],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: 'DA-PCC Milk Feeding Program',
+      description: 'Operations Department · Philippine Carabao Center',
+      images: [ogImageUrl],
+    },
+  }
 }
 
 const programs = [
