@@ -148,9 +148,10 @@ export function computeMilkComponentDashboard(
     asOfIso: string
     lockedCenter?: string
     todayIso?: string
+    statusCountsOverride?: MilkComponentStatusCounts | null
   },
 ): MilkComponentDashboardData {
-  const { dbYear, asOfIso, lockedCenter, todayIso } = opts
+  const { dbYear, asOfIso, lockedCenter, todayIso, statusCountsOverride } = opts
   const effectiveTodayIso = todayIso || localTodayIso()
   const visibleRows = excludeAuxSbfp(rows as SbfpReportSourceRow[]).filter(r => {
     if (!sbfpRowVisibleInReportDefault(r)) return false
@@ -158,27 +159,31 @@ export function computeMilkComponentDashboard(
     return true
   })
 
-  const completionCutoffIso = asOfIso < effectiveTodayIso ? asOfIso : undefined
-  const sdoStatusMap = buildSdoHierarchyStatusMap(visibleRows, {
-    completionCutoffIso,
-    dbYear,
-  })
+  const statusCounts: MilkComponentStatusCounts = statusCountsOverride
+    ? { ...statusCountsOverride }
+    : {
+        completed: 0,
+        ongoingDelivery: 0,
+        forDelivery: 0,
+        ongoingProcurement: 0,
+        forPreparation: 0,
+      }
+  if (!statusCountsOverride) {
+    const completionCutoffIso = asOfIso < effectiveTodayIso ? asOfIso : undefined
+    const sdoStatusMap = buildSdoHierarchyStatusMap(visibleRows, {
+      completionCutoffIso,
+      dbYear,
+    })
 
-  const statusCounts: MilkComponentStatusCounts = {
-    completed: 0,
-    ongoingDelivery: 0,
-    forDelivery: 0,
-    ongoingProcurement: 0,
-    forPreparation: 0,
-  }
-  for (const status of sdoStatusMap.values()) {
-    if (status === 'Completed') statusCounts.completed++
-    else if (status === 'Awarded (Ongoing Delivery)') statusCounts.ongoingDelivery++
-    else if (status === 'Awarded (For Delivery)') statusCounts.forDelivery++
-    else if (status === 'Ongoing Procurement' || status === 'Ongoing (For Award)') {
-      statusCounts.ongoingProcurement++
-    } else if (status === 'For Preparation') {
-      statusCounts.forPreparation++
+    for (const status of sdoStatusMap.values()) {
+      if (status === 'Completed') statusCounts.completed++
+      else if (status === 'Awarded (Ongoing Delivery)') statusCounts.ongoingDelivery++
+      else if (status === 'Awarded (For Delivery)') statusCounts.forDelivery++
+      else if (status === 'Ongoing Procurement' || status === 'Ongoing (For Award)') {
+        statusCounts.ongoingProcurement++
+      } else if (status === 'For Preparation') {
+        statusCounts.forPreparation++
+      }
     }
   }
 

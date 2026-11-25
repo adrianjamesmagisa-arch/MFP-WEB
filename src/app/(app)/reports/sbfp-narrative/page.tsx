@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback, Fragment, type CSSProperties } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Printer, Download, Filter, Search, RotateCcw, Table, BarChart2, Layers, Building2, FileSpreadsheet, CircleDollarSign, ClipboardList, MapPinned, FileDown } from 'lucide-react'
+import { Printer, Download, Filter, Search, RotateCcw, Table, BarChart2, Layers, Building2, FileSpreadsheet, CircleDollarSign, ClipboardList, MapPinned, FileDown, History } from 'lucide-react'
 import { fetchAllRows } from '@/lib/supabase-paginate'
 import { SBFP_DATA_ENCODER_COLUMNS } from '@/lib/encoder-selects'
 import { dbYearToSchoolYear, FALLBACK_SCHOOL_YEARS, schoolYearToDbYear } from '@/lib/sbfp-year'
@@ -47,7 +47,14 @@ import { cdpGraphData, milkProcurementRows } from '@/lib/sbfp-report-graphs'
 import { overallGraphs, implementationGraphs, distributionGraphs, contractGraphs, majorGraphs, milkGraphs, cdpGraphs } from '@/lib/sbfp-report-chart-models'
 import { SbfpAiAgent } from '@/components/SbfpAiAgent'
 import { CooperativePaymentSummary } from '@/components/CooperativePaymentSummary'
+import { SbfpStatusSnapshotModal } from '@/components/SbfpStatusSnapshotModal'
 import { summarizeCooperativePayments } from '@/lib/cooperative-payments'
+import {
+  computeLiveStatusBreakdown,
+  resolveStatusSnapshotForDate,
+  todayManilaIso,
+  type SbfpStatusSnapshotRow,
+} from '@/lib/sbfp-status-snapshots'
 import { buildSbfpProgressDocx, type ProgressFinanceRow, type ProgressHiringRow, type ProgressPpmpRow, type ProgressReportPayload } from '@/lib/sbfp-progress-docx'
 import {
   MAJOR_INDICATORS,
@@ -191,6 +198,10 @@ export default function SbfpSpreadsheetReport() {
   const [mcToMonth, setMcToMonth]           = useState<number>(8)
   /** When set, center filter is locked to the encoder's assigned center. */
   const [lockedCenter, setLockedCenter]     = useState<string | null>(null)
+  const [isSuperAdmin, setIsSuperAdmin]     = useState(false)
+  const [snapshots, setSnapshots]           = useState<SbfpStatusSnapshotRow[]>([])
+  const [snapshotsTableMissing, setSnapshotsTableMissing] = useState(false)
+  const [snapshotBackfillOpen, setSnapshotBackfillOpen] = useState(false)
 
   const supabase = createClient()
 
@@ -321,6 +332,9 @@ export default function SbfpSpreadsheetReport() {
         .select('role,center')
         .eq('id', user.id)
         .single()
+      if (profile?.role === 'super_admin') {
+        setIsSuperAdmin(true)
+      }
       if (profile?.role === 'encoder' && profile.center) {
         const label = reportCenterLabel(sbfpNavCenter(profile.center) || profile.center)
         setLockedCenter(label)
@@ -393,6 +407,22 @@ export default function SbfpSpreadsheetReport() {
           return (a.sdo || '').localeCompare(b.sdo || '')
         })
         setRecords(sorted)
+        const targetYear = parseInt(year, 10)
+        if (Number.isFinite(targetYear)) {
+          void fetch('/api/sbfp/status-snapshots/capture', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ year: targetYear }),
+          })
+            .then(res => (res.ok ? fetch(`/api/sbfp/status-snapshots?year=${targetYear}`) : null))
+            .then(res => (res && res.ok ? res.json() : null))
+            .then((json: { snapshots?: SbfpStatusSnapshotRow[]; tableMissing?: boolean } | null) => {
+              if (!json) return
+              setSnapshots(json.snapshots || [])
+              setSnapshotsTableMissing(Boolean(json.tableMissing))
+            })
+            .catch(() => {})
+        }
       }
       setLoading(false)
     })
@@ -428,6 +458,39 @@ export default function SbfpSpreadsheetReport() {
   const distinctStatuses = SBFP_STATUS_FILTER_OPTIONS.filter(o => o.value !== 'ALL')
 
   const dbYearNum = parseInt(year, 10)
+
+  const loadSnapshots = useCallback(async (targetYear: number) => {
+    if (!Number.isFinite(targetYear)) return
+    try {
+      const res = await fetch(`/api/sbfp/status-snapshots?year=${targetYear}`)
+      if (!res.ok) return
+      const json = (await res.json().catch(() => null)) as {
+        snapshots?: SbfpStatusSnapshotRow[]
+        tableMissing?: boolean
+      } | null
+      if (!json) return
+      setSnapshots(json.snapshots || [])
+      setSnapshotsTableMissing(Boolean(json.tableMissing))
+    } catch {
+      /* non-fatal */
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!Number.isFinite(dbYearNum)) return
+    let cancelled = false
+    void fetch(`/api/sbfp/status-snapshots?year=${dbYearNum}`)
+      .then(res => (res.ok ? res.json() : null))
+      .then((json: { snapshots?: SbfpStatusSnapshotRow[]; tableMissing?: boolean } | null) => {
+        if (cancelled || !json) return
+        setSnapshots(json.snapshots || [])
+        setSnapshotsTableMissing(Boolean(json.tableMissing))
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [dbYearNum])
 
   const currentMonthValue = currentYearMonth()
   const currentYearValue = Number(currentMonthValue.slice(0, 4))
@@ -1029,6 +1092,46 @@ export default function SbfpSpreadsheetReport() {
     return { buckets, reasons }
   }, [filteredRecords, rowSenate, sdoHierarchyStatusMap, statusCutoffOpts])
 
+  const todayManila = todayManilaIso()
+  const isTab2SnapshotEligible =
+    completionCutoffIso != null &&
+    completionCutoffIso < todayManila &&
+    filterRegion === 'ALL' &&
+    filterStatus === 'ALL' &&
+    !searchQuery.trim() &&
+    !includeExcluded
+
+  const tab2StatusSnapshot = useMemo(() => {
+    if (!isTab2SnapshotEligible || !completionCutoffIso || !Number.isFinite(dbYearNum)) return null
+    return resolveStatusSnapshotForDate(snapshots, {
+      year: dbYearNum,
+      asOfIso: completionCutoffIso,
+      center: lockedCenter || (filterCenter !== 'ALL' ? filterCenter : null),
+    })
+  }, [isTab2SnapshotEligible, completionCutoffIso, dbYearNum, snapshots, lockedCenter, filterCenter])
+
+  const tab2Buckets = useMemo(() => {
+    if (!tab2StatusSnapshot) return implSummary.buckets
+    const overridden = {} as typeof implSummary.buckets
+    for (const status of SBFP_PROCUREMENT_STATUSES) {
+      overridden[status] = {
+        ...implSummary.buckets[status],
+        sdoCount: tab2StatusSnapshot.tab2Counts[status],
+      }
+    }
+    return overridden
+  }, [implSummary.buckets, tab2StatusSnapshot])
+
+  const tab2TotalSdos = tab2StatusSnapshot ? tab2StatusSnapshot.breakdown.sdoCount : stats.count
+
+  const tab2LiveBreakdown = useMemo(() => {
+    const scopeCenter = lockedCenter || (filterCenter !== 'ALL' ? filterCenter : null)
+    const scopedRows = (records as SbfpReportSourceRow[]).filter(
+      r => !scopeCenter || rowMatchesReportCenterFilter(r, scopeCenter),
+    )
+    return computeLiveStatusBreakdown(scopedRows)
+  }, [records, lockedCenter, filterCenter])
+
   /** # column: one number per unique SDO (PM/SM/lots / Pangasinan I Dist 2+3 share a cell). */
   const sdoIndexMeta = useMemo(() => {
     const meta: Array<{ number: number; rowSpan: number }> = []
@@ -1106,7 +1209,7 @@ export default function SbfpSpreadsheetReport() {
 
     if (activeTab === 'senate_status') {
       const statusRows = SBFP_PROCUREMENT_STATUSES.map(status => {
-        const b = implSummary.buckets[status]
+        const b = tab2Buckets[status]
         return [
           status,
           b.sdoCount,
@@ -2424,18 +2527,69 @@ export default function SbfpSpreadsheetReport() {
             {activeTab === 'senate_status' && (
               <SbfpReportGraphView key="senate_status"
                   enabled={graphMode}
-                  graphs={implementationGraphs(cooperativePayments, SBFP_PROCUREMENT_STATUSES.map(label => ({ label, ...implSummary.buckets[label] })), graphStatusMeasure)}
+                  graphs={implementationGraphs(cooperativePayments, SBFP_PROCUREMENT_STATUSES.map(label => ({ label, ...tab2Buckets[label] })), graphStatusMeasure)}
                   scope={graphScope}
                   controls={<label>Implementation measure<select value={graphStatusMeasure} onChange={event => setGraphStatusMeasure(event.target.value as typeof graphStatusMeasure)}><option value="sdoCount">SDOs</option><option value="contractAmt">Contracted amount</option><option value="undeliveredL">Undelivered liters</option></select></label>}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 <CooperativePaymentSummary summary={cooperativePayments} year={year} />
                 <div style={{ background: '#ffffff', borderRadius: 8, border: '1px solid #cbd5e1', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-                  <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
-                    <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#1e293b' }}>
-                      2. Payment and Implementation Status
-                    </h3>
-                    <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 2 }}>
-                      Same Status values as the SDO procurement dropdown.
+                  <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#1e293b' }}>
+                        2. Payment and Implementation Status
+                      </h3>
+                      <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 2 }}>
+                        Same Status values as the SDO procurement dropdown.
+                      </div>
+                    </div>
+                    <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      {isTab2SnapshotEligible && (
+                        <span
+                          style={{
+                            fontSize: '0.74rem',
+                            fontWeight: 700,
+                            padding: '0.24rem 0.6rem',
+                            borderRadius: 999,
+                            color: tab2StatusSnapshot
+                              ? tab2StatusSnapshot.isExactDate
+                                ? '#166534'
+                                : '#0369a1'
+                              : '#92400e',
+                            background: tab2StatusSnapshot
+                              ? tab2StatusSnapshot.isExactDate
+                                ? '#dcfce7'
+                                : '#e0f2fe'
+                              : '#fef3c7',
+                          }}
+                        >
+                          {tab2StatusSnapshot
+                            ? tab2StatusSnapshot.isExactDate
+                              ? `SDO counts: Saved snapshot (${tab2StatusSnapshot.snapshotDate})`
+                              : `SDO counts: Snapshot from ${tab2StatusSnapshot.snapshotDate}`
+                            : 'SDO counts: Estimated (no saved snapshot)'}
+                        </span>
+                      )}
+                      {isSuperAdmin && (
+                        <button
+                          type="button"
+                          onClick={() => setSnapshotBackfillOpen(true)}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 5,
+                            padding: '0.32rem 0.65rem',
+                            borderRadius: 6,
+                            border: '1px solid #cbd5e1',
+                            background: '#ffffff',
+                            color: '#1e3a8a',
+                            fontWeight: 700,
+                            fontSize: '0.76rem',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <History size={13} /> Backfill Snapshots
+                        </button>
+                      )}
                     </div>
                   </div>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', fontFamily: 'Arial, sans-serif' }}>
@@ -2454,7 +2608,7 @@ export default function SbfpSpreadsheetReport() {
                     </thead>
                     <tbody>
                       {SBFP_PROCUREMENT_STATUSES.map((status, i) => {
-                        const b = implSummary.buckets[status]
+                        const b = tab2Buckets[status]
                         const color = IMPLEMENTATION_STATUS_COLORS[status]
                         return (
                           <tr key={status} style={{ background: i % 2 === 0 ? '#fff' : '#f8fafc' }}>
@@ -2474,7 +2628,7 @@ export default function SbfpSpreadsheetReport() {
                     <tfoot>
                       <tr style={{ background: '#dbeafe', color: '#1e3a8a', fontWeight: 800 }}>
                         <td style={{ ...tdR, textAlign: 'left' }}>TOTAL</td>
-                        <td style={tdR}>{stats.count}</td>
+                        <td style={tdR}>{tab2TotalSdos}</td>
                         <td style={tdR}>{fmtPeso(stats.totalContractAmt)}</td>
                         <td style={tdR}>{fmtPeso(stats.totalPaid)}</td>
                         <td style={tdR}>{fmtPeso(stats.totalRemainingPay)}</td>
@@ -3388,6 +3542,20 @@ export default function SbfpSpreadsheetReport() {
           }
         }
       `}</style>
+
+      {isSuperAdmin && Number.isFinite(dbYearNum) && (
+        <SbfpStatusSnapshotModal
+          open={snapshotBackfillOpen}
+          onClose={() => setSnapshotBackfillOpen(false)}
+          year={dbYearNum}
+          defaultDate={completionCutoffIso || todayManila}
+          centerOptions={distinctCenters}
+          snapshots={snapshots}
+          tableMissing={snapshotsTableMissing}
+          liveBreakdown={tab2LiveBreakdown}
+          onSaved={() => loadSnapshots(dbYearNum)}
+        />
+      )}
     </div>
   )
 }

@@ -5,14 +5,23 @@ import { createClient } from '@/lib/supabase/client'
 import { fetchAllRows } from '@/lib/supabase-paginate'
 import { SBFP_DATA_ENCODER_COLUMNS } from '@/lib/encoder-selects'
 import { dbYearToSchoolYear, FALLBACK_SCHOOL_YEARS, schoolYearToDbYear } from '@/lib/sbfp-year'
-import { reportCenterLabel } from '@/lib/sbfp-report-sync'
+import { reportCenterFilterOptions, reportCenterLabel, rowMatchesReportCenterFilter, sbfpRowVisibleInReportDefault, type SbfpReportSourceRow } from '@/lib/sbfp-report-sync'
 import { sbfpCenterAliases, sbfpNavCenter } from '@/lib/center-aliases'
+import { excludeAuxSbfp } from '@/lib/sbfp-aux'
 import {
   computeMilkComponentDashboard,
   formatCompactLiters,
   formatCompactPeso,
 } from '@/lib/sbfp-dashboard-infographic'
-import { Download, Printer, ZoomIn, ZoomOut, Maximize2, AlignCenter, Calendar, RotateCcw, Image as ImageIcon } from 'lucide-react'
+import {
+  computeLiveStatusBreakdown,
+  NATIONAL_SNAPSHOT_CENTER,
+  resolveStatusSnapshotForDate,
+  todayManilaIso,
+  type SbfpStatusSnapshotRow,
+} from '@/lib/sbfp-status-snapshots'
+import { SbfpStatusSnapshotModal } from '@/components/SbfpStatusSnapshotModal'
+import { Download, Printer, ZoomIn, ZoomOut, Maximize2, AlignCenter, Calendar, RotateCcw, Image as ImageIcon, History } from 'lucide-react'
 import { Spinner } from '@/components/loading/Spinner'
 
 const NAVY = '#033773'
@@ -107,15 +116,27 @@ function FittedText({
   )
 }
 
+function formatShortDate(iso: string): string {
+  const parts = iso.split('-').map(Number)
+  if (parts.length !== 3 || parts.some(n => !Number.isFinite(n))) return iso
+  const d = new Date(parts[0], parts[1] - 1, parts[2])
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
 export default function MilkComponentDashboardPage() {
   const supabase = useMemo(() => createClient(), [])
   const [schoolYearOptions, setSchoolYearOptions] = useState<string[]>([...FALLBACK_SCHOOL_YEARS])
   const [year, setYear] = useState(String(schoolYearToDbYear(FALLBACK_SCHOOL_YEARS[0])))
   const [asOfDate, setAsOfDate] = useState<string>(todayLocalIso)
   const [lockedCenter, setLockedCenter] = useState<string>('')
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false)
   const [records, setRecords] = useState<Array<Record<string, unknown>>>([])
   const [loadedKey, setLoadedKey] = useState<string>('')
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [snapshots, setSnapshots] = useState<SbfpStatusSnapshotRow[]>([])
+  const [snapshotsTableMissing, setSnapshotsTableMissing] = useState(false)
+  const [backfillOpen, setBackfillOpen] = useState(false)
+  const syncedKeysRef = useRef<Set<string>>(new Set())
   const fetchKey = `${year}|${lockedCenter}`
   const loading = loadedKey !== fetchKey
 
@@ -136,6 +157,9 @@ export default function MilkComponentDashboardPage() {
         .select('role,center')
         .eq('id', user.id)
         .single()
+      if (profile?.role === 'super_admin') {
+        setIsSuperAdmin(true)
+      }
       if (profile?.role === 'encoder' && profile.center) {
         const label = reportCenterLabel(sbfpNavCenter(profile.center) || profile.center)
         setLockedCenter(label)
@@ -194,14 +218,109 @@ export default function MilkComponentDashboardPage() {
 
   const dbYearNum = parseInt(year, 10) || schoolYearToDbYear(FALLBACK_SCHOOL_YEARS[0])
 
+  const loadSnapshots = useCallback(async (targetYear: number) => {
+    try {
+      const res = await fetch(`/api/sbfp/status-snapshots?year=${targetYear}`)
+      if (!res.ok) return
+      const json = (await res.json().catch(() => null)) as {
+        snapshots?: SbfpStatusSnapshotRow[]
+        tableMissing?: boolean
+      } | null
+      if (!json) return
+      setSnapshots(json.snapshots || [])
+      setSnapshotsTableMissing(Boolean(json.tableMissing))
+    } catch {
+      /* non-fatal */
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    void fetch(`/api/sbfp/status-snapshots?year=${dbYearNum}`)
+      .then(res => (res.ok ? res.json() : null))
+      .then((json: { snapshots?: SbfpStatusSnapshotRow[]; tableMissing?: boolean } | null) => {
+        if (cancelled || !json) return
+        setSnapshots(json.snapshots || [])
+        setSnapshotsTableMissing(Boolean(json.tableMissing))
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [dbYearNum])
+
+  useEffect(() => {
+    if (loadedKey !== fetchKey || loadError) return
+    if (syncedKeysRef.current.has(fetchKey)) return
+    syncedKeysRef.current.add(fetchKey)
+    void (async () => {
+      try {
+        const res = await fetch('/api/sbfp/status-snapshots/capture', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ year: dbYearNum }),
+        })
+        if (res.ok) {
+          await loadSnapshots(dbYearNum)
+        }
+      } catch {
+        /* non-fatal */
+      }
+    })()
+  }, [loadedKey, fetchKey, loadError, dbYearNum, loadSnapshots])
+
+  const effectiveAsOfIso = asOfDate || todayLocalIso()
+  const todayManila = todayManilaIso()
+  const isViewingPastDate = effectiveAsOfIso < todayManila
+
+  const resolvedStatusSnapshot = useMemo(() => {
+    if (isViewingPastDate) {
+      return resolveStatusSnapshotForDate(snapshots, {
+        year: dbYearNum,
+        asOfIso: effectiveAsOfIso,
+        center: lockedCenter || null,
+      })
+    }
+    const scopedCenter = lockedCenter ? reportCenterLabel(lockedCenter) : NATIONAL_SNAPSHOT_CENTER
+    const hasExactBackfill = snapshots.some(
+      r =>
+        r.year === dbYearNum &&
+        r.snapshot_date === effectiveAsOfIso &&
+        r.source === 'backfill' &&
+        (lockedCenter ? r.center === scopedCenter : r.center === NATIONAL_SNAPSHOT_CENTER),
+    )
+    if (!hasExactBackfill) return null
+    return resolveStatusSnapshotForDate(snapshots, {
+      year: dbYearNum,
+      asOfIso: effectiveAsOfIso,
+      center: lockedCenter || null,
+    })
+  }, [isViewingPastDate, snapshots, dbYearNum, effectiveAsOfIso, lockedCenter])
+
+  const liveBreakdown = useMemo(() => {
+    const visible = excludeAuxSbfp(records as SbfpReportSourceRow[]).filter(r => {
+      if (!sbfpRowVisibleInReportDefault(r)) return false
+      if (lockedCenter && !rowMatchesReportCenterFilter(r, lockedCenter)) return false
+      return true
+    })
+    return computeLiveStatusBreakdown(visible)
+  }, [records, lockedCenter])
+
+  const centerOptions = useMemo(
+    () => reportCenterFilterOptions(records as SbfpReportSourceRow[]),
+    [records],
+  )
+
   const dashboard = useMemo(
     () =>
       computeMilkComponentDashboard(records, {
         dbYear: dbYearNum,
-        asOfIso: asOfDate || todayLocalIso(),
+        asOfIso: effectiveAsOfIso,
         lockedCenter: lockedCenter || undefined,
+        todayIso: todayManila,
+        statusCountsOverride: resolvedStatusSnapshot?.dashboardCounts ?? null,
       }),
-    [records, dbYearNum, asOfDate, lockedCenter],
+    [records, dbYearNum, effectiveAsOfIso, lockedCenter, todayManila, resolvedStatusSnapshot],
   )
 
   const recalcScale = useCallback(() => {
@@ -538,6 +657,55 @@ export default function MilkComponentDashboardPage() {
           >
             Center: {lockedCenter}
           </span>
+        )}
+
+        {isViewingPastDate && (
+          <span
+            style={{
+              fontSize: '0.76rem',
+              fontWeight: 700,
+              color: resolvedStatusSnapshot
+                ? resolvedStatusSnapshot.isExactDate
+                  ? '#166534'
+                  : '#0369a1'
+                : '#92400e',
+              background: resolvedStatusSnapshot
+                ? resolvedStatusSnapshot.isExactDate
+                  ? '#dcfce7'
+                  : '#e0f2fe'
+                : '#fef3c7',
+              padding: '0.3rem 0.65rem',
+              borderRadius: 999,
+            }}
+          >
+            {resolvedStatusSnapshot
+              ? resolvedStatusSnapshot.isExactDate
+                ? `Status: Saved snapshot (${formatShortDate(resolvedStatusSnapshot.snapshotDate)})`
+                : `Status: Snapshot from ${formatShortDate(resolvedStatusSnapshot.snapshotDate)}`
+              : 'Status: Estimated (no snapshot)'}
+          </span>
+        )}
+
+        {isSuperAdmin && (
+          <button
+            type="button"
+            onClick={() => setBackfillOpen(true)}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 5,
+              padding: '0.4rem 0.7rem',
+              borderRadius: 7,
+              border: '1.5px solid #cbd5e1',
+              background: '#f8fafc',
+              color: NAVY,
+              fontWeight: 700,
+              fontSize: '0.78rem',
+              cursor: 'pointer',
+            }}
+          >
+            <History size={14} /> Backfill Snapshots
+          </button>
         )}
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -1227,6 +1395,20 @@ export default function MilkComponentDashboardPage() {
             </section>
           </div>
         </div>
+      )}
+
+      {isSuperAdmin && (
+        <SbfpStatusSnapshotModal
+          open={backfillOpen}
+          onClose={() => setBackfillOpen(false)}
+          year={dbYearNum}
+          defaultDate={effectiveAsOfIso}
+          centerOptions={centerOptions}
+          snapshots={snapshots}
+          tableMissing={snapshotsTableMissing}
+          liveBreakdown={liveBreakdown}
+          onSaved={() => loadSnapshots(dbYearNum)}
+        />
       )}
     </div>
   )

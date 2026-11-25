@@ -154,6 +154,29 @@ test('computeMilkComponentDashboard evaluates cumulative packs, date-filtered pa
   // As of Dec 5: post-Nov-24 payment entry is included
   const dec = computeMilkComponentDashboard(rows, { dbYear: 2026, asOfIso: '2026-12-05', todayIso: '2026-11-24' })
   assert.equal(dec.totals.paidAmt, 2_750_000)
+
+  // Saved snapshot override replaces statusCounts without changing deliveries or payments
+  const withSnapshot = computeMilkComponentDashboard(rows, {
+    dbYear: 2026,
+    asOfIso: '2026-10-31',
+    todayIso: '2026-11-24',
+    statusCountsOverride: {
+      completed: 1,
+      ongoingDelivery: 1,
+      forDelivery: 0,
+      ongoingProcurement: 1,
+      forPreparation: 0,
+    },
+  })
+  assert.deepEqual(withSnapshot.statusCounts, {
+    completed: 1,
+    ongoingDelivery: 1,
+    forDelivery: 0,
+    ongoingProcurement: 1,
+    forPreparation: 0,
+  })
+  assert.equal(withSnapshot.totals.deliveredPacks, 70_000)
+  assert.equal(withSnapshot.totals.paidAmt, 1_000_000)
   assert.ok(regionSortKey('CAR') < regionSortKey('III'))
   assert.ok(regionSortKey('III') < regionSortKey('CARAGA'))
 })

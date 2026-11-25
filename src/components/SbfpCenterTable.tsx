@@ -29,6 +29,7 @@ import {
 import { composeSdoWithMilkType, sortSbfpEncoderRows, baseSdoName } from '@/lib/sbfp-dropoff-sync'
 import { useAsyncTask } from '@/components/loading/AsyncFeedback'
 import { logCenterActivity } from '@/lib/center-activity'
+import { triggerSbfpStatusSnapshotCapture } from '@/lib/sbfp-status-snapshots-client'
 import { DateColumnPicker } from '@/components/DateColumnPicker'
 
 async function apiDropoffMasterlist(body: Record<string, unknown>): Promise<string | null> {
@@ -811,6 +812,9 @@ export function SbfpCenterTable({
         setRows(p => p.map(r => r.id === action.id ? { ...r, [action.field]: action.oldV } : r))
         setRedoStack(p => [...p, action])
         await maybeRecompute(action.field)
+        if (action.field === 'procurement_status' || action.field === 'include_in_report' || action.field === 'sdo') {
+          triggerSbfpStatusSnapshotCapture(dbYear)
+        }
       }
       if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) {
         e.preventDefault()
@@ -821,6 +825,9 @@ export function SbfpCenterTable({
         setRows(p => p.map(r => r.id === action.id ? { ...r, [action.field]: action.newV } : r))
         setUndoStack(p => [...p, action])
         await maybeRecompute(action.field)
+        if (action.field === 'procurement_status' || action.field === 'include_in_report' || action.field === 'sdo') {
+          triggerSbfpStatusSnapshotCapture(dbYear)
+        }
       }
     }
     window.addEventListener('keydown', handler)
@@ -963,6 +970,9 @@ export function SbfpCenterTable({
     }
     // Summary recompute in background — never block the encoder cell.
     void maybeRecompute(field === 'amount' || field === 'milk_type' || field === 'pack_unit_price' ? 'packs_to_deliver' : field)
+    if (field === 'procurement_status' || field === 'include_in_report' || field === 'sdo') {
+      triggerSbfpStatusSnapshotCapture(dbYear)
+    }
   }
 
   const renameSnapDate = async (oldDate: string, newDate: string) => {
@@ -1053,6 +1063,7 @@ export function SbfpCenterTable({
       setRows(p => p.filter(r => r.id !== id))
       onProcurementDeleted?.(id)
       await maybeRecompute('packs_to_deliver')
+      triggerSbfpStatusSnapshotCapture(dbYear)
     }, 'Deleting record…', { blocking: true })
   }
 
@@ -1085,6 +1096,7 @@ export function SbfpCenterTable({
     if (!error && data) {
       setRows(p => [...p, data])
       await maybeRecompute('packs_to_deliver')
+      triggerSbfpStatusSnapshotCapture(dbYear)
     } else if (error) {
       alert(error.message)
     }
@@ -1674,6 +1686,7 @@ export function SbfpCenterTable({
               setSelected(new Set())
               for (const id of deletedIds) onProcurementDeleted?.(id)
               await maybeRecompute('packs_to_deliver')
+              triggerSbfpStatusSnapshotCapture(dbYear)
             })()
           }} className="btn btn-gold" style={{ padding: '0.5rem 1rem', borderRadius: 50, background: '#ef4444', border: 'none' }}>
             <Trash2 size={14} /> Delete Selected
